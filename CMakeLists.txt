@@ -36,3 +36,15 @@ target_link_libraries(SGProcessingManager
 
 # Require C++17 for consumers
 target_compile_features(SGProcessingManager INTERFACE cxx_std_17)
+
+# Make SGProcessingManager installable
+install(TARGETS SGProcessingManager
+    EXPORT SGProcessingManagerTargets
+    INCLUDES DESTINATION include
+)
+
+# Export target for consumers
+install(EXPORT SGProcessingManagerTargets
+    NAMESPACE SGProcessingManager::
+    DESTINATION lib/cmake/SGProcessingManager
+)
