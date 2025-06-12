@@ -4,7 +4,9 @@ on:
   push:
     paths:
       - 'gnus-processing-schema.json'
-  workflow_dispatch:
+    branches:
+      - main 
+  workflow_dispatch: 
 
 jobs:
   generate-headers:

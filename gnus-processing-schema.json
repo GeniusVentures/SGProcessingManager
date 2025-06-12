@@ -19,8 +19,8 @@
     "gnus_spec_version": {
       "type": "number", 
       "description": "Version of the GNUS processing definition specification",
-	  "minimum": 1.01,
-	  "maximum": 1.01
+	  "minimum": 1.0,
+	  "maximum": 1.0
     },
     "author": {
       "type": "string",
