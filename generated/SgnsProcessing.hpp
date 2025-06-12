@@ -30,7 +30,7 @@ namespace sgns {
     class SgnsProcessing {
         public:
         SgnsProcessing() :
-            gnus_spec_version_constraint(boost::none, boost::none, 1.01, 1.01, boost::none, boost::none, boost::none),
+            gnus_spec_version_constraint(boost::none, boost::none, 1, 1, boost::none, boost::none, boost::none),
             name_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^[A-Za-z0-9_-]+$")),
             version_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^\\d+\\.\\d+(\\.\\d+)?$"))
         {}
