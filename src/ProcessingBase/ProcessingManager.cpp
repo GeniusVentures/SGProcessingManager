@@ -39,6 +39,7 @@ namespace sgns
         }
         catch (const nlohmann::json::exception& e)
         {
+
             return outcome::failure( Error::INVALID_JSON );
         }
         for (auto& pass : processing.get_passes())
@@ -50,6 +51,7 @@ namespace sgns
                 {
                     if ( !pass.get_model() )
                     {
+                        m_logger->error( "Inference json has no model" );
                         return outcome::failure( Error::PROCESS_INFO_MISSING );
                     }
                     break;
@@ -63,6 +65,7 @@ namespace sgns
                 case PassType::RETRAIN:
                     break;
                 default:
+                    m_logger->error( "Somehow pass has no type" );
                     return outcome::failure( Error::PROCESS_INFO_MISSING );
             }
             
@@ -99,6 +102,7 @@ namespace sgns
                 {
                     if ( !input.get_dimensions() )
                     {
+                        m_logger->error( "Texture2d type has no dimensions" );
                         return outcome::failure( Error::PROCESS_INFO_MISSING );
                     }
                     else
@@ -107,17 +111,19 @@ namespace sgns
                         //We need these dimensions
                         if ( !dimensions.get_block_len() || !dimensions.get_block_line_stride() )
                         {
+                            m_logger->error( "Texture2d type has no block len or block line stride" );
                             return outcome::failure( Error::PROCESS_INFO_MISSING );
-
-                            uint64_t block_len         = dimensions.get_block_len().value();
-                            uint64_t block_line_stride = dimensions.get_block_line_stride().value();
-
-                            // Ensure block_len is evenly divisible by block_line_stride
-                            if ( block_line_stride == 0 || ( block_len % block_line_stride ) != 0 )
-                            {
-                                return outcome::failure( Error::INVALID_BLOCK_PARAMETERS );
-                            }
                         }
+                        uint64_t block_len         = dimensions.get_block_len().value();
+                        uint64_t block_line_stride = dimensions.get_block_line_stride().value();
+
+                        // Ensure block_len is evenly divisible by block_line_stride
+                        if ( block_line_stride == 0 || ( block_len % block_line_stride ) != 0 )
+                        {
+                            m_logger->error( "Texture2d type has dimensions not divisible" );
+                            return outcome::failure( Error::INVALID_BLOCK_PARAMETERS );
+                        }
+                        
                         break;
                     }
                 }
@@ -150,43 +156,20 @@ namespace sgns
 
     outcome::result<uint64_t> ProcessingManager::ParseBlockSize( const std::string &json_data )
     {
-        //node_logger->info( "Received JSON data: {}", json_data );
-        //rapidjson::Document document;
-        //if ( document.Parse( json_data.c_str() ).HasParseError() )
-        //{
-        //    node_logger->error( "Invalid JSON data provided" );
-        //    return outcome::failure( std::make_error_code( std::errc::invalid_argument ) );
-        //}
+        if (!CheckProcessValidity(json_data))
+        {
+            m_logger->error( "Cannot return block size because json is invalid" );
+            return outcome::failure( Error::INVALID_JSON );
+        }
+        auto                 data = nlohmann::json::parse( json_data );
+        sgns::SgnsProcessing processing;
+        sgns::from_json( data, processing );
 
-        //rapidjson::Value inputArray;
-        //if ( document.HasMember( "input" ) && document["input"].IsArray() )
-        //{
-        //    inputArray = document["input"];
-        //}
-        //else
-        //{
-        //    node_logger->error( "This JSON lacks inputs" );
-        //    return outcome::failure( std::make_error_code( std::errc::invalid_argument ) );
-        //}
-
-        //uint64_t block_total_len = 0;
-        //for ( const auto &input : inputArray.GetArray() )
-        //{
-        //    if ( input.HasMember( "block_len" ) && input["block_len"].IsUint64() )
-        //    {
-        //        uint64_t block_len  = input["block_len"].GetUint64();
-        //        block_total_len    += block_len;
-        //        node_logger->info( "Block length (bytes): {}", block_len );
-        //    }
-        //    else
-        //    {
-        //        node_logger->error( "Missing or invalid block_len in input" );
-        //        return outcome::failure( std::make_error_code( std::errc::invalid_argument ) );
-        //    }
-        //}
-
-        //node_logger->trace( "Total block length: {}", block_total_len );
-        //return block_total_len;
-        return outcome::success();
+        uint64_t block_total_len = 0;
+        for (auto& input : processing.get_inputs())
+        {
+            block_total_len += input.get_dimensions().value().get_block_len().value();
+        }
+        return block_total_len;
     }
 }
