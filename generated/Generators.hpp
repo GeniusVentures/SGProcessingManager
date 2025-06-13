@@ -284,7 +284,7 @@ namespace sgns {
 
     inline void from_json(const json & j, ModelConfig& x) {
         x.set_batch_size(get_stack_optional<int64_t>(j, "batch_size"));
-        x.set_format(get_stack_optional<ModelFormat>(j, "format"));
+        x.set_format(j.at("format").get<ModelFormat>());
         x.set_input_nodes(j.at("input_nodes").get<std::vector<ModelNode>>());
         x.set_loss_function(get_stack_optional<LossFunction>(j, "loss_function"));
         x.set_optimizer(get_stack_optional<OptimizerConfig>(j, "optimizer"));

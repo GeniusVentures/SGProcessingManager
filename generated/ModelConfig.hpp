@@ -41,7 +41,7 @@ namespace sgns {
         private:
         boost::optional<int64_t> batch_size;
         ClassMemberConstraints batch_size_constraint;
-        boost::optional<ModelFormat> format;
+        ModelFormat format;
         std::vector<ModelNode> input_nodes;
         boost::optional<LossFunction> loss_function;
         boost::optional<OptimizerConfig> optimizer;
@@ -55,8 +55,9 @@ namespace sgns {
         /**
          * Model format
          */
-        boost::optional<ModelFormat> get_format() const { return format; }
-        void set_format(boost::optional<ModelFormat> value) { this->format = value; }
+        const ModelFormat & get_format() const { return format; }
+        ModelFormat & get_mutable_format() { return format; }
+        void set_format(const ModelFormat & value) { this->format = value; }
 
         const std::vector<ModelNode> & get_input_nodes() const { return input_nodes; }
         std::vector<ModelNode> & get_mutable_input_nodes() { return input_nodes; }
