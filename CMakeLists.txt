@@ -7,44 +7,39 @@ project(SGProcessingManager
     LANGUAGES CXX
 )
 
-# Only set C++ standard if this is the main project
-if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
-    set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_CXX_STANDARD_REQUIRED ON)
-endif()
+include(cmake/functions.cmake)
 
-# Find required dependencies
-find_package(Boost REQUIRED)
-find_package(nlohmann_json REQUIRED)
+add_subdirectory(generated)
+add_subdirectory(src)
 
-# Create interface library (header-only)
-add_library(SGProcessingManager INTERFACE)
-add_library(SGProcessingManager::SGProcessingManager ALIAS SGProcessingManager)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/generated" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
 
-# Set include directories
-target_include_directories(SGProcessingManager
-    INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/generated
+set(SGProcessingManager_CONFIG_DESTINATION_DIR "lib/cmake/SGProcessingManager")
+install(EXPORT SGProcessingManager
+    FILE SGProcessingManager.cmake
+    DESTINATION ${SGProcessingManager_CONFIG_DESTINATION_DIR}
 )
 
-# Link dependencies
-target_link_libraries(SGProcessingManager
-    INTERFACE
-        Boost::boost
-        nlohmann_json::nlohmann_json
+include(CMakePackageConfigHelpers)
+
+# generate the config file that is includes the exports
+configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/SGProcessingManagerConfig.cmake"
+    INSTALL_DESTINATION "lib/cmake/examples"
+    NO_SET_AND_CHECK_MACRO
+    NO_CHECK_REQUIRED_COMPONENTS_MACRO
 )
 
-# Require C++17 for consumers
-target_compile_features(SGProcessingManager INTERFACE cxx_std_17)
-
-# Make SGProcessingManager installable
-install(TARGETS SGProcessingManager
-    EXPORT SGProcessingManagerTargets
-    INCLUDES DESTINATION include
+# generate the version file for the config file
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/SGProcessingManagerConfigVersion.cmake"
+    VERSION "${VERSION_STRING}.${SUBVERSION_STRING}"
+    COMPATIBILITY AnyNewerVersion
 )
 
-# Export target for consumers
-install(EXPORT SGProcessingManagerTargets
-    NAMESPACE SGProcessingManager::
-    DESTINATION lib/cmake/SGProcessingManager
+# install the configuration file
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/SGProcessingManagerConfig.cmake
+    DESTINATION ${SGProcessingManager_CONFIG_DESTINATION_DIR}
 )
