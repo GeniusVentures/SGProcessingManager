@@ -147,4 +147,46 @@ namespace sgns
 
         return outcome::success();
     }
+
+    outcome::result<uint64_t> ProcessingManager::ParseBlockSize( const std::string &json_data )
+    {
+        //node_logger->info( "Received JSON data: {}", json_data );
+        //rapidjson::Document document;
+        //if ( document.Parse( json_data.c_str() ).HasParseError() )
+        //{
+        //    node_logger->error( "Invalid JSON data provided" );
+        //    return outcome::failure( std::make_error_code( std::errc::invalid_argument ) );
+        //}
+
+        //rapidjson::Value inputArray;
+        //if ( document.HasMember( "input" ) && document["input"].IsArray() )
+        //{
+        //    inputArray = document["input"];
+        //}
+        //else
+        //{
+        //    node_logger->error( "This JSON lacks inputs" );
+        //    return outcome::failure( std::make_error_code( std::errc::invalid_argument ) );
+        //}
+
+        //uint64_t block_total_len = 0;
+        //for ( const auto &input : inputArray.GetArray() )
+        //{
+        //    if ( input.HasMember( "block_len" ) && input["block_len"].IsUint64() )
+        //    {
+        //        uint64_t block_len  = input["block_len"].GetUint64();
+        //        block_total_len    += block_len;
+        //        node_logger->info( "Block length (bytes): {}", block_len );
+        //    }
+        //    else
+        //    {
+        //        node_logger->error( "Missing or invalid block_len in input" );
+        //        return outcome::failure( std::make_error_code( std::errc::invalid_argument ) );
+        //    }
+        //}
+
+        //node_logger->trace( "Total block length: {}", block_total_len );
+        //return block_total_len;
+        return outcome::success();
+    }
 }

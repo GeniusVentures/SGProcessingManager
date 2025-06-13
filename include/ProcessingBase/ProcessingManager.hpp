@@ -2,6 +2,7 @@
 #define PROCESSING_MANAGER_HPP_
 
 #include <outcome/outcome.hpp>
+#include <util/logger.hpp>
 
 namespace sgns
 {
@@ -23,10 +24,11 @@ namespace sgns
             NO_PROCESSOR             = 4,
         };
 
-        outcome::result<std::string> ProcessImage( const std::string &jsondata );
+        outcome::result<uint64_t> ParseBlockSize( const std::string &json_data );
         outcome::result<void>        CheckProcessValidity( const std::string &jsondata );
 
     private:
+        sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "GlobalDB" );
     };
 }
 

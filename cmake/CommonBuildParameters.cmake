@@ -55,6 +55,15 @@ include_directories(${Boost_INCLUDE_DIRS})
 set(nlohmann_json_DIR "${_THIRDPARTY_BUILD_DIR}/json/share/cmake/nlohmann_json")
 find_package(nlohmann_json CONFIG REQUIRED)
 
+# fmt
+set(fmt_DIR "${_THIRDPARTY_BUILD_DIR}/fmt/lib/cmake/fmt")
+find_package(fmt CONFIG REQUIRED)
+
+# spdlog
+set(spdlog_DIR "${_THIRDPARTY_BUILD_DIR}/spdlog/lib/cmake/spdlog")
+find_package(spdlog CONFIG REQUIRED)
+add_compile_definitions("SPDLOG_FMT_EXTERNAL")
+
 include_directories(
         "${CMAKE_CURRENT_LIST_DIR}/../include"
 )

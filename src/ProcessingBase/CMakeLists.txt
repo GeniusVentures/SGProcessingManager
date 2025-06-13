@@ -11,6 +11,7 @@ target_link_libraries(
 		ProcessingBase
 		PUBLIC
         nlohmann_json::nlohmann_json
+		spdlog::spdlog
 )
 
 sgnus_install(ProcessingBase)
