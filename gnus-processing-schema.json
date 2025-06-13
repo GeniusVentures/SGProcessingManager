@@ -224,7 +224,7 @@
     },
     "model_config": {
       "type": "object",
-      "required": ["source_uri_param", "input_nodes", "output_nodes"],
+      "required": ["source_uri_param", "input_nodes", "output_nodes", "format"],
       "properties": {
         "source_uri_param": {
           "type": "string",
