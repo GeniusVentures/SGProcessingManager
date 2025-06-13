@@ -47,55 +47,103 @@ namespace sgns
             switch(pass.get_type())
             {
                 case PassType::INFERENCE:
-                    if (!pass.get_model())
+                {
+                    if ( !pass.get_model() )
                     {
                         return outcome::failure( Error::PROCESS_INFO_MISSING );
                     }
+                    break;
+                }
                 case PassType::COMPUTE:
+                    break;
                 case PassType::DATA_TRANSFORM:
+                    break;
                 case PassType::RENDER:
+                    break;
                 case PassType::RETRAIN:
+                    break;
                 default:
                     return outcome::failure( Error::PROCESS_INFO_MISSING );
             }
             
             
         }
+        //Check Input optionals
+        for (auto& input : processing.get_inputs())
+        {
+            switch (input.get_type())
+            {
+                case DataType::BOOL:
+                    break;
+                case DataType::BUFFER:
+                    break;
+                case DataType::FLOAT:
+                    break;
+                case DataType::INT:
+                    break;
+                case DataType::MAT2:
+                    break;
+                case DataType::MAT3:
+                    break;
+                case DataType::MAT4:
+                    break;
+                case DataType::STRING:
+                    break;
+                case DataType::TENSOR:
+                    break;
+                case DataType::TEXTURE1_D:
+                    break;
+                case DataType::TEXTURE1_D_ARRAY:
+                    break;
+                case DataType::TEXTURE2_D:
+                {
+                    if ( !input.get_dimensions() )
+                    {
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+                    else
+                    {
+                        auto dimensions = input.get_dimensions().value();
+                        //We need these dimensions
+                        if ( !dimensions.get_block_len() || !dimensions.get_block_line_stride() )
+                        {
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
 
-        //// Extract input array
-        //const auto &inputArray = document["input"];
-        //if ( inputArray.Size() == 0 )
-        //{
-        //    return outcome::failure( Error::PROCESS_INFO_MISSING );
-        //}
+                            uint64_t block_len         = dimensions.get_block_len().value();
+                            uint64_t block_line_stride = dimensions.get_block_line_stride().value();
 
-        //// Validate each input entry
-        //for ( auto &input : inputArray.GetArray() )
-        //{
-        //    if ( !input.IsObject() )
-        //    {
-        //        return outcome::failure( Error::PROCESS_INFO_MISSING );
-        //    }
+                            // Ensure block_len is evenly divisible by block_line_stride
+                            if ( block_line_stride == 0 || ( block_len % block_line_stride ) != 0 )
+                            {
+                                return outcome::failure( Error::INVALID_BLOCK_PARAMETERS );
+                            }
+                        }
+                        break;
+                    }
+                }
+                case DataType::TEXTURE2_D_ARRAY:
+                    break;
+                case DataType::TEXTURE3_D:
+                    break;
+                case DataType::TEXTURE3_D_ARRAY:
+                    break;
+                case DataType::TEXTURE_CUBE:
+                    break;
+                case DataType::VEC2:
+                    break;
+                case DataType::VEC3:
+                    break;
+                case DataType::VEC4:
+                    break;
+                default:
+                    return outcome::failure( Error::PROCESS_INFO_MISSING );
+            }
+        }
+        //Check Output optionals. Anything to do here?
+        for (auto& output : processing.get_outputs())
+        {
 
-        //    if ( !input.HasMember( "block_len" ) || !input["block_len"].IsUint64() )
-        //    {
-        //        return outcome::failure( Error::PROCESS_INFO_MISSING );
-        //    }
-
-        //    if ( !input.HasMember( "block_line_stride" ) || !input["block_line_stride"].IsUint64() )
-        //    {
-        //        return outcome::failure( Error::PROCESS_INFO_MISSING );
-        //    }
-
-        //    uint64_t block_len         = input["block_len"].GetUint64();
-        //    uint64_t block_line_stride = input["block_line_stride"].GetUint64();
-
-        //    // Ensure block_len is evenly divisible by block_line_stride
-        //    if ( block_line_stride == 0 || ( block_len % block_line_stride ) != 0 )
-        //    {
-        //        return outcome::failure( Error::INVALID_BLOCK_PARAMETERS );
-        //    }
-        //}
+        }
 
         return outcome::success();
     }
