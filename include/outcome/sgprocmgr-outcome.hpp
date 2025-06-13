@@ -15,7 +15,7 @@
 
 #define OUTCOME_TRY(...) BOOST_OUTCOME_TRY(__VA_ARGS__)
 
-#include "outcome-register.hpp"
+#include "sgprocmgr-outcome-register.hpp"
 
 /**
  * __cpp_sized_deallocation macro interferes with protobuf generated files

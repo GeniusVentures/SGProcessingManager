@@ -4,19 +4,19 @@ cmake_minimum_required(VERSION 3.16)
 project(SGProcessingManager
     VERSION 1.0.0
     DESCRIPTION "GNUS.ai Processing Definition Schema C++ Headers"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 include(cmake/functions.cmake)
 
-add_subdirectory(generated)
+#add_subdirectory(generated)
 add_subdirectory(src)
 
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/generated" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
 
 set(SGProcessingManager_CONFIG_DESTINATION_DIR "lib/cmake/SGProcessingManager")
-install(EXPORT SGProcessingManager
+install(EXPORT SGProcessingManagerTargets
     FILE SGProcessingManager.cmake
     DESTINATION ${SGProcessingManager_CONFIG_DESTINATION_DIR}
 )

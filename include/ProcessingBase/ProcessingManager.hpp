@@ -1,8 +1,8 @@
 #ifndef PROCESSING_MANAGER_HPP_
 #define PROCESSING_MANAGER_HPP_
 
-#include <outcome/outcome.hpp>
-#include <util/logger.hpp>
+#include <outcome/sgprocmgr-outcome.hpp>
+#include <util/sgprocmgr-logger.hpp>
 
 namespace sgns
 {
