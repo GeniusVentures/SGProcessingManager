@@ -11,8 +11,6 @@ target_link_libraries(
 		ProcessingBase
 		PUBLIC
         nlohmann_json::nlohmann_json
-		PRIVATE
-        Boost::system
 )
 
 sgnus_install(ProcessingBase)
