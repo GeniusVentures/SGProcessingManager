@@ -3,6 +3,7 @@
 
 #include <outcome/sgprocmgr-outcome.hpp>
 #include <util/sgprocmgr-logger.hpp>
+#include <SGNSProcMain.hpp>
 
 namespace sgns
 {
@@ -14,7 +15,6 @@ namespace sgns
     class ProcessingManager
     {
     public:
-        ProcessingManager();
         ~ProcessingManager();
         enum class Error
         {
@@ -23,12 +23,16 @@ namespace sgns
             INVALID_BLOCK_PARAMETERS = 3,
             NO_PROCESSOR             = 4,
         };
+        static outcome::result<std::unique_ptr<ProcessingManager>> Create( const std::string &jsondata );
 
-        outcome::result<uint64_t> ParseBlockSize( const std::string &json_data );
-        outcome::result<void>        CheckProcessValidity( const std::string &jsondata );
+        outcome::result<uint64_t> ParseBlockSize();
+        outcome::result<void>        CheckProcessValidity();
 
     private:
+        outcome::result<void>       Init( const std::string &jsondata ); 
+        ProcessingManager()                  = default;
         sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "GlobalDB" );
+        sgns::SgnsProcessing        processing_;
     };
 }
 

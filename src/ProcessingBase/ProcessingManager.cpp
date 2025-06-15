@@ -1,5 +1,4 @@
 #include <ProcessingBase/ProcessingManager.hpp>
-#include <SGNSProcMain.hpp>
 #include <Generators.hpp>
 
 using namespace BOOST_OUTCOME_V2_NAMESPACE;
@@ -28,21 +27,36 @@ namespace sgns
 
     ProcessingManager::~ProcessingManager() {}
 
-    outcome::result<void> ProcessingManager::CheckProcessValidity( const std::string &jsondata )
+    outcome::result<std::unique_ptr<ProcessingManager>> ProcessingManager::Create( const std::string &jsondata )
     {
-        auto data = nlohmann::json::parse( jsondata );
-        sgns::SgnsProcessing processing;
+        auto instance = std::unique_ptr<ProcessingManager>( new ProcessingManager() );
+        OUTCOME_TRY( instance->Init( jsondata ) );
+        return instance;
+    }
+
+    outcome::result<void> ProcessingManager::Init( const std::string &jsondata )
+    {
+        auto                 data = nlohmann::json::parse( jsondata );
         //This will check required fields inherently.
         try
         {
-            sgns::from_json( data, processing );
+            sgns::from_json( data, processing_ );
         }
-        catch (const nlohmann::json::exception& e)
+        catch ( const nlohmann::json::exception &e )
         {
-
             return outcome::failure( Error::INVALID_JSON );
         }
-        for (auto& pass : processing.get_passes())
+        if (!CheckProcessValidity())
+        {
+            return outcome::failure( Error::INVALID_JSON );
+        }
+        // Successful parse
+        return outcome::success();
+    }
+
+    outcome::result<void> ProcessingManager::CheckProcessValidity()
+    {
+        for (auto& pass : processing_.get_passes())
         {
             //Check optional params if needed
             switch(pass.get_type())
@@ -72,7 +86,7 @@ namespace sgns
             
         }
         //Check Input optionals
-        for (auto& input : processing.get_inputs())
+        for (auto& input : processing_.get_inputs())
         {
             switch (input.get_type())
             {
@@ -146,7 +160,7 @@ namespace sgns
             }
         }
         //Check Output optionals. Anything to do here?
-        for (auto& output : processing.get_outputs())
+        for (auto& output : processing_.get_outputs())
         {
 
         }
@@ -154,19 +168,10 @@ namespace sgns
         return outcome::success();
     }
 
-    outcome::result<uint64_t> ProcessingManager::ParseBlockSize( const std::string &json_data )
+    outcome::result<uint64_t> ProcessingManager::ParseBlockSize()
     {
-        if (!CheckProcessValidity(json_data))
-        {
-            m_logger->error( "Cannot return block size because json is invalid" );
-            return outcome::failure( Error::INVALID_JSON );
-        }
-        auto                 data = nlohmann::json::parse( json_data );
-        sgns::SgnsProcessing processing;
-        sgns::from_json( data, processing );
-
         uint64_t block_total_len = 0;
-        for (auto& input : processing.get_inputs())
+        for (auto& input : processing_.get_inputs())
         {
             block_total_len += input.get_dimensions().value().get_block_len().value();
         }
