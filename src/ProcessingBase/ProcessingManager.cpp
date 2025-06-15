@@ -21,15 +21,12 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns, ProcessingManager::Error, e )
 
 namespace sgns
 {
-    ProcessingManager::ProcessingManager() {
-
-    }
 
     ProcessingManager::~ProcessingManager() {}
 
-    outcome::result<std::unique_ptr<ProcessingManager>> ProcessingManager::Create( const std::string &jsondata )
+    outcome::result<std::shared_ptr<ProcessingManager>> ProcessingManager::Create( const std::string &jsondata )
     {
-        auto instance = std::unique_ptr<ProcessingManager>( new ProcessingManager() );
+        auto instance = std::shared_ptr<ProcessingManager>( new ProcessingManager() );
         OUTCOME_TRY( instance->Init( jsondata ) );
         return instance;
     }

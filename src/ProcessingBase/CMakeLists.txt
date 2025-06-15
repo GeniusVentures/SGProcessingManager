@@ -12,6 +12,7 @@ target_link_libraries(
 		PUBLIC
         nlohmann_json::nlohmann_json
 		spdlog::spdlog
+		sgprocmanagerlogger
 )
 
 sgnus_install(ProcessingBase)

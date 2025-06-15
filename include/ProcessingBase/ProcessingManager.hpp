@@ -23,7 +23,7 @@ namespace sgns
             INVALID_BLOCK_PARAMETERS = 3,
             NO_PROCESSOR             = 4,
         };
-        static outcome::result<std::unique_ptr<ProcessingManager>> Create( const std::string &jsondata );
+        static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 
         outcome::result<uint64_t> ParseBlockSize();
         outcome::result<void>        CheckProcessValidity();
