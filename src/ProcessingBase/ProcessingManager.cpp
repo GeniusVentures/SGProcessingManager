@@ -1,5 +1,6 @@
 #include <ProcessingBase/ProcessingManager.hpp>
 #include <Generators.hpp>
+#include <DataSplitter/ImageSplitter.hpp>
 
 using namespace BOOST_OUTCOME_V2_NAMESPACE;
 
@@ -173,5 +174,10 @@ namespace sgns
             block_total_len += input.get_dimensions().value().get_block_len().value();
         }
         return block_total_len;
+    }
+
+    outcome::result<void> ProcessingManager::Process()
+    {
+        return outcome::success();
     }
 }

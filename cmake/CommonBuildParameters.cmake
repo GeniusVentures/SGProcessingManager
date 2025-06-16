@@ -23,6 +23,19 @@ find_package(GTest CONFIG REQUIRED)
 include_directories(${GTest_INCLUDE_DIR})
 add_compile_definitions(CRYPTO3_CODEC_BASE58)
 
+#OpenSSL
+set(OPENSSL_DIR "${_THIRDPARTY_BUILD_DIR}/openssl/build" CACHE PATH "Path to OpenSSL install folder")
+set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "OpenSSL use static libs")
+set(OPENSSL_MSVC_STATIC_RT ON CACHE BOOL "OpenSSL use static RT")
+set(OPENSSL_ROOT_DIR "${OPENSSL_DIR}" CACHE PATH "Path to OpenSSL install root folder")
+set(OPENSSL_INCLUDE_DIR "${OPENSSL_DIR}/include" CACHE PATH "Path to OpenSSL include folder")
+
+find_package(OpenSSL REQUIRED)
+
+#GSL
+set(GSL_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/Microsoft.GSL/include")
+include_directories(${GSL_INCLUDE_DIR})
+
 # Boost should be loaded before libp2p v0.1.2
 # --------------------------------------------------------
 # Set config of Boost project

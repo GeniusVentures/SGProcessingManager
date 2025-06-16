@@ -27,6 +27,7 @@ namespace sgns
 
         outcome::result<uint64_t> ParseBlockSize();
         outcome::result<void>        CheckProcessValidity();
+        outcome::result<void>     Process();
 
     private:
         outcome::result<void>       Init( const std::string &jsondata ); 
