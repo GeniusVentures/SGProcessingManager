@@ -1,6 +1,7 @@
 #include <ProcessingBase/ProcessingManager.hpp>
 #include <Generators.hpp>
 #include <DataSplitter/ImageSplitter.hpp>
+#include "FileManager.hpp"
 
 using namespace BOOST_OUTCOME_V2_NAMESPACE;
 
@@ -34,6 +35,7 @@ namespace sgns
 
     outcome::result<void> ProcessingManager::Init( const std::string &jsondata )
     {
+        m_processor = nullptr;
         auto                 data = nlohmann::json::parse( jsondata );
         //This will check required fields inherently.
         try
@@ -176,8 +178,79 @@ namespace sgns
         return block_total_len;
     }
 
-    outcome::result<void> ProcessingManager::Process()
+    outcome::result<void> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc )
     {
+        GetCidForProc( ioc, 0 );
         return outcome::success();
+    }
+
+    std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>
+    ProcessingManager::GetCidForProc(
+        std::shared_ptr<boost::asio::io_context> ioc, int pass )
+    {
+        boost::asio::io_context::executor_type                                   executor = ioc->get_executor();
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> workGuard( executor );
+
+        auto mainbuffers =
+            std::make_shared<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>(
+                std::make_shared<std::vector<char>>(),
+                std::make_shared<std::vector<char>>() );
+
+        //Set processor or fail.
+        if ( !SetProcessorByName( static_cast<int>( processing_.get_inputs()[pass].get_type() ) ) )
+        {
+            std::cerr << "No processor available for this type:"
+                      << static_cast<int> (processing_.get_inputs()[0].get_type()) << std::endl;
+            return mainbuffers;
+        }
+
+        std::string modelFile = processing_.get_passes()[pass].get_model().value().get_source_uri_param();
+
+        std::string image = processing_.get_inputs()[pass].get_source_uri_param();
+
+        //Init Loaders
+        FileManager::GetInstance().InitializeSingletons();
+        //Get Model
+        string modelURL = modelFile;
+        GetSubCidForProc( ioc, modelURL, mainbuffers->first );
+
+        string imageUrl = image;
+        GetSubCidForProc( ioc, imageUrl, mainbuffers->second );
+        //Run IO
+        ioc->reset();
+        ioc->run();
+
+        return mainbuffers;
+    }
+
+    void ProcessingManager::GetSubCidForProc( std::shared_ptr<boost::asio::io_context> ioc,
+                                               std::string                              url,
+                                               std::shared_ptr<std::vector<char>>       results )
+    {
+        //std::pair<std::vector<std::string>, std::vector<std::vector<char>>> results;
+        auto modeldata = FileManager::GetInstance().LoadASync(
+            url,
+            false,
+            false,
+            ioc,
+            []( const sgns::AsyncError::CustomResult &status )
+            {
+                if ( status.has_value() )
+                {
+                    std::cout << "Success: " << status.value().message << std::endl;
+                }
+                else
+                {
+                    std::cout << "Error: " << status.error() << std::endl;
+                }
+            },
+            [results]( std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>> buffers )
+            {
+                if ( results && buffers )
+                {
+                    results->insert( results->end(), buffers->second[0].begin(), buffers->second[0].end() );
+                }
+            },
+            "file" );
     }
 }

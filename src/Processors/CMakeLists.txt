@@ -1,0 +1,2 @@
+add_proto_library(SGProcessingProto proto/SGProcessing.proto)
+sgnus_install(SGProcessingProto)

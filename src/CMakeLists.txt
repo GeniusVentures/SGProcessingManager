@@ -1,3 +1,4 @@
 add_subdirectory(util)
 add_subdirectory(DataSplitter)
+add_subdirectory(Processors)
 add_subdirectory(ProcessingBase)
