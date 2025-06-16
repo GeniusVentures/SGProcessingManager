@@ -13,6 +13,7 @@ target_link_libraries(
         nlohmann_json::nlohmann_json
 		spdlog::spdlog
 		sgprocmanagerlogger
+		AsyncIOManager
 )
 
 sgnus_install(ProcessingBase)
