@@ -1,6 +1,6 @@
-#include <ProcessingBase/ProcessingManager.hpp>
+#include <processingbase/ProcessingManager.hpp>
 #include <Generators.hpp>
-#include <DataSplitter/ImageSplitter.hpp>
+#include <datasplitter/ImageSplitter.hpp>
 #include "FileManager.hpp"
 
 using namespace BOOST_OUTCOME_V2_NAMESPACE;

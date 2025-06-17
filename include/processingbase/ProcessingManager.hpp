@@ -4,7 +4,7 @@
 #include <outcome/sgprocmgr-outcome.hpp>
 #include <util/sgprocmgr-logger.hpp>
 #include <SGNSProcMain.hpp>
-#include <Processors/processing_processor.hpp>
+#include <processors/processing_processor.hpp>
 #include <boost/asio/io_context.hpp>
 
 namespace sgns

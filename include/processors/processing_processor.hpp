@@ -10,7 +10,7 @@
 #include <memory>
 #include <vector>
 
-#include <Processors/proto/SGProcessing.pb.h>
+#include <processors/proto/SGProcessing.pb.h>
 
 namespace sgns::processing
 {
