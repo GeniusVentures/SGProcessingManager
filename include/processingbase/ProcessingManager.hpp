@@ -6,6 +6,7 @@
 #include <SGNSProcMain.hpp>
 #include <processors/processing_processor.hpp>
 #include <boost/asio/io_context.hpp>
+#include <iostream>
 
 namespace sgns
 {

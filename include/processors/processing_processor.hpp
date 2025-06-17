@@ -10,8 +10,6 @@
 #include <memory>
 #include <vector>
 
-#include <processors/proto/SGProcessing.pb.h>
-
 namespace sgns::processing
 {
     class ProcessingProcessor
@@ -24,7 +22,8 @@ namespace sgns::processing
         * @param task - Reference to task to get image split data
         * @param subTask - Reference to subtask to get chunk data from
         */
-        virtual std::vector<uint8_t> StartProcessing(SGProcessing::SubTaskResult& result, const SGProcessing::Task& task, const SGProcessing::SubTask& subTask, std::vector<char> imageData, std::vector<char> modelFile) = 0;
+        virtual std::vector<uint8_t> StartProcessing( std::vector<uint8_t> &resulthash,
+                                                      std::vector<std::vector<uint8_t>> &chunkhashes) = 0;
 
         /** Set data for processor
         * @param buffers - Data containing file name and data pair lists.
