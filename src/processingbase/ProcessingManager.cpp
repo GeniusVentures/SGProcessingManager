@@ -2,6 +2,7 @@
 #include <Generators.hpp>
 #include <datasplitter/ImageSplitter.hpp>
 #include "FileManager.hpp"
+#include <processors/processing_processor_mnn_image.hpp>
 
 using namespace BOOST_OUTCOME_V2_NAMESPACE;
 
@@ -36,6 +37,10 @@ namespace sgns
     outcome::result<void> ProcessingManager::Init( const std::string &jsondata )
     {
         m_processor = nullptr;
+        //Register Processors
+        RegisterProcessorFactory( 11, [] { return std::make_unique<processing::MNN_Image>(); } );
+
+        //Parse Json
         auto                 data = nlohmann::json::parse( jsondata );
         //This will check required fields inherently.
         try
@@ -50,6 +55,7 @@ namespace sgns
         {
             return outcome::failure( Error::INVALID_JSON );
         }
+        
         // Successful parse
         return outcome::success();
     }
@@ -183,6 +189,7 @@ namespace sgns
                                                                       int                                pass )
     {
         auto buffers = GetCidForProc( ioc, pass );
+        SetProcessorByName( static_cast<int>(processing_.get_inputs()[pass].get_type()) );
         auto process = m_processor->StartProcessing( chunkhashes,
                                                      processing_.get_inputs()[pass],
                                                      *buffers->second,
