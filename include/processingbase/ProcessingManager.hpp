@@ -31,7 +31,8 @@ namespace sgns
         outcome::result<uint64_t> ParseBlockSize();
         outcome::result<void>        CheckProcessValidity();
         outcome::result<std::vector<uint8_t>> Process( std::shared_ptr<boost::asio::io_context> ioc,
-                                           std::vector<std::vector<uint8_t>>       &chunkhashes );
+                                           std::vector<std::vector<uint8_t>>       &chunkhashes,
+                                           int                                      pass );
 
         /** Register an available processor
         * @param name - Name of processor

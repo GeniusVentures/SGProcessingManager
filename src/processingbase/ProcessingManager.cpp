@@ -179,11 +179,12 @@ namespace sgns
     }
 
     outcome::result<std::vector<uint8_t>> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc,
-                                                      std::vector<std::vector<uint8_t>>       &chunkhashes )
+                                                                      std::vector<std::vector<uint8_t>> &chunkhashes,
+                                                                      int                                pass )
     {
-        auto buffers = GetCidForProc( ioc, 0 );
+        auto buffers = GetCidForProc( ioc, pass );
         auto process = m_processor->StartProcessing( chunkhashes,
-                                                     processing_.get_inputs()[0],
+                                                     processing_.get_inputs()[pass],
                                                      *buffers->second,
                                                      *buffers->first );
         return process;
@@ -205,7 +206,7 @@ namespace sgns
         if ( !SetProcessorByName( static_cast<int>( processing_.get_inputs()[pass].get_type() ) ) )
         {
             std::cerr << "No processor available for this type:"
-                      << static_cast<int> (processing_.get_inputs()[0].get_type()) << std::endl;
+                      << static_cast<int>( processing_.get_inputs()[pass].get_type() ) << std::endl;
             return mainbuffers;
         }
 
