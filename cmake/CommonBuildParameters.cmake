@@ -73,6 +73,17 @@ set(OPENSSL_INCLUDE_DIR "${OPENSSL_DIR}/include" CACHE PATH "Path to OpenSSL inc
 
 find_package(OpenSSL REQUIRED)
 
+# Vulkan
+find_package(Vulkan)
+
+if(NOT TARGET Vulkan::Vulkan)
+    if(NOT DEFINED $ENV{VULKAN_SDK})
+        set(ENV{VULKAN_SDK} "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader")
+    endif()
+
+    find_package(Vulkan REQUIRED)
+endif()
+
 # rocksdb
 set(RocksDB_DIR "${_THIRDPARTY_BUILD_DIR}/rocksdb/lib/cmake/rocksdb")
 find_package(RocksDB CONFIG REQUIRED)
@@ -157,6 +168,21 @@ find_package(libp2p CONFIG REQUIRED)
 set(ipfs-lite-cpp_DIR "${_THIRDPARTY_BUILD_DIR}/ipfs-lite-cpp/lib/cmake/ipfs-lite-cpp")
 find_package(ipfs-lite-cpp CONFIG REQUIRED)
 
+# MNN
+set(MNN_DIR "${_THIRDPARTY_BUILD_DIR}/MNN/lib/cmake/MNN")
+find_package(MNN CONFIG REQUIRED)
+set(MNN_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/MNN/include")
+message(STATIS "INCLUDE DIR ${MNN_INCLUDE_DIR}")
+include_directories(${MNN_INCLUDE_DIR})
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    get_target_property(MNN_LIB_PATH MNN::MNN IMPORTED_LOCATION_DEBUG)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    get_target_property(MNN_LIB_PATH MNN::MNN IMPORTED_LOCATION_RELEASE)
+elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    get_target_property(MNN_LIB_PATH MNN::MNN IMPORTED_LOCATION_RELWITHDEBINFO)
+endif()
+
+# AsyncioManager
 set(AsyncIOManager_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/AsyncIOManager/include")
 set(AsyncIOManager_DIR "${_THIRDPARTY_BUILD_DIR}/AsyncIOManager/lib/cmake/AsyncIOManager")
 find_package(AsyncIOManager CONFIG REQUIRED)

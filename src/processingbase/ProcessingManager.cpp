@@ -178,10 +178,15 @@ namespace sgns
         return block_total_len;
     }
 
-    outcome::result<void> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc )
+    outcome::result<std::vector<uint8_t>> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc,
+                                                      std::vector<std::vector<uint8_t>>       &chunkhashes )
     {
-        GetCidForProc( ioc, 0 );
-        return outcome::success();
+        auto buffers = GetCidForProc( ioc, 0 );
+        auto process = m_processor->StartProcessing( chunkhashes,
+                                                     processing_.get_inputs()[0],
+                                                     *buffers->second,
+                                                     *buffers->first );
+        return process;
     }
 
     std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>

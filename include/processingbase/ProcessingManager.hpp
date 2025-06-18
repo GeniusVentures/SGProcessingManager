@@ -30,7 +30,8 @@ namespace sgns
 
         outcome::result<uint64_t> ParseBlockSize();
         outcome::result<void>        CheckProcessValidity();
-        outcome::result<void>     Process( std::shared_ptr<boost::asio::io_context> ioc );
+        outcome::result<std::vector<uint8_t>> Process( std::shared_ptr<boost::asio::io_context> ioc,
+                                           std::vector<std::vector<uint8_t>>       &chunkhashes );
 
         /** Register an available processor
         * @param name - Name of processor
@@ -63,7 +64,7 @@ namespace sgns
             return false;
         }
         
-        sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "GlobalDB" );
+        sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "SGProcessingManager" );
         sgns::SgnsProcessing        processing_;
         std::unique_ptr<ProcessingProcessor> m_processor;
         std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>> m_processorFactories;
