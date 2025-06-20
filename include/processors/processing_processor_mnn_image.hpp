@@ -9,7 +9,7 @@
 
 #include <MNN/ImageProcess.hpp>
 #include <MNN/Interpreter.hpp>
-#include "processors/processing_processor.hpp"
+#include "processing_processor.hpp"
 #define MNN_OPEN_TIME_TRACE
 #include <MNN/AutoTime.hpp>
 
@@ -31,7 +31,7 @@
 
 #define CIRCLE_RADIUS 3
 
-namespace sgns::processing
+namespace sgns::sgprocessing
 {
     using namespace MNN;
 

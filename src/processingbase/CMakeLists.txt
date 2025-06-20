@@ -1,4 +1,7 @@
-add_library(ProcessingBase STATIC ProcessingManager.cpp)
+add_library(ProcessingBase STATIC 
+	ProcessingManager.cpp
+	../../include/processingbase/ProcessingManager.hpp
+	)
 
 
 target_include_directories(ProcessingBase PUBLIC
@@ -15,8 +18,10 @@ target_link_libraries(
         nlohmann_json::nlohmann_json
 		spdlog::spdlog
 		sgprocmanagerlogger
+		sgprocmanagersha
 		AsyncIOManager
-		SGProcessingProto
+		SGProcessors
+		DataSplitter
 )
 
 sgnus_install(ProcessingBase)

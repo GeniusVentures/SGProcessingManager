@@ -12,7 +12,7 @@
 #include <SGNSProcMain.hpp>
 #include <util/sgprocmgr-logger.hpp>
 
-namespace sgns::processing
+namespace sgns::sgprocessing
 {
     class ProcessingProcessor
     {
@@ -33,7 +33,7 @@ namespace sgns::processing
         * @param buffers - Data containing file name and data pair lists.
         */
         //virtual void SetData(std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>> buffers) = 0;
-        sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "SGProcessingManager" );
+        sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "SGProcessor" );
     };
 }
 

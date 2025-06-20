@@ -2,6 +2,10 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_image.cpp
 	processing_processor_mnn_audio.cpp
 	processing_processor_mnn_ml.cpp
+	../../include/processors/processing_processor.hpp
+	../../include/processors/processing_processor_mnn_audio.hpp
+	../../include/processors/processing_processor_mnn_image.hpp
+	../../include/processors/processing_processor_mnn_ml.hpp
 )
 
 
@@ -20,7 +24,7 @@ target_link_libraries(
 		sgprocmanagerlogger
 		MNN::MNN
 		Vulkan::Vulkan
-		OpenSSL
+		OpenSSL::Crypto
 )
 
 sgnus_install(SGProcessors)

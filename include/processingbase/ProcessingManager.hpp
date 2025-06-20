@@ -4,16 +4,15 @@
 #include <outcome/sgprocmgr-outcome.hpp>
 #include <util/sgprocmgr-logger.hpp>
 #include <SGNSProcMain.hpp>
-#include <processors/processing_processor.hpp>
+#include <processors/processing_processor_mnn_image.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
+using namespace BOOST_OUTCOME_V2_NAMESPACE;
 
 namespace sgns
 {
-    using namespace BOOST_OUTCOME_V2_NAMESPACE;
-
     // Move enum to namespace level
-    using ProcessingProcessor = sgns::processing::ProcessingProcessor;
+    using ProcessingProcessor = sgns::sgprocessing::ProcessingProcessor;
 
     class ProcessingManager
     {

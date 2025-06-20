@@ -4,7 +4,7 @@
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include <gsl/span>
 
-namespace sgns::processing
+namespace sgns::sgprocessing
 {
     ImageSplitter::ImageSplitter( const std::vector<uint8_t> &buffer,
                                   uint64_t                    blockstride,

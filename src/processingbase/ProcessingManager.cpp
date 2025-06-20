@@ -2,7 +2,7 @@
 #include <Generators.hpp>
 #include <datasplitter/ImageSplitter.hpp>
 #include "FileManager.hpp"
-#include <processors/processing_processor_mnn_image.hpp>
+
 
 using namespace BOOST_OUTCOME_V2_NAMESPACE;
 
@@ -38,7 +38,7 @@ namespace sgns
     {
         m_processor = nullptr;
         //Register Processors
-        RegisterProcessorFactory( 11, [] { return std::make_unique<processing::MNN_Image>(); } );
+        RegisterProcessorFactory( 11, [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
 
         //Parse Json
         auto                 data = nlohmann::json::parse( jsondata );

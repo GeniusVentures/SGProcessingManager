@@ -2,7 +2,7 @@
 #include "datasplitter/ImageSplitter.hpp"
 #include <openssl/sha.h> 
 
-namespace sgns::processing
+namespace sgns::sgprocessing
 {
     using namespace MNN;
 

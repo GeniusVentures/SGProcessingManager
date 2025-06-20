@@ -1,4 +1,7 @@
-add_library(DataSplitter STATIC ImageSplitter.cpp)
+add_library(DataSplitter STATIC 
+	ImageSplitter.cpp
+	../../include/datasplitter/ImageSplitter.hpp
+	)
 
 
 target_include_directories(DataSplitter PUBLIC
@@ -12,7 +15,7 @@ target_link_libraries(
 		PUBLIC
 		spdlog::spdlog
 		sgprocmanagerlogger
-		OpenSSL
+		OpenSSL::Crypto
 )
 
 sgnus_install(DataSplitter)

@@ -7,7 +7,7 @@
 //#include "stb_image.h"
 //#include "stb_image_write.h"
 
-namespace sgns::processing
+namespace sgns::sgprocessing
 {
     using namespace MNN;
 
