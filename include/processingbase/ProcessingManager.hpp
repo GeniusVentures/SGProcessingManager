@@ -7,12 +7,14 @@
 #include <processors/processing_processor_mnn_image.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
-using namespace BOOST_OUTCOME_V2_NAMESPACE;
 
-namespace sgns
+
+
+namespace sgns::sgprocessing
 {
     // Move enum to namespace level
     using ProcessingProcessor = sgns::sgprocessing::ProcessingProcessor;
+
 
     class ProcessingManager
     {

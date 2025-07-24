@@ -4,25 +4,23 @@
 #include "FileManager.hpp"
 
 
-using namespace BOOST_OUTCOME_V2_NAMESPACE;
-
-OUTCOME_CPP_DEFINE_CATEGORY_3( sgns, ProcessingManager::Error, e )
+OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
 {
     switch ( e )
     {
-        case sgns::ProcessingManager::Error::PROCESS_INFO_MISSING:
+        case sgns::sgprocessing::ProcessingManager::Error::PROCESS_INFO_MISSING:
             return "Processing information missing on JSON file";
-        case sgns::ProcessingManager::Error::INVALID_JSON:
+        case sgns::sgprocessing::ProcessingManager::Error::INVALID_JSON:
             return "Json cannot be parsed";
-        case sgns::ProcessingManager::Error::INVALID_BLOCK_PARAMETERS:
+        case sgns::sgprocessing::ProcessingManager::Error::INVALID_BLOCK_PARAMETERS:
             return "Json missing block params";
-        case sgns::ProcessingManager::Error::NO_PROCESSOR:
+        case sgns::sgprocessing::ProcessingManager::Error::NO_PROCESSOR:
             return "Json missing processor";
     }
     return "Unknown error";
 }
 
-namespace sgns
+namespace sgns::sgprocessing
 {
 
     ProcessingManager::~ProcessingManager() {}

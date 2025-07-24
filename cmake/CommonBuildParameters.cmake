@@ -162,6 +162,7 @@ set(c-ares_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/cares/include" CACHE PATH "Path
 
 # libp2p
 set(libp2p_DIR "${_THIRDPARTY_BUILD_DIR}/libp2p/lib/cmake/libp2p")
+set(libp2p_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/libp2p/include")
 find_package(libp2p CONFIG REQUIRED)
 
 # ipfs-lite-cpp
