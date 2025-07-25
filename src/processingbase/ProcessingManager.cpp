@@ -234,6 +234,11 @@ namespace sgns::sgprocessing
         return mainbuffers;
     }
 
+    sgns::SgnsProcessing ProcessingManager::GetProcessingData()
+    {
+        return processing_;
+    }
+
     void ProcessingManager::GetSubCidForProc( std::shared_ptr<boost::asio::io_context> ioc,
                                                std::string                              url,
                                                std::shared_ptr<std::vector<char>>       results )

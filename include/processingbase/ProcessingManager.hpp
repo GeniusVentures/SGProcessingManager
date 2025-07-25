@@ -45,6 +45,10 @@ namespace sgns::sgprocessing
             m_processorFactories[name] = std::move( factoryFunction );
         }
 
+        /** Get Processing Data item which can be used to access any processing data, inputs, or params.
+        */
+        sgns::SgnsProcessing GetProcessingData();
+
     private:
         ProcessingManager() = default;
         outcome::result<void>       Init( const std::string &jsondata ); 
