@@ -26,6 +26,7 @@ namespace sgns::sgprocessing
             INVALID_JSON             = 2,
             INVALID_BLOCK_PARAMETERS = 3,
             NO_PROCESSOR             = 4,
+            MISSING_INPUT            = 5,
         };
         static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 
@@ -48,6 +49,10 @@ namespace sgns::sgprocessing
         /** Get Processing Data item which can be used to access any processing data, inputs, or params.
         */
         sgns::SgnsProcessing GetProcessingData();
+
+        /** Get input map Index
+        */
+        outcome::result<size_t> GetInputIndex( std::string &input );
 
     private:
         ProcessingManager() = default;
@@ -74,6 +79,7 @@ namespace sgns::sgprocessing
         sgns::SgnsProcessing        processing_;
         std::unique_ptr<ProcessingProcessor> m_processor;
         std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>> m_processorFactories;
+        std::unordered_map<std::string, size_t>                                        m_inputMap;
     };
 }
 

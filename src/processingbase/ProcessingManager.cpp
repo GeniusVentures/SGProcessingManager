@@ -16,6 +16,8 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
             return "Json missing block params";
         case sgns::sgprocessing::ProcessingManager::Error::NO_PROCESSOR:
             return "Json missing processor";
+        case sgns::sgprocessing::ProcessingManager::Error::MISSING_INPUT:
+            return "Input missing";
     }
     return "Unknown error";
 }
@@ -53,7 +55,12 @@ namespace sgns::sgprocessing
         {
             return outcome::failure( Error::INVALID_JSON );
         }
-        
+        const auto &inputs = processing_.get_inputs();
+        for ( size_t i = 0; i < inputs.size(); ++i )
+        {
+            std::string sourceKey = "input:" + inputs[i].get_name();
+            m_inputMap[sourceKey] = i;
+        } 
         // Successful parse
         return outcome::success();
     }
@@ -237,6 +244,16 @@ namespace sgns::sgprocessing
     sgns::SgnsProcessing ProcessingManager::GetProcessingData()
     {
         return processing_;
+    }
+
+    outcome::result<size_t> ProcessingManager::GetInputIndex(std::string &input)
+    {
+        auto it = m_inputMap.find( input );
+        if ( it != m_inputMap.end() )
+        {
+            return it->second;
+        }
+        return outcome::failure( Error::MISSING_INPUT );
     }
 
     void ProcessingManager::GetSubCidForProc( std::shared_ptr<boost::asio::io_context> ioc,
