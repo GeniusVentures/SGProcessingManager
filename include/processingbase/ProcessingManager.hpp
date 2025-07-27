@@ -27,14 +27,15 @@ namespace sgns::sgprocessing
             INVALID_BLOCK_PARAMETERS = 3,
             NO_PROCESSOR             = 4,
             MISSING_INPUT            = 5,
+            INPUT_UNAVAIL            = 6,
         };
         static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 
         outcome::result<uint64_t> ParseBlockSize();
         outcome::result<void>        CheckProcessValidity();
         outcome::result<std::vector<uint8_t>> Process( std::shared_ptr<boost::asio::io_context> ioc,
-                                           std::vector<std::vector<uint8_t>>       &chunkhashes,
-                                           int                                      pass );
+                                                       std::vector<std::vector<uint8_t>>       &chunkhashes,
+                                                       sgns::ModelNode                          &model );
 
         /** Register an available processor
         * @param name - Name of processor
@@ -57,8 +58,8 @@ namespace sgns::sgprocessing
     private:
         ProcessingManager() = default;
         outcome::result<void>       Init( const std::string &jsondata ); 
-        std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>
-             GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, int pass );
+        outcome::result<std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
+             GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, sgns::ModelNode &model );
         void GetSubCidForProc( std::shared_ptr<boost::asio::io_context> ioc,
                                                   std::string                              url,
                                                   std::shared_ptr<std::vector<char>>       results );

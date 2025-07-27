@@ -18,6 +18,8 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
             return "Json missing processor";
         case sgns::sgprocessing::ProcessingManager::Error::MISSING_INPUT:
             return "Input missing";
+        case sgns::sgprocessing::ProcessingManager::Error::INPUT_UNAVAIL:
+            return "Could not get input from source";
     }
     return "Unknown error";
 }
@@ -191,21 +193,46 @@ namespace sgns::sgprocessing
 
     outcome::result<std::vector<uint8_t>> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc,
                                                                       std::vector<std::vector<uint8_t>> &chunkhashes,
-                                                                      int                                pass )
+                                                                      sgns::ModelNode                    &model )
     {
-        auto buffers = GetCidForProc( ioc, pass );
-        SetProcessorByName( static_cast<int>(processing_.get_inputs()[pass].get_type()) );
+        if (!model.get_source().has_value())
+        {
+            return outcome::failure( Error::MISSING_INPUT );
+        }
+        //Get input index
+        auto modelname = model.get_source().value();
+        auto index     = GetInputIndex( modelname );
+        if (!index)
+        {
+            return outcome::failure( Error::MISSING_INPUT );
+        }
+        auto maybe_buffers = GetCidForProc( ioc, model );
+        if (!maybe_buffers)
+        {
+            return maybe_buffers.error();
+        }
+        auto buffers = maybe_buffers.value();
+        if (!SetProcessorByName(static_cast<int>(processing_.get_inputs()[index.value()].get_type())))
+        {
+            return outcome::failure( Error::NO_PROCESSOR );
+        }
         auto process = m_processor->StartProcessing( chunkhashes,
-                                                     processing_.get_inputs()[pass],
+                                                     processing_.get_inputs()[index.value()],
                                                      *buffers->second,
                                                      *buffers->first );
         return process;
     }
 
-    std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>
-    ProcessingManager::GetCidForProc(
-        std::shared_ptr<boost::asio::io_context> ioc, int pass )
+    outcome::result <
+        std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
+    ProcessingManager::GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, sgns::ModelNode &model )
     {
+        auto modelname = model.get_source().value();
+        auto index     = GetInputIndex( modelname );
+        if ( !index )
+        {
+            return outcome::failure( Error::MISSING_INPUT );
+        }
         boost::asio::io_context::executor_type                                   executor = ioc->get_executor();
         boost::asio::executor_work_guard<boost::asio::io_context::executor_type> workGuard( executor );
 
@@ -214,17 +241,9 @@ namespace sgns::sgprocessing
                 std::make_shared<std::vector<char>>(),
                 std::make_shared<std::vector<char>>() );
 
-        //Set processor or fail.
-        if ( !SetProcessorByName( static_cast<int>( processing_.get_inputs()[pass].get_type() ) ) )
-        {
-            std::cerr << "No processor available for this type:"
-                      << static_cast<int>( processing_.get_inputs()[pass].get_type() ) << std::endl;
-            return mainbuffers;
-        }
+        std::string modelFile = processing_.get_passes()[index.value()].get_model().value().get_source_uri_param();
 
-        std::string modelFile = processing_.get_passes()[pass].get_model().value().get_source_uri_param();
-
-        std::string image = processing_.get_inputs()[pass].get_source_uri_param();
+        std::string image = processing_.get_inputs()[index.value()].get_source_uri_param();
 
         //Init Loaders
         FileManager::GetInstance().InitializeSingletons();
@@ -234,9 +253,19 @@ namespace sgns::sgprocessing
 
         string imageUrl = image;
         GetSubCidForProc( ioc, imageUrl, mainbuffers->second );
+
         //Run IO
         ioc->reset();
         ioc->run();
+
+        if ( mainbuffers == nullptr )
+        {
+            return outcome::failure( Error::INPUT_UNAVAIL );
+        }
+        if ( mainbuffers->first->size() <= 0 || mainbuffers->second->size() <= 0 )
+        {
+            return outcome::failure( Error::INPUT_UNAVAIL );
+        }
 
         return mainbuffers;
     }
@@ -260,7 +289,6 @@ namespace sgns::sgprocessing
                                                std::string                              url,
                                                std::shared_ptr<std::vector<char>>       results )
     {
-        //std::pair<std::vector<std::string>, std::vector<std::vector<char>>> results;
         auto modeldata = FileManager::GetInstance().LoadASync(
             url,
             false,
