@@ -184,10 +184,25 @@ namespace sgns::sgprocessing
     outcome::result<uint64_t> ProcessingManager::ParseBlockSize()
     {
         uint64_t block_total_len = 0;
-        for (auto& input : processing_.get_inputs())
+        auto     passes          = processing_.get_passes();
+        for ( const auto &pass : passes )
         {
-            block_total_len += input.get_dimensions().value().get_block_len().value();
+            auto input_nodes = pass.get_model().value().get_input_nodes();
+            for ( auto &model : input_nodes )
+            {
+                auto index = GetInputIndex( model.get_source().value() );
+                if (!index)
+                {
+                    return index.error();
+                }
+                block_total_len +=
+                    processing_.get_inputs()[index.value()].get_dimensions().value().get_block_len().value();
+            }
         }
+        //for (auto& input : processing_.get_inputs())
+        //{
+        //    block_total_len += input.get_dimensions().value().get_block_len().value();
+        //}
         return block_total_len;
     }
 
@@ -275,7 +290,7 @@ namespace sgns::sgprocessing
         return processing_;
     }
 
-    outcome::result<size_t> ProcessingManager::GetInputIndex(std::string &input)
+    outcome::result<size_t> ProcessingManager::GetInputIndex( const std::string &input )
     {
         auto it = m_inputMap.find( input );
         if ( it != m_inputMap.end() )

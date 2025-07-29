@@ -53,7 +53,7 @@ namespace sgns::sgprocessing
 
         /** Get input map Index
         */
-        outcome::result<size_t> GetInputIndex( std::string &input );
+        outcome::result<size_t> GetInputIndex( const std::string &input );
 
     private:
         ProcessingManager() = default;
