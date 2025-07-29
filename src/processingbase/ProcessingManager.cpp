@@ -134,6 +134,11 @@ namespace sgns::sgprocessing
                     }
                     else
                     {
+                        if (!input.get_dimensions())
+                        {
+                            m_logger->error( "Texture2d type has no dimensions" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
                         auto dimensions = input.get_dimensions().value();
                         //We need these dimensions
                         if ( !dimensions.get_block_len() || !dimensions.get_block_line_stride() )
@@ -149,6 +154,12 @@ namespace sgns::sgprocessing
                         {
                             m_logger->error( "Texture2d type has dimensions not divisible" );
                             return outcome::failure( Error::INVALID_BLOCK_PARAMETERS );
+                        }
+
+                        if (!dimensions.get_chunk_count())
+                        {
+                            m_logger->error( "Texture2d type has no chunk count" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
                         }
                         
                         break;
@@ -199,10 +210,6 @@ namespace sgns::sgprocessing
                     processing_.get_inputs()[index.value()].get_dimensions().value().get_block_len().value();
             }
         }
-        //for (auto& input : processing_.get_inputs())
-        //{
-        //    block_total_len += input.get_dimensions().value().get_block_len().value();
-        //}
         return block_total_len;
     }
 
