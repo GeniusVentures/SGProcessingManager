@@ -247,8 +247,8 @@ namespace sgns {
     inline void from_json(const json & j, ModelNode& x) {
         x.set_name(j.at("name").get<std::string>());
         x.set_shape(get_stack_optional<std::vector<int64_t>>(j, "shape"));
-        x.set_source(get_stack_optional<std::string>(j, "source"));
-        x.set_target(get_stack_optional<std::string>(j, "target"));
+        x.set_source(j.at("source").get<std::string>());
+        x.set_target(j.at("target").get<std::string>());
         x.set_type(j.at("type").get<DataType>());
     }
 

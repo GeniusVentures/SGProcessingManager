@@ -268,7 +268,7 @@
     },
     "model_node": {
       "type": "object",
-      "required": ["name", "type"],
+      "required": ["name", "type", "source", "target" ],
       "properties": {
         "name": {
           "type": "string",
