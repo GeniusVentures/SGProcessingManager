@@ -134,16 +134,12 @@ namespace sgns::sgprocessing
                     }
                     else
                     {
-                        if (!input.get_dimensions())
-                        {
-                            m_logger->error( "Texture2d type has no dimensions" );
-                            return outcome::failure( Error::PROCESS_INFO_MISSING );
-                        }
                         auto dimensions = input.get_dimensions().value();
                         //We need these dimensions
-                        if ( !dimensions.get_block_len() || !dimensions.get_block_line_stride() )
+                        if ( !dimensions.get_block_len() || !dimensions.get_block_line_stride() || !dimensions.get_width() || !dimensions.get_height() || !dimensions.get_block_stride() || !dimensions.get_chunk_line_stride() || 
+                            !dimensions.get_chunk_offset() || !dimensions.get_chunk_stride() || !dimensions.get_chunk_subchunk_height() || !dimensions.get_chunk_subchunk_width() || !dimensions.get_channels() || !dimensions.get_batch() )
                         {
-                            m_logger->error( "Texture2d type has no block len or block line stride" );
+                            m_logger->error( "Texture2d type missing dimension values" );
                             return outcome::failure( Error::PROCESS_INFO_MISSING );
                         }
                         uint64_t block_len         = dimensions.get_block_len().value();
@@ -201,7 +197,7 @@ namespace sgns::sgprocessing
             auto input_nodes = pass.get_model().value().get_input_nodes();
             for ( auto &model : input_nodes )
             {
-                auto index = GetInputIndex( model.get_source().value() );
+                auto index = GetInputIndex( model.get_source() );
                 if (!index)
                 {
                     return index.error();
@@ -217,12 +213,8 @@ namespace sgns::sgprocessing
                                                                       std::vector<std::vector<uint8_t>> &chunkhashes,
                                                                       sgns::ModelNode                    &model )
     {
-        if (!model.get_source().has_value())
-        {
-            return outcome::failure( Error::MISSING_INPUT );
-        }
         //Get input index
-        auto modelname = model.get_source().value();
+        auto modelname = model.get_source();
         auto index     = GetInputIndex( modelname );
         if (!index)
         {
@@ -249,7 +241,7 @@ namespace sgns::sgprocessing
         std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
     ProcessingManager::GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, sgns::ModelNode &model )
     {
-        auto modelname = model.get_source().value();
+        auto modelname = model.get_source();
         auto index     = GetInputIndex( modelname );
         if ( !index )
         {
