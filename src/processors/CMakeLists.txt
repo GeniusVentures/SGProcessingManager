@@ -14,6 +14,7 @@ target_include_directories(SGProcessors PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
 	$<BUILD_INTERFACE:${Boost_INCLUDE_DIRS}>
 	$<BUILD_INTERFACE:${OPENSSL_INCLUDE_DIR}>
+	$<BUILD_INTERFACE:${libp2p_INCLUDE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/SGProcessors>
 )
 target_link_libraries(

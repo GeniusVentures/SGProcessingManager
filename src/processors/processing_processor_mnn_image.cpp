@@ -4,6 +4,7 @@
 #include <thread>
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include "util/sha256.hpp"
+#include "util/InputTypes.hpp"
 
 //#define STB_IMAGE_IMPLEMENTATION
 //#define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -34,20 +35,14 @@ namespace sgns::sgprocessing
         auto                 chunk_subchunk_width  = proc.get_dimensions().value().get_chunk_subchunk_width().value();
         auto                 chunk_count           = proc.get_dimensions().value().get_chunk_count().value();
         auto                 format                = proc.get_format().value();
-        int                  channels;
-        if (format == sgns::InputFormat::RGB8)
+        //Make sure channels is valid.
+        auto                 maybe_channels = sgns::sgprocessing::InputTypes::GetImageChannels( proc.get_format().value() );
+        if ( !maybe_channels )
         {
-            channels = 3;
+            return std::vector<uint8_t>();
         }
-        else if (format == sgns::InputFormat::RGBA8)
-        {
-            channels = 4;
-        }
-        else
-        {
-        
-        }
-        
+        auto channels = maybe_channels.value();        
+
         //for ( auto image : *imageData_ )
         //{
             std::vector<uint8_t> output(imageData.size());
