@@ -30,7 +30,6 @@ namespace sgns {
             block_len_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
             block_line_stride_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
             block_stride_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
-            channels_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
             chunk_count_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
             chunk_line_stride_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
             chunk_offset_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
@@ -51,8 +50,6 @@ namespace sgns {
         ClassMemberConstraints block_line_stride_constraint;
         boost::optional<int64_t> block_stride;
         ClassMemberConstraints block_stride_constraint;
-        boost::optional<int64_t> channels;
-        ClassMemberConstraints channels_constraint;
         boost::optional<int64_t> chunk_count;
         ClassMemberConstraints chunk_count_constraint;
         boost::optional<int64_t> chunk_line_stride;
@@ -82,9 +79,6 @@ namespace sgns {
 
         boost::optional<int64_t> get_block_stride() const { return block_stride; }
         void set_block_stride(boost::optional<int64_t> value) { if (value) CheckConstraint("block_stride", block_stride_constraint, *value); this->block_stride = value; }
-
-        boost::optional<int64_t> get_channels() const { return channels; }
-        void set_channels(boost::optional<int64_t> value) { if (value) CheckConstraint("channels", channels_constraint, *value); this->channels = value; }
 
         boost::optional<int64_t> get_chunk_count() const { return chunk_count; }
         void set_chunk_count(boost::optional<int64_t> value) { if (value) CheckConstraint("chunk_count", chunk_count_constraint, *value); this->chunk_count = value; }

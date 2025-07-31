@@ -110,7 +110,6 @@
 			"chunk_subchunk_height": { "type": "integer", "minimum": 1 },
 			"chunk_subchunk_width": { "type": "integer", "minimum": 1 },
 			"chunk_count": { "type": "integer", "minimum": 1 },
-            "channels": { "type": "integer", "minimum": 1 },
             "batch": { "type": "integer", "minimum": 1 }
           }
         },

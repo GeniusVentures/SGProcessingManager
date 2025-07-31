@@ -33,8 +33,21 @@ namespace sgns::sgprocessing
         auto                 chunk_subchunk_height = proc.get_dimensions().value().get_chunk_subchunk_height().value();
         auto                 chunk_subchunk_width  = proc.get_dimensions().value().get_chunk_subchunk_width().value();
         auto                 chunk_count           = proc.get_dimensions().value().get_chunk_count().value();
-        auto                 channels              = proc.get_dimensions().value().get_channels().value();
-
+        auto                 format                = proc.get_format().value();
+        int                  channels;
+        if (format == sgns::InputFormat::RGB8)
+        {
+            channels = 3;
+        }
+        else if (format == sgns::InputFormat::RGBA8)
+        {
+            channels = 4;
+        }
+        else
+        {
+        
+        }
+        
         //for ( auto image : *imageData_ )
         //{
             std::vector<uint8_t> output(imageData.size());
