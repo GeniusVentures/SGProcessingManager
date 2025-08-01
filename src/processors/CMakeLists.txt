@@ -23,6 +23,7 @@ target_link_libraries(
 		nlohmann_json::nlohmann_json
 		spdlog::spdlog
 		sgprocmanagerlogger
+		sgprocmanagertypes
 		MNN::MNN
 		Vulkan::Vulkan
 		OpenSSL::Crypto

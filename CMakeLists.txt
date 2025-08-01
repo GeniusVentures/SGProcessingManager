@@ -9,6 +9,8 @@ project(SGProcessingManager
 
 include(cmake/functions.cmake)
 
+set(libp2p_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/libp2p/include")
+
 #add_subdirectory(generated)
 add_subdirectory(src)
 

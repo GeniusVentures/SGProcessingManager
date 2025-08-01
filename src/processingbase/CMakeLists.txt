@@ -19,6 +19,7 @@ target_link_libraries(
 		spdlog::spdlog
 		sgprocmanagerlogger
 		sgprocmanagersha
+		sgprocmanagertypes
 		AsyncIOManager
 		SGProcessors
 		DataSplitter

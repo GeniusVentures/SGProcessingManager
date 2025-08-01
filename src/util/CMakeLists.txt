@@ -34,6 +34,7 @@ add_library(sgprocmanagertypes
 	../../include/util/InputTypes.hpp
 	)
 	
+message(WARNING "LIBP2P DIR ${libp2p_INCLUDE_DIR}")
 target_include_directories(sgprocmanagertypes PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
