@@ -53,9 +53,10 @@ namespace sgns::sgprocessing
         {
             return outcome::failure( Error::INVALID_JSON );
         }
-        if (!CheckProcessValidity())
+        auto isvalid = CheckProcessValidity();
+        if ( !isvalid )
         {
-            return outcome::failure( Error::INVALID_JSON );
+            return isvalid.error();
         }
         const auto &inputs = processing_.get_inputs();
         for ( size_t i = 0; i < inputs.size(); ++i )
@@ -197,7 +198,7 @@ namespace sgns::sgprocessing
             auto input_nodes = pass.get_model().value().get_input_nodes();
             for ( auto &model : input_nodes )
             {
-                auto index = GetInputIndex( model.get_source() );
+                auto index = GetInputIndex( model.get_source().value() );
                 if (!index)
                 {
                     return index.error();
@@ -214,7 +215,7 @@ namespace sgns::sgprocessing
                                                                       sgns::ModelNode                    &model )
     {
         //Get input index
-        auto modelname = model.get_source();
+        auto modelname = model.get_source().value();
         auto index     = GetInputIndex( modelname );
         if (!index)
         {
@@ -241,7 +242,7 @@ namespace sgns::sgprocessing
         std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
     ProcessingManager::GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, sgns::ModelNode &model )
     {
-        auto modelname = model.get_source();
+        auto modelname = model.get_source().value();
         auto index     = GetInputIndex( modelname );
         if ( !index )
         {

@@ -31,11 +31,11 @@ namespace sgns {
         private:
         std::string name;
         boost::optional<std::vector<int64_t>> shape;
-        std::string source;
+        boost::optional<std::string> source;
         ClassMemberConstraints source_constraint;
-        std::string target;
-        ClassMemberConstraints target_constraint;
         DataType type;
+        boost::optional<std::string> target;
+        ClassMemberConstraints target_constraint;
 
         public:
         /**
@@ -54,19 +54,17 @@ namespace sgns {
         /**
          * Data source using prefix notation (input:, output:, internal:, parameter:)
          */
-        const std::string & get_source() const { return source; }
-        std::string & get_mutable_source() { return source; }
-        void set_source(const std::string & value) { CheckConstraint("source", source_constraint, value); this->source = value; }
-
-        /**
-         * Data target using prefix notation
-         */
-        const std::string & get_target() const { return target; }
-        std::string & get_mutable_target() { return target; }
-        void set_target(const std::string & value) { CheckConstraint("target", target_constraint, value); this->target = value; }
+        boost::optional<std::string> get_source() const { return source; }
+        void set_source(boost::optional<std::string> value) { if (value) CheckConstraint("source", source_constraint, *value); this->source = value; }
 
         const DataType & get_type() const { return type; }
         DataType & get_mutable_type() { return type; }
         void set_type(const DataType & value) { this->type = value; }
+
+        /**
+         * Data target using prefix notation
+         */
+        boost::optional<std::string> get_target() const { return target; }
+        void set_target(boost::optional<std::string> value) { if (value) CheckConstraint("target", target_constraint, *value); this->target = value; }
     };
 }
