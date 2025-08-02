@@ -265,7 +265,7 @@
         }
       }
     },
-    "model_node": {
+	"model_node": {
 	  "oneOf": [
 		{
 		  "type": "object",

@@ -37,6 +37,7 @@ namespace sgns::sgprocessing
         auto                 format                = proc.get_format().value();
         //Make sure channels is valid.
         auto                 maybe_channels = sgns::sgprocessing::InputTypes::GetImageChannels( proc.get_format().value() );
+        m_logger->debug( "Channels to process {}", maybe_channels.value() );
         if ( !maybe_channels )
         {
             return std::vector<uint8_t>();

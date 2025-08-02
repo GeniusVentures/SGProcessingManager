@@ -138,7 +138,7 @@ namespace sgns::sgprocessing
                         auto dimensions = input.get_dimensions().value();
                         //We need these dimensions
                         if ( !dimensions.get_block_len() || !dimensions.get_block_line_stride() || !dimensions.get_width() || !dimensions.get_height() || !dimensions.get_block_stride() || !dimensions.get_chunk_line_stride() || 
-                            !dimensions.get_chunk_offset() || !dimensions.get_chunk_stride() || !dimensions.get_chunk_subchunk_height() || !dimensions.get_chunk_subchunk_width() || !dimensions.get_batch() )
+                            !dimensions.get_chunk_offset() || !dimensions.get_chunk_stride() || !dimensions.get_chunk_subchunk_height() || !dimensions.get_chunk_subchunk_width() )
                         {
                             m_logger->error( "Texture2d type missing dimension values" );
                             return outcome::failure( Error::PROCESS_INFO_MISSING );
