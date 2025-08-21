@@ -27,6 +27,7 @@ target_link_libraries(
 		MNN::MNN
 		Vulkan::Vulkan
 		OpenSSL::Crypto
+		sgprocmanagersha
 )
 
 sgnus_install(SGProcessors)

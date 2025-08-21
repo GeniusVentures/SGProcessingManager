@@ -19,4 +19,4 @@ namespace sgns::sgprocmanagersha
         hash.resize(hashLen);
         return hash;
     }
-} // namepace sgns::crypto
+} // namepace sgns::sgprocmanagersha

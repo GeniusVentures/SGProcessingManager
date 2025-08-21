@@ -1,4 +1,4 @@
-#include <datasplitter/imagesplitter.hpp>
+#include <datasplitter/ImageSplitter.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
