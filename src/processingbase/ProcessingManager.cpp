@@ -309,23 +309,22 @@ namespace sgns::sgprocessing
             false,
             false,
             ioc,
-            []( const sgns::AsyncError::CustomResult &status )
+            [this, results]( outcome::result<std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>> buffers )
             {
-                if ( status.has_value() )
+                if (buffers)
                 {
-                    std::cout << "Success: " << status.value().message << std::endl;
+                    if ( results )
+                    {
+                        results->insert( results->end(),
+                                         buffers.value()->second[0].begin(),
+                                         buffers.value()->second[0].end() );
+                    }
                 }
                 else
                 {
-                    std::cout << "Error: " << status.error() << std::endl;
+                    m_logger->error( "Failed to obtain processing source: {}", buffers.error().message() );
                 }
-            },
-            [results]( std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>> buffers )
-            {
-                if ( results && buffers )
-                {
-                    results->insert( results->end(), buffers->second[0].begin(), buffers->second[0].end() );
-                }
+
             },
             "file" );
     }
