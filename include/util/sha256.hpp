@@ -1,5 +1,5 @@
-#ifndef SUPERGENIUS_SHA256_HPP
-#define SUPERGENIUS_SHA256_HPP
+#ifndef SGPROCMGR_SHA256_HPP
+#define SGPROCMGR_SHA256_HPP
 
 #include <string_view>
 #include <vector>

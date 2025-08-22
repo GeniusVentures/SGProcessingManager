@@ -1,5 +1,6 @@
 #include <vector>
 #include <openssl/evp.h>
+#include <cstring>
 //#include <libp2p/multi/content_identifier_codec.hpp>
 
 namespace sgns::sgprocessing
