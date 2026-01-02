@@ -30,4 +30,27 @@ target_link_libraries(
 		sgprocmanagersha
 )
 
+if(APPLE)
+    target_link_libraries(SGProcessors PRIVATE
+        "-framework CoreFoundation"
+        "-framework CoreGraphics"
+        "-framework CoreServices"
+        "-framework IOKit"
+        "-framework IOSurface"
+        "-framework Metal"
+        "-framework QuartzCore"
+        "-framework Foundation"
+    )
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        # macOS specific
+        target_link_libraries(SGProcessors PRIVATE
+            "-framework AppKit")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # iOS specific
+        target_link_libraries(SGProcessors PRIVATE
+            "-framework UIKit")
+    endif()
+endif()
+
 sgnus_install(SGProcessors)
