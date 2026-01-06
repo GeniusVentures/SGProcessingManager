@@ -6,6 +6,8 @@ add_library(ProcessingBase STATIC
 target_include_directories(ProcessingBase PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
+	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/include>
+	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/generated>
 	$<BUILD_INTERFACE:${Boost_INCLUDE_DIRS}>
 	$<BUILD_INTERFACE:${OPENSSL_INCLUDE_DIR}>
 	$<BUILD_INTERFACE:${AsyncIOManager_INCLUDE_DIR}>
