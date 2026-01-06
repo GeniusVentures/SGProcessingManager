@@ -19,7 +19,7 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/generated" DESTINATION "${CMAKE_I
 
 set(SGProcessingManager_CONFIG_DESTINATION_DIR "lib/cmake/SGProcessingManager")
 install(EXPORT SGProcessingManagerTargets
-    FILE SGProcessingManager.cmake
+    FILE SGProcessingManagerTargets.cmake
     DESTINATION ${SGProcessingManager_CONFIG_DESTINATION_DIR}
 )
 
