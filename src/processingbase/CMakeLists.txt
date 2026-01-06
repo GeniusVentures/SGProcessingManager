@@ -10,7 +10,6 @@ target_include_directories(ProcessingBase PUBLIC
 	$<BUILD_INTERFACE:${OPENSSL_INCLUDE_DIR}>
 	$<BUILD_INTERFACE:${AsyncIOManager_INCLUDE_DIR}>
 	$<BUILD_INTERFACE:${libp2p_INCLUDE_DIR}>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/ProcessingBase>
 )
 target_link_libraries(
 		ProcessingBase

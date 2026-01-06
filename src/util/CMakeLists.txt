@@ -4,7 +4,6 @@ add_library(sgprocmanagerlogger
 )
 target_include_directories(sgprocmanagerlogger PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/util>
 )
 target_link_libraries(sgprocmanagerlogger
     PUBLIC
@@ -19,11 +18,8 @@ add_library(sgprocmanagersha
 target_include_directories(sgprocmanagersha PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
 	$<BUILD_INTERFACE:${OPENSSL_INCLUDE_DIR}>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/util>
 )
 target_link_libraries(sgprocmanagersha
-    PUBLIC
-    blob
     PRIVATE
     OpenSSL::Crypto
 )
@@ -39,7 +35,6 @@ target_include_directories(sgprocmanagertypes PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
 	$<BUILD_INTERFACE:${libp2p_INCLUDE_DIR}>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/util>
 )	
 
 target_link_libraries(
