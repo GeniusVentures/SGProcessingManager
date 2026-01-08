@@ -33,6 +33,14 @@ namespace sgns::sgprocessing
         * @param buffers - Data containing file name and data pair lists.
         */
         //virtual void SetData(std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>> buffers) = 0;
+        
+        /** Get current processing progress
+        * @return Progress percentage (0.0 to 100.0)
+        */
+        virtual float GetProgress() const { return m_progress; }
+
+    protected:
+        std::atomic<float> m_progress{0.0f}; // Progress percentage
         sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "SGProcessor" );
     };
 }

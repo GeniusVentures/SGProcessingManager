@@ -21,9 +21,13 @@ namespace sgns::sgprocessing
             //auto          basechunk           = subTask.chunkstoprocess( 0 );
             //bool          isValidationSubTask = ( subTask.subtaskid() == "subtask_validation" );
 
+            auto totalChunks = proc.get_dimensions().value().get_chunk_count().value();
+            m_progress = 0.0f; // Reset progress at start
             
-            for ( int chunkIdx = 0; chunkIdx < proc.get_dimensions().value().get_chunk_count().value(); ++chunkIdx )
+            for ( int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx )
             {
+                // Update progress after each chunk
+                m_progress = std::round(((chunkIdx + 1) * 100.0f / totalChunks) * 100.0f) / 100.0f;
             }
             return subTaskResultHash;
     }

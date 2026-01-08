@@ -55,6 +55,17 @@ namespace sgns::sgprocessing
         */
         outcome::result<size_t> GetInputIndex( const std::string &input );
 
+        /** Get current processing progress
+        * @return Progress percentage (0.0 to 100.0)
+        */
+        float GetProgress() const
+        {
+            if (m_processor) {
+                return m_processor->GetProgress();
+            }
+            return 0.0f;
+        }
+
     private:
         ProcessingManager() = default;
         outcome::result<void>       Init( const std::string &jsondata ); 

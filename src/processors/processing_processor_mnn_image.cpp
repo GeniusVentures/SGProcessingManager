@@ -56,11 +56,14 @@ namespace sgns::sgprocessing
                                       animageSplit.GetPartHeightActual( dataindex ) / chunk_subchunk_height *
                                             chunk_line_stride, channels);
             
-            for ( int chunkIdx = 0; chunkIdx < proc.get_dimensions().value().get_chunk_count().value(); ++chunkIdx )
+            auto totalChunks = proc.get_dimensions().value().get_chunk_count().value();
+            m_progress = 0.0f; // Reset progress at start
+            
+            for ( int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx )
             {
                 m_logger->info( "Chunk IDX {} Total {}",
                                 chunkIdx,
-                                proc.get_dimensions().value().get_chunk_count().value() );
+                                totalChunks );
                 std::vector<uint8_t> shahash( SHA256_DIGEST_LENGTH );
 
                 // Chunk result hash should be calculated
@@ -78,6 +81,10 @@ namespace sgns::sgprocessing
 
                 std::string combinedHash = std::string(subTaskResultHash.begin(), subTaskResultHash.end()) + hashString;
                 subTaskResultHash = sgprocmanagersha::sha256( combinedHash.c_str(), combinedHash.length() );
+                
+                // Update progress: round to 2 decimal places
+                m_progress = std::round(((chunkIdx + 1) * 100.0f / totalChunks) * 100.0f) / 100.0f;
+                
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             return subTaskResultHash;

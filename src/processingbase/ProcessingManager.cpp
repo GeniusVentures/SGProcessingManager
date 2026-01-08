@@ -259,7 +259,8 @@ namespace sgns::sgprocessing
         std::string modelFile = processing_.get_passes()[index.value()].get_model().value().get_source_uri_param();
 
         std::string image = processing_.get_inputs()[index.value()].get_source_uri_param();
-
+        m_logger->info( "Model Input URL: {}", modelFile );
+        m_logger->info( "Data Input URL: {}", image );
         //Init Loaders
         FileManager::GetInstance().InitializeSingletons();
         //Get Model
