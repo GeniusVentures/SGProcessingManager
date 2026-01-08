@@ -43,10 +43,10 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( 11, [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
 
         //Parse Json
-        auto                 data = nlohmann::json::parse( jsondata );
         //This will check required fields inherently.
         try
         {
+            auto data = nlohmann::json::parse( jsondata );
             sgns::from_json( data, processing_ );
         }
         catch ( const nlohmann::json::exception &e )
