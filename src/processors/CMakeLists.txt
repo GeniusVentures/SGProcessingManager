@@ -2,10 +2,12 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_image.cpp
 	processing_processor_mnn_audio.cpp
 	processing_processor_mnn_ml.cpp
+	processing_processor_mnn_string.cpp
 	../../include/processors/processing_processor.hpp
 	../../include/processors/processing_processor_mnn_audio.hpp
 	../../include/processors/processing_processor_mnn_image.hpp
 	../../include/processors/processing_processor_mnn_ml.hpp
+	../../include/processors/processing_processor_mnn_string.hpp
 )
 
 

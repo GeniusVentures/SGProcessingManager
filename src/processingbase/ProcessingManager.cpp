@@ -41,6 +41,7 @@ namespace sgns::sgprocessing
         m_processor = nullptr;
         //Register Processors
         RegisterProcessorFactory( 11, [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
+        RegisterProcessorFactory( 7, [] { return std::make_unique<sgprocessing::MNN_String>(); } );
 
         //Parse Json
         //This will check required fields inherently.

@@ -5,6 +5,7 @@
 #include <util/sgprocmgr-logger.hpp>
 #include <SGNSProcMain.hpp>
 #include <processors/processing_processor_mnn_image.hpp>
+#include <processors/processing_processor_mnn_string.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 
