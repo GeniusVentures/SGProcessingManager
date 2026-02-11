@@ -43,13 +43,13 @@ namespace sgns::sgprocessing
 
     private:
         /** Run MNN processing on text/string
-        * @param textData - Input text string
+        * @param tokenIds - Input token ids
         * @param modelFile - MNN model file bytes
         * @param maxLength - Maximum sequence length
         */
-        std::unique_ptr<MNN::Tensor> Process( const std::string &textData, 
-                                               std::vector<uint8_t> &modelFile,
-                                               const int maxLength );
+        std::unique_ptr<MNN::Tensor> Process( const std::vector<int32_t> &tokenIds, 
+                               std::vector<uint8_t> &modelFile,
+                               const int maxLength );
     };
 
 }

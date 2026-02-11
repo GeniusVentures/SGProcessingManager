@@ -1,12 +1,43 @@
 #include "processors/processing_processor_mnn_string.hpp"
 #include <functional>
 #include <thread>
+#include <sstream>
+#include <algorithm>
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include "util/sha256.hpp"
 
 namespace sgns::sgprocessing
 {
     using namespace MNN;
+
+    namespace
+    {
+        bool TryParseTokenIds( const std::string &text, std::vector<int32_t> &tokenIds )
+        {
+            std::istringstream stream( text );
+            int64_t            value = 0;
+            while ( stream >> value )
+            {
+                tokenIds.push_back( static_cast<int32_t>( value ) );
+            }
+
+            if ( tokenIds.empty() )
+            {
+                return false;
+            }
+
+            stream.clear();
+            stream >> std::ws;
+            return stream.eof();
+        }
+
+        std::string ToLowerAscii( std::string value )
+        {
+            std::transform( value.begin(), value.end(), value.begin(),
+                            []( unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
+            return value;
+        }
+    }
 
     std::vector<uint8_t> MNN_String::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                                                        const sgns::IoDeclaration         &proc,
@@ -19,8 +50,8 @@ namespace sgns::sgprocessing
         std::vector<uint8_t> subTaskResultHash(SHA256_DIGEST_LENGTH);
         
         // Convert text data to string
-        std::string inputText(textData.begin(), textData.end());
-        
+        std::string inputText( textData.begin(), textData.end() );
+
         m_logger->info( "Processing text input: {}", inputText );
         
         // For string inputs, we process as a single "chunk"
@@ -30,8 +61,28 @@ namespace sgns::sgprocessing
         
         // Default max length (could be extracted from parameters)
         int maxLength = 128;
-        
-        auto procresults = Process( inputText, modelFile_bytes, maxLength );
+
+        std::vector<int32_t> tokenIds;
+        bool                 parsedTokenIds = TryParseTokenIds( inputText, tokenIds );
+        if ( parsedTokenIds )
+        {
+            if ( static_cast<int>( tokenIds.size() ) > maxLength )
+            {
+                tokenIds.resize( maxLength );
+            }
+            m_logger->info( "Parsed {} token id(s) from input", tokenIds.size() );
+        }
+        else
+        {
+            m_logger->info( "Input is not token ids; using character codes as fallback" );
+            tokenIds.reserve( std::min( static_cast<int>( inputText.size() ), maxLength ) );
+            for ( size_t i = 0; i < inputText.size() && static_cast<int>( i ) < maxLength; ++i )
+            {
+                tokenIds.push_back( static_cast<int32_t>( static_cast<unsigned char>( inputText[i] ) ) );
+            }
+        }
+
+        auto procresults = Process( tokenIds, modelFile_bytes, maxLength );
         
         const float *data     = procresults->host<float>();
         size_t       dataSize = procresults->elementSize() * sizeof( float );
@@ -49,7 +100,7 @@ namespace sgns::sgprocessing
         return subTaskResultHash;
     }
 
-    std::unique_ptr<MNN::Tensor> MNN_String::Process( const std::string &textData, 
+    std::unique_ptr<MNN::Tensor> MNN_String::Process( const std::vector<int32_t> &tokenIds, 
                                                         std::vector<uint8_t> &modelFile,
                                                         const int maxLength ) 
     {
@@ -126,12 +177,22 @@ namespace sgns::sgprocessing
             
             auto inputData = inputTensorUser.host<int32_t>();
             for (int i = 0; i < inputTensorUser.elementSize(); ++i) {
-                // Fill input_ids with character codes, others with 1s (attention mask)
-                if (inputPair.first.find("input") != std::string::npos || 
-                    inputPair.first.find("ids") != std::string::npos) {
-                    inputData[i] = (i < textData.length()) ? static_cast<int32_t>(textData[i]) : 0;
-                } else {
-                    inputData[i] = (i < textData.length()) ? 1 : 0; // attention mask
+                std::string inputName = ToLowerAscii( inputPair.first );
+                if ( inputName.find( "input_ids" ) != std::string::npos )
+                {
+                    inputData[i] = ( i < static_cast<int>( tokenIds.size() ) ) ? tokenIds[i] : 0;
+                }
+                else if ( inputName.find( "attention_mask" ) != std::string::npos )
+                {
+                    inputData[i] = ( i < static_cast<int>( tokenIds.size() ) ) ? 1 : 0;
+                }
+                else if ( inputName.find( "token_type_ids" ) != std::string::npos )
+                {
+                    inputData[i] = 0;
+                }
+                else
+                {
+                    inputData[i] = ( i < static_cast<int>( tokenIds.size() ) ) ? tokenIds[i] : 0;
                 }
             }
             

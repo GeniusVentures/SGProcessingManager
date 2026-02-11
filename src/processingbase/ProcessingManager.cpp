@@ -120,7 +120,55 @@ namespace sgns::sgprocessing
                 case DataType::MAT4:
                     break;
                 case DataType::STRING:
+                {
+                    if ( !processing_.get_parameters() )
+                    {
+                        m_logger->error( "String input missing parameters" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    const auto params = processing_.get_parameters().value();
+                    auto find_param = [&params]( const std::string &name ) -> const sgns::Parameter * {
+                        for ( const auto &param : params )
+                        {
+                            if ( param.get_name() == name )
+                            {
+                                return &param;
+                            }
+                        }
+                        return nullptr;
+                    };
+
+                    const auto *tokenizer_mode = find_param( "tokenizerMode" );
+                    if ( !tokenizer_mode || tokenizer_mode->get_type() != sgns::ParameterType::STRING )
+                    {
+                        m_logger->error( "String input missing tokenizerMode parameter" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    std::string mode;
+                    const auto &mode_default = tokenizer_mode->get_parameter_default();
+                    if ( mode_default.is_string() )
+                    {
+                        mode = mode_default.get<std::string>();
+                    }
+                    else
+                    {
+                        m_logger->error( "tokenizerMode default must be a string" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    if ( mode == "raw_text" )
+                    {
+                        const auto *vocab_uri = find_param( "vocabUri" );
+                        if ( !vocab_uri || vocab_uri->get_type() != sgns::ParameterType::URI )
+                        {
+                            m_logger->error( "raw_text tokenizer mode requires vocabUri parameter" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
                     break;
+                }
                 case DataType::TENSOR:
                     break;
                 case DataType::TEXTURE1_D:
