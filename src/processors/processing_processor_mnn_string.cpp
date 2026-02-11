@@ -86,6 +86,20 @@ namespace sgns::sgprocessing
         
         const float *data     = procresults->host<float>();
         size_t       dataSize = procresults->elementSize() * sizeof( float );
+        {
+            std::ostringstream sample;
+            size_t sampleCount = std::min<size_t>( 16, procresults->elementSize() );
+            sample << "Output sample (first " << sampleCount << "): ";
+            for ( size_t i = 0; i < sampleCount; ++i )
+            {
+                if ( i > 0 )
+                {
+                    sample << ", ";
+                }
+                sample << data[i];
+            }
+            m_logger->info( "{}", sample.str() );
+        }
         shahash               = sgprocmanagersha::sha256( data, dataSize );
         std::string hashString( shahash.begin(), shahash.end() );
         chunkhashes.push_back( shahash );
