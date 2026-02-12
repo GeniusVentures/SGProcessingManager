@@ -6,6 +6,7 @@
 #include <SGNSProcMain.hpp>
 #include <processors/processing_processor_mnn_image.hpp>
 #include <processors/processing_processor_mnn_string.hpp>
+#include <processors/processing_processor_mnn_volume.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 

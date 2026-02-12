@@ -42,6 +42,7 @@ namespace sgns::sgprocessing
         //Register Processors
         RegisterProcessorFactory( 11, [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
         RegisterProcessorFactory( 7, [] { return std::make_unique<sgprocessing::MNN_String>(); } );
+        RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
 
         //Parse Json
         //This will check required fields inherently.
@@ -214,7 +215,21 @@ namespace sgns::sgprocessing
                 case DataType::TEXTURE2_D_ARRAY:
                     break;
                 case DataType::TEXTURE3_D:
+                {
+                    if ( !input.get_dimensions() )
+                    {
+                        m_logger->error( "Texture3d type has no dimensions" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    auto dimensions = input.get_dimensions().value();
+                    if ( !dimensions.get_width() || !dimensions.get_height() || !dimensions.get_chunk_count() )
+                    {
+                        m_logger->error( "Texture3d type missing width/height/chunk_count" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
                     break;
+                }
                 case DataType::TEXTURE3_D_ARRAY:
                     break;
                 case DataType::TEXTURE_CUBE:
