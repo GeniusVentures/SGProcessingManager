@@ -228,6 +228,13 @@ namespace sgns::sgprocessing
                         m_logger->error( "Texture3d type missing width/height/chunk_count" );
                         return outcome::failure( Error::PROCESS_INFO_MISSING );
                     }
+
+                    if ( !dimensions.get_chunk_subchunk_width() || !dimensions.get_chunk_subchunk_height() ||
+                         !dimensions.get_block_len() )
+                    {
+                        m_logger->error( "Texture3d type missing patch size parameters" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
                     break;
                 }
                 case DataType::TEXTURE3_D_ARRAY:
