@@ -5,6 +5,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cstring>
+#include <cstdint>
+#include <cctype>
 #include <cstdlib>
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include "util/sha256.hpp"
@@ -15,6 +17,150 @@ namespace sgns::sgprocessing
 
     namespace
     {
+        enum class VolumeLayout
+        {
+            HWD,
+            HDW,
+            WHD,
+            WDH,
+            DHW,
+            DWH
+        };
+
+        std::string ToUpperAscii( std::string value )
+        {
+            std::transform( value.begin(), value.end(), value.begin(),
+                            []( unsigned char c ) { return static_cast<char>( std::toupper( c ) ); } );
+            return value;
+        }
+
+        VolumeLayout ParseLayout( const std::vector<sgns::Parameter> *parameters, const std::string &inputName )
+        {
+            const std::vector<std::string> keys = {
+                inputName + "Layout",
+                inputName + "_layout",
+                "volumeLayout",
+                "layout"
+            };
+
+            if ( parameters )
+            {
+                for ( const auto &key : keys )
+                {
+                    auto it = std::find_if( parameters->begin(), parameters->end(),
+                                            [&key]( const sgns::Parameter &param ) {
+                                                return param.get_name() == key;
+                                            } );
+                    if ( it != parameters->end() && it->get_parameter_default().is_string() )
+                    {
+                        const std::string layout = ToUpperAscii( it->get_parameter_default().get<std::string>() );
+                        if ( layout == "HWD" ) return VolumeLayout::HWD;
+                        if ( layout == "HDW" ) return VolumeLayout::HDW;
+                        if ( layout == "WHD" ) return VolumeLayout::WHD;
+                        if ( layout == "WDH" ) return VolumeLayout::WDH;
+                        if ( layout == "DHW" ) return VolumeLayout::DHW;
+                        if ( layout == "DWH" ) return VolumeLayout::DWH;
+                    }
+                }
+            }
+
+            return VolumeLayout::HWD;
+        }
+
+        const char *LayoutToString( VolumeLayout layout )
+        {
+            switch ( layout )
+            {
+                case VolumeLayout::HWD:
+                    return "HWD";
+                case VolumeLayout::HDW:
+                    return "HDW";
+                case VolumeLayout::WHD:
+                    return "WHD";
+                case VolumeLayout::WDH:
+                    return "WDH";
+                case VolumeLayout::DHW:
+                    return "DHW";
+                case VolumeLayout::DWH:
+                    return "DWH";
+            }
+            return "HWD";
+        }
+
+        size_t LayoutIndex( VolumeLayout layout,
+                            int h,
+                            int w,
+                            int d,
+                            int height,
+                            int width,
+                            int depth )
+        {
+            switch ( layout )
+            {
+                case VolumeLayout::HWD:
+                    return ( static_cast<size_t>( h ) * width + static_cast<size_t>( w ) ) * depth + static_cast<size_t>( d );
+                case VolumeLayout::HDW:
+                    return ( static_cast<size_t>( h ) * depth + static_cast<size_t>( d ) ) * width + static_cast<size_t>( w );
+                case VolumeLayout::WHD:
+                    return ( static_cast<size_t>( w ) * height + static_cast<size_t>( h ) ) * depth + static_cast<size_t>( d );
+                case VolumeLayout::WDH:
+                    return ( static_cast<size_t>( w ) * depth + static_cast<size_t>( d ) ) * height + static_cast<size_t>( h );
+                case VolumeLayout::DHW:
+                    return ( static_cast<size_t>( d ) * height + static_cast<size_t>( h ) ) * width + static_cast<size_t>( w );
+                case VolumeLayout::DWH:
+                    return ( static_cast<size_t>( d ) * width + static_cast<size_t>( w ) ) * height + static_cast<size_t>( h );
+            }
+
+            return ( static_cast<size_t>( h ) * width + static_cast<size_t>( w ) ) * depth + static_cast<size_t>( d );
+        }
+
+        float HalfToFloat( uint16_t value )
+        {
+            const uint16_t sign = static_cast<uint16_t>( value >> 15 );
+            const uint16_t exponent = static_cast<uint16_t>( ( value >> 10 ) & 0x1F );
+            const uint16_t mantissa = static_cast<uint16_t>( value & 0x03FF );
+
+            uint32_t sign32 = static_cast<uint32_t>( sign ) << 31;
+            uint32_t exponent32 = 0;
+            uint32_t mantissa32 = 0;
+
+            if ( exponent == 0 )
+            {
+                if ( mantissa == 0 )
+                {
+                    exponent32 = 0;
+                    mantissa32 = 0;
+                }
+                else
+                {
+                    int shift = 0;
+                    uint16_t mant = mantissa;
+                    while ( ( mant & 0x0400 ) == 0 )
+                    {
+                        mant <<= 1;
+                        ++shift;
+                    }
+                    mant &= 0x03FF;
+                    exponent32 = static_cast<uint32_t>( 127 - 15 - shift ) << 23;
+                    mantissa32 = static_cast<uint32_t>( mant ) << 13;
+                }
+            }
+            else if ( exponent == 31 )
+            {
+                exponent32 = 0xFFu << 23;
+                mantissa32 = static_cast<uint32_t>( mantissa ) << 13;
+            }
+            else
+            {
+                exponent32 = static_cast<uint32_t>( exponent + ( 127 - 15 ) ) << 23;
+                mantissa32 = static_cast<uint32_t>( mantissa ) << 13;
+            }
+
+            uint32_t bits = sign32 | exponent32 | mantissa32;
+            float result = 0.0f;
+            std::memcpy( &result, &bits, sizeof( result ) );
+            return result;
+        }
         std::string FormatTensorShape( const MNN::Tensor &tensor )
         {
             std::ostringstream out;
@@ -60,7 +206,8 @@ namespace sgns::sgprocessing
     ProcessingResult MNN_Volume::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                                                    const sgns::IoDeclaration         &proc,
                                                    std::vector<char>                 &volumeData,
-                                                   std::vector<char>                 &modelFile )
+                                                   std::vector<char>                 &modelFile,
+                                                   const std::vector<sgns::Parameter> *parameters )
     {
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
@@ -93,7 +240,10 @@ namespace sgns::sgprocessing
             return ProcessingResult{};
         }
 
-        const size_t expectedBytes = static_cast<size_t>( width ) * height * depth * sizeof( float );
+        const auto format = proc.get_format().value_or( sgns::InputFormat::FLOAT32 );
+        const size_t expectedElements = static_cast<size_t>( width ) * height * depth;
+        const size_t bytesPerElement = ( format == sgns::InputFormat::FLOAT16 ) ? sizeof( uint16_t ) : sizeof( float );
+        const size_t expectedBytes = expectedElements * bytesPerElement;
         if ( volumeData.size() < expectedBytes )
         {
             m_logger->error( "Texture3D input size {} bytes is smaller than expected {} bytes",
@@ -102,9 +252,58 @@ namespace sgns::sgprocessing
             return ProcessingResult{};
         }
 
+        const VolumeLayout layout = ParseLayout( parameters, proc.get_name() );
+        m_logger->info( "Texture3D input format: {} | layout: {}",
+                format == sgns::InputFormat::FLOAT16 ? "FLOAT16" : "FLOAT32",
+                LayoutToString( layout ) );
+
         std::vector<float> volumeFloats;
-        volumeFloats.resize( static_cast<size_t>( width ) * height * depth );
-        std::memcpy( volumeFloats.data(), volumeData.data(), expectedBytes );
+        volumeFloats.resize( expectedElements );
+
+        if ( format == sgns::InputFormat::FLOAT32 && layout == VolumeLayout::HWD )
+        {
+            std::memcpy( volumeFloats.data(), volumeData.data(), expectedBytes );
+        }
+        else
+        {
+            if ( format == sgns::InputFormat::FLOAT32 )
+            {
+                const auto *src = reinterpret_cast<const float *>( volumeData.data() );
+                for ( int h = 0; h < height; ++h )
+                {
+                    for ( int w = 0; w < width; ++w )
+                    {
+                        for ( int d = 0; d < depth; ++d )
+                        {
+                            const size_t srcIndex = LayoutIndex( layout, h, w, d, height, width, depth );
+                            const size_t dstIndex = LayoutIndex( VolumeLayout::HWD, h, w, d, height, width, depth );
+                            volumeFloats[dstIndex] = src[srcIndex];
+                        }
+                    }
+                }
+            }
+            else if ( format == sgns::InputFormat::FLOAT16 )
+            {
+                const auto *src = reinterpret_cast<const uint16_t *>( volumeData.data() );
+                for ( int h = 0; h < height; ++h )
+                {
+                    for ( int w = 0; w < width; ++w )
+                    {
+                        for ( int d = 0; d < depth; ++d )
+                        {
+                            const size_t srcIndex = LayoutIndex( layout, h, w, d, height, width, depth );
+                            const size_t dstIndex = LayoutIndex( VolumeLayout::HWD, h, w, d, height, width, depth );
+                            volumeFloats[dstIndex] = HalfToFloat( src[srcIndex] );
+                        }
+                    }
+                }
+            }
+            else
+            {
+                m_logger->error( "Unsupported texture3D format for volume input" );
+                return ProcessingResult{};
+            }
+        }
 
         m_logger->info( "Processing volume input (H,W,D): {}x{}x{} ({} floats)",
                 width,

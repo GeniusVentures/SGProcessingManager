@@ -43,8 +43,10 @@ namespace sgns::sgprocessing
     ProcessingResult MNN_String::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                                                    const sgns::IoDeclaration         &proc,
                                                    std::vector<char>                 &textData,
-                                                   std::vector<char>                 &modelFile )
+                                                   std::vector<char>                 &modelFile,
+                                                   const std::vector<sgns::Parameter> *parameters )
     {
+        (void)parameters;
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
 

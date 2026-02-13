@@ -265,6 +265,20 @@ namespace sgns::sgprocessing
                         m_logger->error( "Texture3d type missing patch size parameters" );
                         return outcome::failure( Error::PROCESS_INFO_MISSING );
                     }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 )
+                        {
+                            m_logger->error( "Texture3d type supports FLOAT32/FLOAT16 formats only" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->warn( "Texture3d input missing format; defaulting to FLOAT32" );
+                    }
                     break;
                 }
                 case DataType::TEXTURE3_D_ARRAY:
@@ -332,10 +346,12 @@ namespace sgns::sgprocessing
         {
             return outcome::failure( Error::NO_PROCESSOR );
         }
+        const auto *parameters = processing_.get_parameters() ? &processing_.get_parameters().value() : nullptr;
         auto processResult = m_processor->StartProcessing( chunkhashes,
-                                                           processing_.get_inputs()[index.value()],
-                                                           *buffers->second,
-                                                           *buffers->first );
+                                   processing_.get_inputs()[index.value()],
+                                   *buffers->second,
+                                   *buffers->first,
+                                   parameters );
 
         const auto &outputs = processing_.get_outputs();
         if ( processResult.output_buffers && !outputs.empty() )

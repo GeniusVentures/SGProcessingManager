@@ -35,7 +35,8 @@ namespace sgns::sgprocessing
         virtual ProcessingResult StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                                const sgns::IoDeclaration         &proc,
                                std::vector<char>                 &imageData,
-                               std::vector<char>                 &modelFile ) = 0;
+                               std::vector<char>                 &modelFile,
+                               const std::vector<sgns::Parameter> *parameters ) = 0;
 
         /** Set data for processor
         * @param buffers - Data containing file name and data pair lists.

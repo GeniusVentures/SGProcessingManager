@@ -37,9 +37,10 @@ namespace sgns::sgprocessing
         * @param modelFile - MNN model file data
         */
         ProcessingResult StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
-                                              const sgns::IoDeclaration         &proc,
-                                              std::vector<char>                 &textData,
-                                              std::vector<char>                 &modelFile ) override;
+                           const sgns::IoDeclaration         &proc,
+                           std::vector<char>                 &textData,
+                           std::vector<char>                 &modelFile,
+                           const std::vector<sgns::Parameter> *parameters ) override;
 
     private:
         /** Run MNN processing on text/string

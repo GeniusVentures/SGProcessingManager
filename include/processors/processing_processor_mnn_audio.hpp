@@ -39,7 +39,8 @@ namespace sgns::sgprocessing
         ProcessingResult StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                            const sgns::IoDeclaration         &proc,
                            std::vector<char>                 &imageData,
-                           std::vector<char>                 &modelFile ) override;
+                           std::vector<char>                 &modelFile,
+                           const std::vector<sgns::Parameter> *parameters ) override;
 
         /** Set data for processor
         * @param buffers - Data containing file name and data pair lists.

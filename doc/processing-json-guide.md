@@ -1,0 +1,236 @@
+# Processing JSON Guide
+
+This guide describes how to write a processing definition JSON, and lists required and optional fields per data type. The authoritative schema is in [gnus-processing-schema.json](gnus-processing-schema.json).
+
+## Quick Start
+A processing definition contains top-level metadata, inputs/outputs, parameters, and passes. The minimum viable shape is:
+
+```json
+{
+  "name": "example-processing",
+  "version": "1.0.0",
+  "gnus_spec_version": 1.0,
+  "inputs": [
+    {
+      "name": "inputVolume",
+      "source_uri_param": "file://path/to/input.raw",
+      "type": "texture3D",
+      "dimensions": {
+        "width": 253,
+        "height": 253,
+        "chunk_count": 94,
+        "chunk_subchunk_width": 96,
+        "chunk_subchunk_height": 96,
+        "block_len": 96,
+        "chunk_stride": 48,
+        "chunk_line_stride": 48,
+        "block_stride": 48
+      },
+      "format": "FLOAT32"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "segmentationOutput",
+      "source_uri_param": "file://path/to/output.raw",
+      "type": "tensor"
+    }
+  ],
+  "parameters": [
+    {
+      "name": "modelUri",
+      "type": "uri",
+      "default": "file://path/to/model.mnn"
+    },
+    {
+      "name": "volumeLayout",
+      "type": "string",
+      "default": "HWD"
+    }
+  ],
+  "passes": [
+    {
+      "name": "inference",
+      "type": "inference",
+      "model": {
+        "source_uri_param": "file://path/to/model.mnn",
+        "format": "MNN",
+        "input_nodes": [
+          {
+            "name": "input",
+            "type": "tensor",
+            "source": "input:inputVolume",
+            "shape": [1, 1, 96, 96, 96]
+          }
+        ],
+        "output_nodes": [
+          {
+            "name": "output",
+            "type": "tensor",
+            "target": "output:segmentationOutput",
+            "shape": [1, 2, 96, 96, 96]
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+## Top-Level Fields
+Required:
+- `name`
+- `version`
+- `gnus_spec_version`
+- `inputs`
+- `outputs`
+- `passes`
+
+Optional:
+- `author`
+- `description`
+- `tags`
+- `parameters`
+- `metadata`
+
+## Inputs and Outputs
+Each element in `inputs` and `outputs` must include:
+- `name`
+- `source_uri_param`
+- `type`
+
+Optional:
+- `description`
+- `dimensions`
+- `format`
+
+Notes:
+- `source_uri_param` is currently treated as a URL, not a parameter name.
+- `format` supports: `FLOAT32`, `FLOAT16`, `INT32`, `INT16`, `INT8`, `RGB8`, `RGBA8`. Only FLOAT32/FLOAT16 are currently used for texture3D.
+
+## Parameters
+Parameters allow optional configuration such as model URI or layout. Each parameter includes:
+- `name`
+- `type`
+
+Optional:
+- `default`
+- `description`
+- `constraints`
+
+Recommended parameters for texture3D:
+- `volumeLayout` (string): one of `HWD`, `HDW`, `WHD`, `WDH`, `DHW`, `DWH`.
+
+The processor also recognizes `inputNameLayout` and `inputName_layout` where `inputName` is the input field name.
+
+## Data Type Requirements
+This section describes required and optional fields by `type`. If a type is unimplemented, a placeholder is included so the schema remains forward-compatible.
+
+### texture3D (implemented)
+Required:
+- `dimensions.width`
+- `dimensions.height`
+- `dimensions.chunk_count` (depth)
+- `dimensions.chunk_subchunk_width` (patch width)
+- `dimensions.chunk_subchunk_height` (patch height)
+- `dimensions.block_len` (patch depth)
+
+Optional:
+- `dimensions.chunk_stride` (stride x)
+- `dimensions.chunk_line_stride` (stride y)
+- `dimensions.block_stride` (stride z)
+- `format` (`FLOAT32` or `FLOAT16`)
+- Parameter `volumeLayout` or `inputNameLayout`
+
+Notes:
+- If stride fields are omitted, the processor defaults to non-overlapping patches (stride = patch size).
+- The input buffer is assumed to be a contiguous 3D array in the specified layout.
+
+### texture2D (implemented)
+Required:
+- `dimensions.width`
+- `dimensions.height`
+- `dimensions.chunk_count`
+- `dimensions.block_len`
+- `dimensions.block_line_stride`
+- `dimensions.block_stride`
+- `dimensions.chunk_line_stride`
+- `dimensions.chunk_offset`
+- `dimensions.chunk_stride`
+- `dimensions.chunk_subchunk_height`
+- `dimensions.chunk_subchunk_width`
+
+Optional:
+- `format` (typically `RGB8` or `RGBA8`)
+
+Notes:
+- This is used by the image processor and uses the current image splitter logic.
+
+### string (implemented)
+Required:
+- No additional fields beyond `name`, `source_uri_param`, `type`.
+
+Optional:
+- Parameters:
+  - `tokenizerMode` (string): required by validation, supported values currently `token_ids` or `raw_text`.
+  - `vocabUri` (uri): required if `tokenizerMode` is `raw_text`.
+  - `maxLength` (int): optional, defaults to 128 inside the processor.
+
+Notes:
+- If the input text parses as space-separated integers, they are treated as token ids.
+
+### tensor (placeholder)
+Required:
+- TBD (not implemented).
+
+Optional:
+- `dimensions` and `format` as needed by future tensor processor.
+
+### float, int, bool (placeholder)
+Required:
+- TBD.
+
+Optional:
+- `format` where applicable.
+
+### vec2, vec3, vec4 (placeholder)
+Required:
+- TBD.
+
+Optional:
+- `format` where applicable.
+
+### mat2, mat3, mat4 (placeholder)
+Required:
+- TBD.
+
+Optional:
+- `format` where applicable.
+
+### buffer (placeholder)
+Required:
+- TBD.
+
+Optional:
+- `format` where applicable.
+
+### texture1D, texture1D_array, texture2D_array, texture3D_array, textureCube (placeholder)
+Required:
+- TBD.
+
+Optional:
+- `dimensions` and `format` as needed by future texture processors.
+
+## Model Passes
+Inference passes require a `model` object with:
+- `source_uri_param`
+- `format`
+- `input_nodes`
+- `output_nodes`
+
+Each `input_nodes` item uses `source` with `input:` or `parameter:` prefix. Each `output_nodes` item uses `target` with `output:` or `internal:` prefix.
+
+## Common Pitfalls
+- Ensure `source_uri_param` values are valid URLs (e.g., `file://...`).
+- For texture3D, the input size must be `width * height * chunk_count * sizeof(element)`.
+- If you change layout or format, update parameters and input files accordingly.
