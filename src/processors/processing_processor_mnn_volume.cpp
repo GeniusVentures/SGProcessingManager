@@ -2,8 +2,10 @@
 #include <functional>
 #include <thread>
 #include <sstream>
+#include <sstream>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include "util/sha256.hpp"
 
@@ -28,6 +30,30 @@ namespace sgns::sgprocessing
             }
             out << "]";
             return out.str();
+        }
+
+        std::vector<int> ComputeWindowStarts( int length, int roi, int stride )
+        {
+            std::vector<int> starts;
+            if ( length <= roi )
+            {
+                starts.push_back( 0 );
+                return starts;
+            }
+
+            const int step = std::max( 1, stride );
+            for ( int pos = 0; pos <= length - roi; pos += step )
+            {
+                starts.push_back( pos );
+            }
+
+            const int last = length - roi;
+            if ( starts.empty() || starts.back() != last )
+            {
+                starts.push_back( last );
+            }
+
+            return starts;
         }
     }
 
@@ -80,11 +106,11 @@ namespace sgns::sgprocessing
         volumeFloats.resize( static_cast<size_t>( width ) * height * depth );
         std::memcpy( volumeFloats.data(), volumeData.data(), expectedBytes );
 
-        m_logger->info( "Processing volume input: {}x{}x{} ({} floats)",
-                        width,
-                        height,
-                        depth,
-                        volumeFloats.size() );
+        m_logger->info( "Processing volume input (H,W,D): {}x{}x{} ({} floats)",
+                width,
+                height,
+                depth,
+                volumeFloats.size() );
 
         m_logger->info( "Patch size: {}x{}x{} | Stride: {}x{}x{}",
                 patchWidth,
@@ -98,12 +124,22 @@ namespace sgns::sgprocessing
 
         std::vector<uint8_t> shahash( SHA256_DIGEST_LENGTH );
 
+        const auto startsX = ComputeWindowStarts( width, patchWidth, strideX );
+        const auto startsY = ComputeWindowStarts( height, patchHeight, strideY );
+        const auto startsZ = ComputeWindowStarts( depth, patchDepth, strideZ );
+
         size_t patchIndex = 0;
-        for ( int z = 0; z < depth; z += strideZ )
+        int outputChannels = 0;
+        int outputHeight = patchHeight;
+        int outputWidth = patchWidth;
+        int outputDepth = patchDepth;
+        std::vector<float> stitchedOutput;
+        std::vector<float> stitchedWeights;
+        for ( const int z : startsZ )
         {
-            for ( int y = 0; y < height; y += strideY )
+            for ( const int y : startsY )
             {
-                for ( int x = 0; x < width; x += strideX )
+                for ( const int x : startsX )
                 {
                     std::vector<float> patch;
                     patch.resize( static_cast<size_t>( patchWidth ) * patchHeight * patchDepth, 0.0f );
@@ -122,23 +158,23 @@ namespace sgns::sgprocessing
                             {
                                 continue;
                             }
-                            for ( int dx = 0; dx < patchWidth; ++dx )
-                            {
-                                const int srcX = x + dx;
-                                if ( srcX >= width )
-                                {
-                                    continue;
-                                }
-                                const size_t srcIndex =
-                                    static_cast<size_t>( srcZ ) * height * width +
-                                    static_cast<size_t>( srcY ) * width +
-                                    static_cast<size_t>( srcX );
-                                const size_t dstIndex =
-                                    static_cast<size_t>( dz ) * patchHeight * patchWidth +
-                                    static_cast<size_t>( dy ) * patchWidth +
-                                    static_cast<size_t>( dx );
-                                patch[dstIndex] = volumeFloats[srcIndex];
-                            }
+                                                        for ( int dx = 0; dx < patchWidth; ++dx )
+                                                        {
+                                                                const int srcX = x + dx;
+                                                                if ( srcX >= width )
+                                                                {
+                                                                        continue;
+                                                                }
+                                                                const size_t srcIndex =
+                                                                        ( static_cast<size_t>( srcY ) * width +
+                                                                            static_cast<size_t>( srcX ) ) * depth +
+                                                                        static_cast<size_t>( srcZ );
+                                                                const size_t dstIndex =
+                                                                        ( static_cast<size_t>( dy ) * patchWidth +
+                                                                            static_cast<size_t>( dx ) ) * patchDepth +
+                                                                        static_cast<size_t>( dz );
+                                                                patch[dstIndex] = volumeFloats[srcIndex];
+                                                        }
                         }
                     }
 
@@ -146,8 +182,93 @@ namespace sgns::sgprocessing
                     const float *data     = procresults->host<float>();
                     size_t       dataSize = procresults->elementSize() * sizeof( float );
 
+                    if ( outputChannels == 0 )
+                    {
+                        const int dims = procresults->dimensions();
+                        if ( dims >= 5 )
+                        {
+                            outputChannels = procresults->length( 1 );
+                            outputHeight = procresults->length( 2 );
+                            outputWidth = procresults->length( 3 );
+                            outputDepth = procresults->length( 4 );
+                        }
+                        else if ( dims == 4 )
+                        {
+                            outputChannels = procresults->length( 0 );
+                            outputHeight = procresults->length( 1 );
+                            outputWidth = procresults->length( 2 );
+                            outputDepth = procresults->length( 3 );
+                        }
+                        else
+                        {
+                            outputChannels = 1;
+                            outputHeight = patchHeight;
+                            outputWidth = patchWidth;
+                            outputDepth = patchDepth;
+                        }
+
+                        stitchedOutput.assign( static_cast<size_t>( outputChannels ) * width * height * depth, 0.0f );
+                        stitchedWeights.assign( static_cast<size_t>( width ) * height * depth, 0.0f );
+                    }
+
+                    if ( outputHeight == patchHeight && outputWidth == patchWidth && outputDepth == patchDepth )
+                    {
+                        for ( int dy = 0; dy < patchHeight; ++dy )
+                        {
+                            const int outY = y + dy;
+                            if ( outY >= height )
+                            {
+                                continue;
+                            }
+                            for ( int dx = 0; dx < patchWidth; ++dx )
+                            {
+                                const int outX = x + dx;
+                                if ( outX >= width )
+                                {
+                                    continue;
+                                }
+                                for ( int dz = 0; dz < patchDepth; ++dz )
+                                {
+                                    const int outZ = z + dz;
+                                    if ( outZ >= depth )
+                                    {
+                                        continue;
+                                    }
+
+                                    const size_t weightIndex =
+                                        ( static_cast<size_t>( outY ) * width + static_cast<size_t>( outX ) ) * depth +
+                                        static_cast<size_t>( outZ );
+                                    stitchedWeights[weightIndex] += 1.0f;
+
+                                    for ( int c = 0; c < outputChannels; ++c )
+                                    {
+                                        const size_t srcIndex =
+                                            ( ( static_cast<size_t>( c ) * outputHeight + static_cast<size_t>( dy ) ) *
+                                              outputWidth + static_cast<size_t>( dx ) ) * outputDepth +
+                                            static_cast<size_t>( dz );
+                                        const size_t dstIndex =
+                                            ( static_cast<size_t>( c ) * height + static_cast<size_t>( outY ) ) * width * depth +
+                                            static_cast<size_t>( outX ) * depth +
+                                            static_cast<size_t>( outZ );
+                                        stitchedOutput[dstIndex] += data[srcIndex];
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if ( patchIndex == 0 )
                     {
+                        {
+                            std::ofstream inputDump( "first_patch_input.raw", std::ios::binary );
+                            if ( inputDump.is_open() )
+                            {
+                                inputDump.write( reinterpret_cast<const char *>( patch.data() ),
+                                                 static_cast<std::streamsize>( patch.size() * sizeof( float ) ) );
+                                m_logger->info( "Wrote first patch input to first_patch_input.raw" );
+                            }
+                        }
+
                         std::ostringstream sample;
                         size_t sampleCount = std::min<size_t>( 16, procresults->elementSize() );
                         sample << "Output sample (first " << sampleCount << "): ";
@@ -160,6 +281,16 @@ namespace sgns::sgprocessing
                             sample << data[i];
                         }
                         m_logger->info( "{}", sample.str() );
+
+                        {
+                            std::ofstream outputDump( "first_patch_output.raw", std::ios::binary );
+                            if ( outputDump.is_open() )
+                            {
+                                outputDump.write( reinterpret_cast<const char *>( data ),
+                                                  static_cast<std::streamsize>( procresults->elementSize() * sizeof( float ) ) );
+                                m_logger->info( "Wrote first patch output to first_patch_output.raw" );
+                            }
+                        }
                     }
 
                     shahash = sgprocmanagersha::sha256( data, dataSize );
@@ -175,6 +306,42 @@ namespace sgns::sgprocessing
         }
 
         m_progress = 100.0f;
+
+        if ( !stitchedOutput.empty() )
+        {
+            for ( int c = 0; c < outputChannels; ++c )
+            {
+                for ( int y = 0; y < height; ++y )
+                {
+                    for ( int x = 0; x < width; ++x )
+                    {
+                        for ( int z = 0; z < depth; ++z )
+                        {
+                            const size_t weightIndex =
+                                ( static_cast<size_t>( y ) * width + static_cast<size_t>( x ) ) * depth +
+                                static_cast<size_t>( z );
+                            if ( stitchedWeights[weightIndex] <= 0.0f )
+                            {
+                                continue;
+                            }
+                            const size_t dstIndex =
+                                ( static_cast<size_t>( c ) * height + static_cast<size_t>( y ) ) * width * depth +
+                                static_cast<size_t>( x ) * depth +
+                                static_cast<size_t>( z );
+                            stitchedOutput[dstIndex] /= stitchedWeights[weightIndex];
+                        }
+                    }
+                }
+            }
+
+            std::ofstream outputVolume( "stitched_logits.raw", std::ios::binary );
+            if ( outputVolume.is_open() )
+            {
+                outputVolume.write( reinterpret_cast<const char *>( stitchedOutput.data() ),
+                                    static_cast<std::streamsize>( stitchedOutput.size() * sizeof( float ) ) );
+                m_logger->info( "Wrote stitched logits to stitched_logits.raw" );
+            }
+        }
 
         m_logger->info( "Volume processing complete" );
 
@@ -199,7 +366,8 @@ namespace sgns::sgprocessing
         }
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_VULKAN;
+        config.type = MNN_FORWARD_CPU;
+        m_logger->info( "Using MNN CPU backend" );
         config.numThread = 4;
 
         auto session = interpreter->createSession(config);
@@ -220,8 +388,8 @@ namespace sgns::sgprocessing
         for (const auto& inputPair : inputTensors) {
             auto tensor = inputPair.second;
             if (tensor->elementSize() <= 4) {
-                m_logger->info( "Resizing '{}' to [1, 1, {}, {}, {}]", inputPair.first, depth, height, width );
-                interpreter->resizeTensor( tensor, { 1, 1, depth, height, width } );
+                m_logger->info( "Resizing '{}' to [1, 1, {}, {}, {}]", inputPair.first, height, width, depth );
+                interpreter->resizeTensor( tensor, { 1, 1, height, width, depth } );
             }
         }
         interpreter->resizeSession( session );
