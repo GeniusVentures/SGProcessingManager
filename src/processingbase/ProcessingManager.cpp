@@ -2,6 +2,7 @@
 #include <Generators.hpp>
 #include <datasplitter/ImageSplitter.hpp>
 #include "FileManager.hpp"
+#include "URLStringUtil.h"
 
 
 OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
@@ -26,6 +27,35 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
 
 namespace sgns::sgprocessing
 {
+    namespace
+    {
+        bool IsUrl( const std::string &value )
+        {
+            return value.find( "://" ) != std::string::npos;
+        }
+
+        bool EndsWithSlash( const std::string &value )
+        {
+            if ( value.empty() )
+            {
+                return false;
+            }
+            const char last = value.back();
+            return last == '/' || last == '\\';
+        }
+
+        bool UrlHasExtension( const std::string &value )
+        {
+            std::string prefix;
+            std::string base;
+            std::string extension;
+            if ( !getURLComponents( value, prefix, base, extension ) )
+            {
+                return false;
+            }
+            return !extension.empty();
+        }
+    }
 
     ProcessingManager::~ProcessingManager() {}
 
@@ -302,11 +332,92 @@ namespace sgns::sgprocessing
         {
             return outcome::failure( Error::NO_PROCESSOR );
         }
-        auto process = m_processor->StartProcessing( chunkhashes,
-                                                     processing_.get_inputs()[index.value()],
-                                                     *buffers->second,
-                                                     *buffers->first );
-        return process;
+        auto processResult = m_processor->StartProcessing( chunkhashes,
+                                                           processing_.get_inputs()[index.value()],
+                                                           *buffers->second,
+                                                           *buffers->first );
+
+        const auto &outputs = processing_.get_outputs();
+        if ( processResult.output_buffers && !outputs.empty() )
+        {
+            const auto &bufferNames = processResult.output_buffers->first;
+            const auto &bufferData = processResult.output_buffers->second;
+
+            if ( !bufferData.empty() )
+            {
+                FileManager::GetInstance().InitializeSingletons();
+                bool hasSaves = false;
+
+                for ( size_t outputIndex = 0; outputIndex < outputs.size(); ++outputIndex )
+                {
+                    const auto &output = outputs[outputIndex];
+                    const auto &outputUrl = output.get_source_uri_param();
+                    if ( outputUrl.empty() )
+                    {
+                        continue;
+                    }
+                    if ( !IsUrl( outputUrl ) )
+                    {
+                        m_logger->warn( "Output source_uri_param '{}' is not a URL; skipping save", outputUrl );
+                        continue;
+                    }
+
+                    const size_t dataIndex = ( bufferData.size() == outputs.size() ) ? outputIndex : 0;
+                    if ( dataIndex >= bufferData.size() )
+                    {
+                        continue;
+                    }
+
+                    const size_t nameIndex = ( bufferNames.size() == outputs.size() ) ? outputIndex : 0;
+                    std::string outputFileName;
+                    if ( !UrlHasExtension( outputUrl ) )
+                    {
+                        std::string baseName;
+                        if ( nameIndex < bufferNames.size() && !bufferNames[nameIndex].empty() )
+                        {
+                            baseName = bufferNames[nameIndex];
+                        }
+                        else
+                        {
+                            baseName = output.get_name() + ".raw";
+                        }
+
+                        if ( EndsWithSlash( outputUrl ) )
+                        {
+                            outputFileName = baseName;
+                        }
+                        else
+                        {
+                            outputFileName = "/" + baseName;
+                        }
+                    }
+
+                    auto saveBuffers = std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
+                    saveBuffers->first.push_back( outputFileName );
+                    saveBuffers->second.push_back( bufferData[dataIndex] );
+
+                    FileManager::GetInstance().SaveASync(
+                        outputUrl,
+                        outcome::success( saveBuffers ),
+                        ioc,
+                        [this, outputUrl]( const FileManager::ResultType &result ) {
+                            if ( !result )
+                            {
+                                m_logger->error( "Failed to save output to {}: {}", outputUrl, result.error().message() );
+                            }
+                        } );
+                    hasSaves = true;
+                }
+
+                if ( hasSaves )
+                {
+                    ioc->reset();
+                    ioc->run();
+                }
+            }
+        }
+
+        return processResult.hash;
     }
 
     outcome::result <

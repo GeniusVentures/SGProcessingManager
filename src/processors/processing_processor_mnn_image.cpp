@@ -15,10 +15,10 @@ namespace sgns::sgprocessing
 {
     using namespace MNN;
 
-    std::vector<uint8_t> MNN_Image::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
-                                                     const sgns::IoDeclaration         &proc,
-                                                     std::vector<char>                 &imageData,
-                                                     std::vector<char>                 &modelFile )
+    ProcessingResult MNN_Image::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
+                                                  const sgns::IoDeclaration         &proc,
+                                                  std::vector<char>                 &imageData,
+                                                  std::vector<char>                 &modelFile )
     {
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
@@ -40,7 +40,7 @@ namespace sgns::sgprocessing
         m_logger->debug( "Channels to process {}", maybe_channels.value() );
         if ( !maybe_channels )
         {
-            return std::vector<uint8_t>();
+            return ProcessingResult{};
         }
         auto channels = maybe_channels.value();        
 
@@ -87,7 +87,9 @@ namespace sgns::sgprocessing
                 
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
-            return subTaskResultHash;
+            ProcessingResult result;
+            result.hash = subTaskResultHash;
+            return result;
         //}
         //return subTaskResultHash;
     }

@@ -11,10 +11,10 @@ namespace sgns::sgprocessing
 {
     using namespace MNN;
 
-    std::vector<uint8_t> MNN_Audio::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
-                                                     const sgns::IoDeclaration         &proc,
-                                                     std::vector<char>                 &imageData,
-                                                     std::vector<char>                 &modelFile )
+    ProcessingResult MNN_Audio::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
+                                                  const sgns::IoDeclaration         &proc,
+                                                  std::vector<char>                 &imageData,
+                                                  std::vector<char>                 &modelFile )
     {
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
@@ -34,7 +34,9 @@ namespace sgns::sgprocessing
                 // Update progress after each chunk
                 m_progress = std::round(((chunkIdx + 1) * 100.0f / totalChunks) * 100.0f) / 100.0f;
             }
-            return subTaskResultHash;
+                ProcessingResult result;
+                result.hash = subTaskResultHash;
+                return result;
     }
 
     std::unique_ptr<MNN::Tensor> MNN_Audio::Process(const std::vector<uint8_t>& imgdata, 

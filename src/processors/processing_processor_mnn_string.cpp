@@ -3,6 +3,7 @@
 #include <thread>
 #include <sstream>
 #include <algorithm>
+#include <cstring>
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include "util/sha256.hpp"
 
@@ -39,10 +40,10 @@ namespace sgns::sgprocessing
         }
     }
 
-    std::vector<uint8_t> MNN_String::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
-                                                       const sgns::IoDeclaration         &proc,
-                                                       std::vector<char>                 &textData,
-                                                       std::vector<char>                 &modelFile )
+    ProcessingResult MNN_String::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
+                                                   const sgns::IoDeclaration         &proc,
+                                                   std::vector<char>                 &textData,
+                                                   std::vector<char>                 &modelFile )
     {
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
@@ -111,7 +112,21 @@ namespace sgns::sgprocessing
         
         m_logger->info( "String processing complete" );
         
-        return subTaskResultHash;
+        ProcessingResult result;
+        result.hash = subTaskResultHash;
+
+        if ( procresults && procresults->elementSize() > 0 )
+        {
+            const size_t byteCount = procresults->elementSize() * sizeof( float );
+            std::vector<char> outputBytes( byteCount );
+            std::memcpy( outputBytes.data(), data, byteCount );
+
+            result.output_buffers = std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
+            result.output_buffers->first.push_back( "" );
+            result.output_buffers->second.push_back( std::move( outputBytes ) );
+        }
+
+        return result;
     }
 
     std::unique_ptr<MNN::Tensor> MNN_String::Process( const std::vector<int32_t> &tokenIds, 

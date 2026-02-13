@@ -36,7 +36,7 @@ namespace sgns::sgprocessing
         * @param textData - Input text data as character vector
         * @param modelFile - MNN model file data
         */
-        std::vector<uint8_t> StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
+        ProcessingResult StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                                               const sgns::IoDeclaration         &proc,
                                               std::vector<char>                 &textData,
                                               std::vector<char>                 &modelFile ) override;

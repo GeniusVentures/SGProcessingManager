@@ -8,12 +8,20 @@
 
 #include <cmath>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 #include <SGNSProcMain.hpp>
 #include <util/sgprocmgr-logger.hpp>
 
 namespace sgns::sgprocessing
 {
+    struct ProcessingResult
+    {
+        std::vector<uint8_t> hash;
+        std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>> output_buffers;
+    };
+
     class ProcessingProcessor
     {
     public:
@@ -24,10 +32,10 @@ namespace sgns::sgprocessing
         * @param task - Reference to task to get image split data
         * @param subTask - Reference to subtask to get chunk data from
         */
-        virtual std::vector<uint8_t> StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
-                                                      const sgns::IoDeclaration               &proc,
-                                                      std::vector<char>                 &imageData,
-                                                      std::vector<char>                 &modelFile ) = 0;
+        virtual ProcessingResult StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
+                               const sgns::IoDeclaration         &proc,
+                               std::vector<char>                 &imageData,
+                               std::vector<char>                 &modelFile ) = 0;
 
         /** Set data for processor
         * @param buffers - Data containing file name and data pair lists.

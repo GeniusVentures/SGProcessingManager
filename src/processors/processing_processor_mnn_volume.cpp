@@ -57,10 +57,10 @@ namespace sgns::sgprocessing
         }
     }
 
-    std::vector<uint8_t> MNN_Volume::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
-                                                       const sgns::IoDeclaration         &proc,
-                                                       std::vector<char>                 &volumeData,
-                                                       std::vector<char>                 &modelFile )
+    ProcessingResult MNN_Volume::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
+                                                   const sgns::IoDeclaration         &proc,
+                                                   std::vector<char>                 &volumeData,
+                                                   std::vector<char>                 &modelFile )
     {
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
@@ -71,7 +71,7 @@ namespace sgns::sgprocessing
              !proc.get_dimensions()->get_height() || !proc.get_dimensions()->get_chunk_count() )
         {
             m_logger->error( "Texture3D input missing width/height/chunk_count" );
-            return std::vector<uint8_t>();
+            return ProcessingResult{};
         }
 
         const int width  = static_cast<int>( proc.get_dimensions()->get_width().value() );
@@ -90,7 +90,7 @@ namespace sgns::sgprocessing
              strideX <= 0 || strideY <= 0 || strideZ <= 0 )
         {
             m_logger->error( "Invalid patch size or stride values for texture3D" );
-            return std::vector<uint8_t>();
+            return ProcessingResult{};
         }
 
         const size_t expectedBytes = static_cast<size_t>( width ) * height * depth * sizeof( float );
@@ -99,7 +99,7 @@ namespace sgns::sgprocessing
             m_logger->error( "Texture3D input size {} bytes is smaller than expected {} bytes",
                              volumeData.size(),
                              expectedBytes );
-            return std::vector<uint8_t>();
+            return ProcessingResult{};
         }
 
         std::vector<float> volumeFloats;
@@ -345,7 +345,21 @@ namespace sgns::sgprocessing
 
         m_logger->info( "Volume processing complete" );
 
-        return subTaskResultHash;
+        ProcessingResult result;
+        result.hash = subTaskResultHash;
+
+        if ( !stitchedOutput.empty() )
+        {
+            const size_t byteCount = stitchedOutput.size() * sizeof( float );
+            std::vector<char> outputBytes( byteCount );
+            std::memcpy( outputBytes.data(), stitchedOutput.data(), byteCount );
+
+            result.output_buffers = std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
+            result.output_buffers->first.push_back( "" );
+            result.output_buffers->second.push_back( std::move( outputBytes ) );
+        }
+
+        return result;
     }
 
     std::unique_ptr<MNN::Tensor> MNN_Volume::Process( const std::vector<float> &volumeData,
@@ -366,8 +380,8 @@ namespace sgns::sgprocessing
         }
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_CPU;
-        m_logger->info( "Using MNN CPU backend" );
+        config.type = MNN_FORWARD_VULKAN;
+        m_logger->info( "Using MNN Vulkan backend" );
         config.numThread = 4;
 
         auto session = interpreter->createSession(config);

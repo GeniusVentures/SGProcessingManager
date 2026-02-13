@@ -54,10 +54,10 @@ namespace sgns::sgprocessing
         * @param task - Reference to task to get image split data
         * @param subTask - Reference to subtask to get chunk data from
         */
-        std::vector<uint8_t> StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
-                                              const sgns::IoDeclaration               &proc,
-                                              std::vector<char>                 &imageData,
-                                              std::vector<char>                 &modelFile ) override;
+        ProcessingResult StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
+                           const sgns::IoDeclaration         &proc,
+                           std::vector<char>                 &imageData,
+                           std::vector<char>                 &modelFile ) override;
 
         /** Set data for processor
         * @param buffers - Data containing file name and data pair lists.
