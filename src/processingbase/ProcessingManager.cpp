@@ -72,6 +72,7 @@ namespace sgns::sgprocessing
         //Register Processors
         RegisterProcessorFactory( 11, [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
         RegisterProcessorFactory( 7, [] { return std::make_unique<sgprocessing::MNN_String>(); } );
+        RegisterProcessorFactory( 9, [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
         RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
 
         //Parse Json
@@ -203,7 +204,35 @@ namespace sgns::sgprocessing
                 case DataType::TENSOR:
                     break;
                 case DataType::TEXTURE1_D:
+                {
+                    if ( !input.get_dimensions() )
+                    {
+                        m_logger->error( "Texture1d type has no dimensions" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    auto dimensions = input.get_dimensions().value();
+                    if ( !dimensions.get_width() )
+                    {
+                        m_logger->error( "Texture1d type missing width" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 )
+                        {
+                            m_logger->error( "Texture1d type supports FLOAT32/FLOAT16 formats only" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->warn( "Texture1d input missing format; defaulting to FLOAT32" );
+                    }
                     break;
+                }
                 case DataType::TEXTURE1_D_ARRAY:
                     break;
                 case DataType::TEXTURE2_D:

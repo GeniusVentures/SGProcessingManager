@@ -214,7 +214,20 @@ Required:
 Optional:
 - `format` where applicable.
 
-### texture1D, texture1D_array, texture2D_array, texture3D_array, textureCube (placeholder)
+### texture1D (implemented)
+Required:
+- `dimensions.width`
+
+Optional:
+- `dimensions.block_len` (patch length)
+- `dimensions.chunk_stride` (stride)
+- `format` (`FLOAT32` or `FLOAT16`)
+- Parameter `volumeLayout` or `inputNameLayout` (accepted but currently ignored for 1D)
+
+Notes:
+- If patch fields are omitted, the processor defaults to a single window covering the full length.
+
+### texture1D_array, texture2D_array, texture3D_array, textureCube (placeholder)
 Required:
 - TBD.
 
