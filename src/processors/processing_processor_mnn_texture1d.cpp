@@ -157,16 +157,96 @@ namespace sgns::sgprocessing
             return result;
         }
 
-        size_t OutputIndex1D( int dims, int channels, int length, int c, int i )
+        struct OutputLayout
         {
+            int channels = 1;
+            int length = 1;
+            bool length_is_first_spatial = false;
+        };
+
+        OutputLayout GetOutputLayout( const MNN::Tensor &tensor )
+        {
+            OutputLayout layout;
+            const int dims = tensor.dimensions();
+            const auto dimType = tensor.getDimensionType();
+
             if ( dims == 4 )
             {
-                return static_cast<size_t>( c ) * length + static_cast<size_t>( i );
+                if ( dimType == MNN::Tensor::CAFFE )
+                {
+                    layout.channels = tensor.length( 1 );
+                    const int h = tensor.length( 2 );
+                    const int w = tensor.length( 3 );
+                    layout.length = std::max( h, w );
+                    layout.length_is_first_spatial = ( h >= w );
+                }
+                else
+                {
+                    layout.channels = tensor.length( 3 );
+                    const int h = tensor.length( 1 );
+                    const int w = tensor.length( 2 );
+                    layout.length = std::max( h, w );
+                    layout.length_is_first_spatial = ( h >= w );
+                }
             }
+            else if ( dims == 3 )
+            {
+                if ( dimType == MNN::Tensor::CAFFE )
+                {
+                    layout.channels = tensor.length( 1 );
+                    layout.length = tensor.length( 2 );
+                }
+                else
+                {
+                    layout.channels = tensor.length( 2 );
+                    layout.length = tensor.length( 1 );
+                }
+            }
+            else if ( dims == 2 )
+            {
+                layout.channels = 1;
+                layout.length = tensor.length( 1 );
+            }
+            else
+            {
+                layout.channels = 1;
+                layout.length = static_cast<int>( tensor.elementSize() );
+            }
+
+            return layout;
+        }
+
+        size_t OutputIndex1D( const MNN::Tensor &tensor, const OutputLayout &layout, int c, int i )
+        {
+            const int dims = tensor.dimensions();
+            const auto dimType = tensor.getDimensionType();
+
+            if ( dims == 4 )
+            {
+                if ( dimType == MNN::Tensor::CAFFE )
+                {
+                    const int h = tensor.length( 2 );
+                    const int w = tensor.length( 3 );
+                    const int hIndex = layout.length_is_first_spatial ? i : 0;
+                    const int wIndex = layout.length_is_first_spatial ? 0 : i;
+                    return ( static_cast<size_t>( c ) * h + static_cast<size_t>( hIndex ) ) * w + static_cast<size_t>( wIndex );
+                }
+                const int h = tensor.length( 1 );
+                const int w = tensor.length( 2 );
+                const int hIndex = layout.length_is_first_spatial ? i : 0;
+                const int wIndex = layout.length_is_first_spatial ? 0 : i;
+                return ( static_cast<size_t>( hIndex ) * w + static_cast<size_t>( wIndex ) ) * layout.channels + static_cast<size_t>( c );
+            }
+
             if ( dims == 3 )
             {
-                return static_cast<size_t>( c ) * length + static_cast<size_t>( i );
+                if ( dimType == MNN::Tensor::CAFFE )
+                {
+                    return static_cast<size_t>( c ) * layout.length + static_cast<size_t>( i );
+                }
+                return static_cast<size_t>( i ) * layout.channels + static_cast<size_t>( c );
             }
+
             return static_cast<size_t>( i );
         }
     }
@@ -248,6 +328,7 @@ namespace sgns::sgprocessing
         size_t patchIndex = 0;
         int outputChannels = 0;
         int outputLength = patchLength;
+        OutputLayout outputLayout;
         std::vector<float> stitchedOutput;
         std::vector<float> stitchedWeights;
 
@@ -271,27 +352,9 @@ namespace sgns::sgprocessing
 
             if ( outputChannels == 0 )
             {
-                const int dims = procresults->dimensions();
-                if ( dims == 4 )
-                {
-                    outputChannels = procresults->length( 1 );
-                    outputLength = procresults->length( 3 );
-                }
-                else if ( dims == 3 )
-                {
-                    outputChannels = procresults->length( 1 );
-                    outputLength = procresults->length( 2 );
-                }
-                else if ( dims == 2 )
-                {
-                    outputChannels = 1;
-                    outputLength = procresults->length( 1 );
-                }
-                else
-                {
-                    outputChannels = 1;
-                    outputLength = patchLength;
-                }
+                outputLayout = GetOutputLayout( *procresults );
+                outputChannels = outputLayout.channels;
+                outputLength = outputLayout.length;
 
                 stitchedOutput.assign( static_cast<size_t>( outputChannels ) * length, 0.0f );
                 stitchedWeights.assign( static_cast<size_t>( length ), 0.0f );
@@ -312,7 +375,7 @@ namespace sgns::sgprocessing
 
                     for ( int c = 0; c < outputChannels; ++c )
                     {
-                        const size_t srcIndex = OutputIndex1D( procresults->dimensions(), outputChannels, outputLength, c, i );
+                        const size_t srcIndex = OutputIndex1D( *procresults, outputLayout, c, i );
                         const size_t dstIndex = static_cast<size_t>( c ) * length + static_cast<size_t>( outIndex );
                         stitchedOutput[dstIndex] += data[srcIndex];
                     }
@@ -381,7 +444,7 @@ namespace sgns::sgprocessing
         }
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_VULKAN;
+        config.type = MNN_FORWARD_CPU;
         config.numThread = 4;
 
         auto session = interpreter->createSession( config );
@@ -402,15 +465,30 @@ namespace sgns::sgprocessing
         {
             auto tensor = inputPair.second;
             const int dims = tensor->dimensions();
+            const auto dimType = tensor->getDimensionType();
             if ( tensor->elementSize() <= 4 )
             {
                 if ( dims == 4 )
                 {
-                    interpreter->resizeTensor( tensor, { 1, 1, 1, length } );
+                    if ( dimType == MNN::Tensor::TENSORFLOW )
+                    {
+                        interpreter->resizeTensor( tensor, { 1, length, 1, 1 } );
+                    }
+                    else
+                    {
+                        interpreter->resizeTensor( tensor, { 1, 1, 1, length } );
+                    }
                 }
                 else if ( dims == 3 )
                 {
-                    interpreter->resizeTensor( tensor, { 1, 1, length } );
+                    if ( dimType == MNN::Tensor::TENSORFLOW )
+                    {
+                        interpreter->resizeTensor( tensor, { 1, length, 1 } );
+                    }
+                    else
+                    {
+                        interpreter->resizeTensor( tensor, { 1, 1, length } );
+                    }
                 }
                 else if ( dims == 2 )
                 {
@@ -453,7 +531,7 @@ namespace sgns::sgprocessing
             return std::make_unique<MNN::Tensor>();
         }
 
-        auto outputHost = std::make_unique<MNN::Tensor>( outputTensor, outputTensor->getDimensionType() );
+        auto outputHost = std::make_unique<MNN::Tensor>( outputTensor, MNN::Tensor::CAFFE );
         outputTensor->copyToHostTensor( outputHost.get() );
 
         return outputHost;
