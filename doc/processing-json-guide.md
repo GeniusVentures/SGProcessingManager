@@ -198,13 +198,6 @@ Optional:
 Notes:
 - A scalar bool is represented by length 1.
 
-### float, int (placeholder)
-Required:
-- TBD.
-
-Optional:
-- `format` where applicable.
-
 ### vec2, vec3, vec4 (placeholder)
 Required:
 - TBD.
@@ -227,6 +220,33 @@ Optional:
 - `dimensions.block_len` (patch length)
 - `dimensions.chunk_stride` (stride)
 - `format` (`INT8` only)
+
+### float (implemented)
+Required:
+- `dimensions.width` (length)
+
+Optional:
+- `dimensions.block_len` (patch length)
+- `dimensions.chunk_stride` (stride)
+- `format` (`FLOAT32` or `FLOAT16`)
+
+Notes:
+- float data type handles 1D floating-point vectors.
+- If patch fields are omitted, the processor defaults to a single window covering the full length.
+
+### int (implemented)
+Required:
+- `dimensions.width` (length)
+
+Optional:
+- `dimensions.block_len` (patch length)
+- `dimensions.chunk_stride` (stride)
+- `format` (`INT32`, `INT16`, or `INT8`)
+
+Notes:
+- int data type handles 1D integer vectors.
+- Integer inputs are converted to float internally for model inference.
+- If patch fields are omitted, the processor defaults to a single window covering the full length.
 
 ### texture1D (implemented)
 Required:
