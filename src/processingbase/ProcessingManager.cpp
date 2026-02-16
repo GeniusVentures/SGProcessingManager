@@ -72,6 +72,7 @@ namespace sgns::sgprocessing
         //Register Processors
         RegisterProcessorFactory( 11, [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
         RegisterProcessorFactory( 7, [] { return std::make_unique<sgprocessing::MNN_String>(); } );
+        RegisterProcessorFactory( 0, [] { return std::make_unique<sgprocessing::MNN_Bool>(); } );
         RegisterProcessorFactory( 9, [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
         RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
 
@@ -138,7 +139,29 @@ namespace sgns::sgprocessing
             switch (input.get_type())
             {
                 case DataType::BOOL:
+                {
+                    if ( !input.get_dimensions() || !input.get_dimensions()->get_width() )
+                    {
+                        m_logger->error( "Bool type missing width" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 &&
+                             format != sgns::InputFormat::INT8 )
+                        {
+                            m_logger->error( "Bool type supports FLOAT32/FLOAT16/INT8 formats only" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->warn( "Bool input missing format; defaulting to FLOAT32" );
+                    }
                     break;
+                }
                 case DataType::BUFFER:
                     break;
                 case DataType::FLOAT:

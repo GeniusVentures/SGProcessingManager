@@ -186,7 +186,19 @@ Required:
 Optional:
 - `dimensions` and `format` as needed by future tensor processor.
 
-### float, int, bool (placeholder)
+### bool (implemented)
+Required:
+- `dimensions.width` (length)
+
+Optional:
+- `dimensions.block_len` (patch length)
+- `dimensions.chunk_stride` (stride)
+- `format` (`FLOAT32`, `FLOAT16`, or `INT8`)
+
+Notes:
+- A scalar bool is represented by length 1.
+
+### float, int (placeholder)
 Required:
 - TBD.
 
