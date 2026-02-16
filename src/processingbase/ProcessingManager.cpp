@@ -73,6 +73,7 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( 11, [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
         RegisterProcessorFactory( 7, [] { return std::make_unique<sgprocessing::MNN_String>(); } );
         RegisterProcessorFactory( 0, [] { return std::make_unique<sgprocessing::MNN_Bool>(); } );
+        RegisterProcessorFactory( 1, [] { return std::make_unique<sgprocessing::MNN_Buffer>(); } );
         RegisterProcessorFactory( 9, [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
         RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
 
@@ -163,7 +164,28 @@ namespace sgns::sgprocessing
                     break;
                 }
                 case DataType::BUFFER:
+                {
+                    if ( !input.get_dimensions() || !input.get_dimensions()->get_width() )
+                    {
+                        m_logger->error( "Buffer type missing width" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::INT8 )
+                        {
+                            m_logger->error( "Buffer type supports INT8 format only" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->warn( "Buffer input missing format; defaulting to INT8" );
+                    }
                     break;
+                }
                 case DataType::FLOAT:
                     break;
                 case DataType::INT:

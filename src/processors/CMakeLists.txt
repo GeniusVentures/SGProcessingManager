@@ -4,6 +4,7 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_ml.cpp
 	processing_processor_mnn_string.cpp
 	processing_processor_mnn_bool.cpp
+	processing_processor_mnn_buffer.cpp
 	processing_processor_mnn_texture1d.cpp
 	processing_processor_mnn_volume.cpp
 	../../include/processors/processing_processor.hpp
@@ -12,6 +13,7 @@ add_library(SGProcessors STATIC
 	../../include/processors/processing_processor_mnn_ml.hpp
 	../../include/processors/processing_processor_mnn_string.hpp
 	../../include/processors/processing_processor_mnn_bool.hpp
+	../../include/processors/processing_processor_mnn_buffer.hpp
 	../../include/processors/processing_processor_mnn_texture1d.hpp
 	../../include/processors/processing_processor_mnn_volume.hpp
 )

@@ -219,12 +219,14 @@ Required:
 Optional:
 - `format` where applicable.
 
-### buffer (placeholder)
+### buffer (implemented)
 Required:
-- TBD.
+- `dimensions.width` (length)
 
 Optional:
-- `format` where applicable.
+- `dimensions.block_len` (patch length)
+- `dimensions.chunk_stride` (stride)
+- `format` (`INT8` only)
 
 ### texture1D (implemented)
 Required:
