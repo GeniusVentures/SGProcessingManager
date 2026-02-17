@@ -419,11 +419,8 @@ namespace sgns {
             {"string", DataType::STRING},
             {"tensor", DataType::TENSOR},
             {"texture1D", DataType::TEXTURE1_D},
-            {"texture1D_array", DataType::TEXTURE1_D_ARRAY},
             {"texture2D", DataType::TEXTURE2_D},
-            {"texture2D_array", DataType::TEXTURE2_D_ARRAY},
             {"texture3D", DataType::TEXTURE3_D},
-            {"texture3D_array", DataType::TEXTURE3_D_ARRAY},
             {"textureCube", DataType::TEXTURE_CUBE},
             {"vec2", DataType::VEC2},
             {"vec3", DataType::VEC3},
@@ -447,11 +444,8 @@ namespace sgns {
             case DataType::STRING: j = "string"; break;
             case DataType::TENSOR: j = "tensor"; break;
             case DataType::TEXTURE1_D: j = "texture1D"; break;
-            case DataType::TEXTURE1_D_ARRAY: j = "texture1D_array"; break;
             case DataType::TEXTURE2_D: j = "texture2D"; break;
-            case DataType::TEXTURE2_D_ARRAY: j = "texture2D_array"; break;
             case DataType::TEXTURE3_D: j = "texture3D"; break;
-            case DataType::TEXTURE3_D_ARRAY: j = "texture3D_array"; break;
             case DataType::TEXTURE_CUBE: j = "textureCube"; break;
             case DataType::VEC2: j = "vec2"; break;
             case DataType::VEC3: j = "vec3"; break;
