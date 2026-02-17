@@ -70,22 +70,22 @@ namespace sgns::sgprocessing
     {
         m_processor = nullptr;
         //Register Processors
-        RegisterProcessorFactory( 10, [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
-        RegisterProcessorFactory( 7, [] { return std::make_unique<sgprocessing::MNN_String>(); } );
-        RegisterProcessorFactory( 0, [] { return std::make_unique<sgprocessing::MNN_Bool>(); } );
-        RegisterProcessorFactory( 1, [] { return std::make_unique<sgprocessing::MNN_Buffer>(); } );
-        RegisterProcessorFactory( 2, [] { return std::make_unique<sgprocessing::MNN_Float>(); } );
-        RegisterProcessorFactory( 3, [] { return std::make_unique<sgprocessing::MNN_Int>(); } );
-        RegisterProcessorFactory( 4, [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );
-        RegisterProcessorFactory( 5, [] { return std::make_unique<sgprocessing::MNN_Mat3>(); } );
-        RegisterProcessorFactory( 6, [] { return std::make_unique<sgprocessing::MNN_Mat4>(); } );
-        RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Vec2>(); } );
-        RegisterProcessorFactory( 14, [] { return std::make_unique<sgprocessing::MNN_Vec3>(); } );
-        RegisterProcessorFactory( 15, [] { return std::make_unique<sgprocessing::MNN_Vec4>(); } );
-        RegisterProcessorFactory( 8, [] { return std::make_unique<sgprocessing::MNN_Tensor>(); } );
-        RegisterProcessorFactory( 9, [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
-        RegisterProcessorFactory( 11, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
-        RegisterProcessorFactory( 12, [] { return std::make_unique<sgprocessing::MNN_TextureCube>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::TEXTURE2_D), [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::STRING), [] { return std::make_unique<sgprocessing::MNN_String>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::BOOL), [] { return std::make_unique<sgprocessing::MNN_Bool>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::BUFFER), [] { return std::make_unique<sgprocessing::MNN_Buffer>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::FLOAT), [] { return std::make_unique<sgprocessing::MNN_Float>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::INT), [] { return std::make_unique<sgprocessing::MNN_Int>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::MAT2), [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::MAT3), [] { return std::make_unique<sgprocessing::MNN_Mat3>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::MAT4), [] { return std::make_unique<sgprocessing::MNN_Mat4>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::VEC2), [] { return std::make_unique<sgprocessing::MNN_Vec2>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::VEC3), [] { return std::make_unique<sgprocessing::MNN_Vec3>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::VEC4), [] { return std::make_unique<sgprocessing::MNN_Vec4>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::TENSOR), [] { return std::make_unique<sgprocessing::MNN_Tensor>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::TEXTURE1_D), [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::TEXTURE3_D), [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::TEXTURE_CUBE), [] { return std::make_unique<sgprocessing::MNN_TextureCube>(); } );
 
         //Parse Json
         //This will check required fields inherently.
