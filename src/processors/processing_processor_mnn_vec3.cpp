@@ -1,4 +1,4 @@
-#include "processors/processing_processor_mnn_vec2.hpp"
+#include "processors/processing_processor_mnn_vec3.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -180,9 +180,9 @@ namespace sgns::sgprocessing
         }
     }
 
-    ProcessingResult MNN_Vec2::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
+    ProcessingResult MNN_Vec3::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                                                const sgns::IoDeclaration         &proc,
-                                               std::vector<char>                 &vec2Data,
+                                               std::vector<char>                 &vec3Data,
                                                std::vector<char>                 &modelFile,
                                                const std::vector<sgns::Parameter> *parameters )
     {
@@ -192,7 +192,7 @@ namespace sgns::sgprocessing
 
         if ( !proc.get_dimensions() || !proc.get_dimensions()->get_width() )
         {
-            m_logger->error( "Vec2 input missing width" );
+            m_logger->error( "Vec3 input missing width" );
             return ProcessingResult{};
         }
 
@@ -202,25 +202,25 @@ namespace sgns::sgprocessing
 
         if ( vectorCount <= 0 || patchVectors <= 0 || stride <= 0 )
         {
-            m_logger->error( "Invalid vec2 length/patch/stride values" );
+            m_logger->error( "Invalid vec3 length/patch/stride values" );
             return ProcessingResult{};
         }
 
         const auto format = proc.get_format().value_or( sgns::InputFormat::FLOAT32 );
         if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 )
         {
-            m_logger->error( "Vec2 supports FLOAT32/FLOAT16 formats only" );
+            m_logger->error( "Vec3 supports FLOAT32/FLOAT16 formats only" );
             return ProcessingResult{};
         }
 
-        const size_t expectedElements = static_cast<size_t>( vectorCount ) * 2;
+        const size_t expectedElements = static_cast<size_t>( vectorCount ) * 3;
         const size_t bytesPerElement = ( format == sgns::InputFormat::FLOAT16 ) ? sizeof( uint16_t ) :
             sizeof( float );
         const size_t expectedBytes = expectedElements * bytesPerElement;
-        if ( vec2Data.size() < expectedBytes )
+        if ( vec3Data.size() < expectedBytes )
         {
-            m_logger->error( "Vec2 input size {} bytes is smaller than expected {} bytes",
-                             vec2Data.size(),
+            m_logger->error( "Vec3 input size {} bytes is smaller than expected {} bytes",
+                             vec3Data.size(),
                              expectedBytes );
             return ProcessingResult{};
         }
@@ -229,19 +229,19 @@ namespace sgns::sgprocessing
         signalValues.resize( expectedElements );
         if ( format == sgns::InputFormat::FLOAT32 )
         {
-            const auto *src = reinterpret_cast<const float *>( vec2Data.data() );
+            const auto *src = reinterpret_cast<const float *>( vec3Data.data() );
             std::memcpy( signalValues.data(), src, expectedBytes );
         }
         else
         {
-            const auto *src = reinterpret_cast<const uint16_t *>( vec2Data.data() );
+            const auto *src = reinterpret_cast<const uint16_t *>( vec3Data.data() );
             for ( size_t i = 0; i < expectedElements; ++i )
             {
                 signalValues[i] = HalfToFloat( src[i] );
             }
         }
 
-        m_logger->info( "Processing vec2 input count: {} | patch: {} | stride: {}",
+        m_logger->info( "Processing vec3 input count: {} | patch: {} | stride: {}",
                         vectorCount,
                         patchVectors,
                         stride );
@@ -258,9 +258,9 @@ namespace sgns::sgprocessing
         for ( int start : starts )
         {
             std::vector<float> patch;
-            patch.resize( static_cast<size_t>( patchVectors ) * 2, 0.0f );
+            patch.resize( static_cast<size_t>( patchVectors ) * 3, 0.0f );
 
-            for ( int c = 0; c < 2; ++c )
+            for ( int c = 0; c < 3; ++c )
             {
                 for ( int i = 0; i < patchVectors; ++i )
                 {
@@ -269,13 +269,13 @@ namespace sgns::sgprocessing
                     {
                         break;
                     }
-                    const size_t srcIndex = static_cast<size_t>( vectorIndex * 2 + c );
+                    const size_t srcIndex = static_cast<size_t>( vectorIndex * 3 + c );
                     const size_t dstIndex = static_cast<size_t>( c * patchVectors + i );
                     patch[dstIndex] = signalValues[srcIndex];
                 }
             }
 
-            auto procresults = Process( patch, modelFileBytes, patchVectors * 2 );
+            auto procresults = Process( patch, modelFileBytes, patchVectors * 3 );
             const float *data = procresults->host<float>();
             size_t dataSize = procresults->elementSize() * sizeof( float );
 
@@ -342,11 +342,11 @@ namespace sgns::sgprocessing
             result.output_buffers->second.push_back( std::move( outputBytes ) );
         }
 
-        m_logger->info( "Vec2 processing complete" );
+        m_logger->info( "Vec3 processing complete" );
         return result;
     }
 
-    std::unique_ptr<MNN::Tensor> MNN_Vec2::Process( const std::vector<float> &input,
+    std::unique_ptr<MNN::Tensor> MNN_Vec3::Process( const std::vector<float> &input,
                                                    std::vector<uint8_t> &model,
                                                    int length )
     {
@@ -377,7 +377,7 @@ namespace sgns::sgprocessing
             return nullptr;
         }
 
-        const int vectorCount = length / 2;
+        const int vectorCount = length / 3;
         if ( vectorCount > 0 )
         {
             const auto dimType = inputTensor->getDimensionType();
@@ -386,22 +386,22 @@ namespace sgns::sgprocessing
             {
                 if ( dimType == MNN::Tensor::CAFFE )
                 {
-                    interpreter->resizeTensor( inputTensor, { 1, 2, vectorCount } );
+                    interpreter->resizeTensor( inputTensor, { 1, 3, vectorCount } );
                 }
                 else
                 {
-                    interpreter->resizeTensor( inputTensor, { 1, vectorCount, 2 } );
+                    interpreter->resizeTensor( inputTensor, { 1, vectorCount, 3 } );
                 }
             }
             else if ( dims == 4 )
             {
                 if ( dimType == MNN::Tensor::CAFFE )
                 {
-                    interpreter->resizeTensor( inputTensor, { 1, 2, vectorCount, 1 } );
+                    interpreter->resizeTensor( inputTensor, { 1, 3, vectorCount, 1 } );
                 }
                 else
                 {
-                    interpreter->resizeTensor( inputTensor, { 1, vectorCount, 1, 2 } );
+                    interpreter->resizeTensor( inputTensor, { 1, vectorCount, 1, 3 } );
                 }
             }
             else if ( dims == 2 )
