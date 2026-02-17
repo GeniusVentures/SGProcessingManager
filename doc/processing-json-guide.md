@@ -166,6 +166,21 @@ Optional:
 Notes:
 - This is used by the image processor and uses the current image splitter logic.
 
+### textureCube (implemented)
+Required:
+- `dimensions.width` (face width)
+- `dimensions.height` (face height)
+
+Optional:
+- `format` (`RGB8`, `RGBA8`, `FLOAT32`, or `FLOAT16`)
+- `cubeLayout` (string): `faces_in_order` (default) or `atlas_3x2`
+- texture2D chunk fields (same fields as texture2D) to enable chunking for RGB/RGBA inputs
+
+Notes:
+- `faces_in_order` expects 6 faces concatenated in order, each face is width x height.
+- `atlas_3x2` expects a 3x2 atlas of faces using the same width/height per face.
+- Chunking is ignored for float formats.
+
 ### string (implemented)
 Required:
 - No additional fields beyond `name`, `source_uri_param`, `type`.

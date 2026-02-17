@@ -82,6 +82,7 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( 8, [] { return std::make_unique<sgprocessing::MNN_Tensor>(); } );
         RegisterProcessorFactory( 9, [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
         RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
+        RegisterProcessorFactory( 15, [] { return std::make_unique<sgprocessing::MNN_TextureCube>(); } );
 
         //Parse Json
         //This will check required fields inherently.
@@ -493,7 +494,56 @@ namespace sgns::sgprocessing
                 case DataType::TEXTURE3_D_ARRAY:
                     break;
                 case DataType::TEXTURE_CUBE:
+                {
+                    if ( !input.get_dimensions() )
+                    {
+                        m_logger->error( "TextureCube type has no dimensions" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    auto dimensions = input.get_dimensions().value();
+                    if ( !dimensions.get_width() || !dimensions.get_height() )
+                    {
+                        m_logger->error( "TextureCube type missing width/height" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    const bool hasAnyChunk = dimensions.get_block_len() || dimensions.get_block_line_stride() ||
+                        dimensions.get_block_stride() || dimensions.get_chunk_line_stride() ||
+                        dimensions.get_chunk_offset() || dimensions.get_chunk_stride() ||
+                        dimensions.get_chunk_subchunk_height() || dimensions.get_chunk_subchunk_width() ||
+                        dimensions.get_chunk_count();
+
+                    if ( hasAnyChunk )
+                    {
+                        const bool hasAllChunk = dimensions.get_block_len() && dimensions.get_block_line_stride() &&
+                            dimensions.get_block_stride() && dimensions.get_chunk_line_stride() &&
+                            dimensions.get_chunk_offset() && dimensions.get_chunk_stride() &&
+                            dimensions.get_chunk_subchunk_height() && dimensions.get_chunk_subchunk_width() &&
+                            dimensions.get_chunk_count();
+                        if ( !hasAllChunk )
+                        {
+                            m_logger->error( "TextureCube chunking requires all texture2D chunk fields" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::RGB8 && format != sgns::InputFormat::RGBA8 &&
+                             format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 )
+                        {
+                            m_logger->error( "TextureCube supports RGB8/RGBA8/FLOAT32/FLOAT16 formats only" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->warn( "TextureCube input missing format; defaulting to RGB8" );
+                    }
                     break;
+                }
                 case DataType::VEC2:
                     break;
                 case DataType::VEC3:
