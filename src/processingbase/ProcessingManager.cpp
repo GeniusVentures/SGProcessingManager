@@ -81,6 +81,7 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( 6, [] { return std::make_unique<sgprocessing::MNN_Mat4>(); } );
         RegisterProcessorFactory( 16, [] { return std::make_unique<sgprocessing::MNN_Vec2>(); } );
         RegisterProcessorFactory( 17, [] { return std::make_unique<sgprocessing::MNN_Vec3>(); } );
+        RegisterProcessorFactory( 18, [] { return std::make_unique<sgprocessing::MNN_Vec4>(); } );
         RegisterProcessorFactory( 8, [] { return std::make_unique<sgprocessing::MNN_Tensor>(); } );
         RegisterProcessorFactory( 9, [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
         RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
@@ -593,7 +594,28 @@ namespace sgns::sgprocessing
                     break;
                 }
                 case DataType::VEC4:
+                {
+                    if ( !input.get_dimensions() || !input.get_dimensions()->get_width() )
+                    {
+                        m_logger->error( "Vec4 type missing width" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 )
+                        {
+                            m_logger->error( "Vec4 type supports FLOAT32/FLOAT16 formats only" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->warn( "Vec4 input missing format; defaulting to FLOAT32" );
+                    }
                     break;
+                }
                 default:
                     return outcome::failure( Error::PROCESS_INFO_MISSING );
             }

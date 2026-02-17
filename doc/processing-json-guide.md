@@ -248,12 +248,19 @@ Notes:
 - The processor treats `width` as the number of vectors, not the number of floats.
 - If patch fields are omitted, the processor defaults to a single window covering the full length.
 
-### vec4 (placeholder)
+### vec4 (implemented)
 Required:
-- TBD.
+- `dimensions.width` (vector count)
 
 Optional:
-- `format` where applicable.
+- `dimensions.block_len` (patch length, in vectors)
+- `dimensions.chunk_stride` (stride, in vectors)
+- `format` (`FLOAT32` or `FLOAT16`)
+
+Notes:
+- Input data is a contiguous array of vec4 values (4 floats per vector, X, Y, Z, and W components).
+- The processor treats `width` as the number of vectors, not the number of floats.
+- If patch fields are omitted, the processor defaults to a single window covering the full length.
 
 ### mat2 (implemented)
 Required:
