@@ -10,6 +10,7 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_mat2.cpp
 	processing_processor_mnn_mat3.cpp
 	processing_processor_mnn_mat4.cpp
+	processing_processor_mnn_tensor.cpp
 	processing_processor_mnn_texture1d.cpp
 	processing_processor_mnn_volume.cpp
 	../../include/processors/processing_processor.hpp
@@ -24,6 +25,7 @@ add_library(SGProcessors STATIC
 	../../include/processors/processing_processor_mnn_mat2.hpp
 	../../include/processors/processing_processor_mnn_mat3.hpp
 	../../include/processors/processing_processor_mnn_mat4.hpp
+	../../include/processors/processing_processor_mnn_tensor.hpp
 	../../include/processors/processing_processor_mnn_texture1d.hpp
 	../../include/processors/processing_processor_mnn_volume.hpp
 )

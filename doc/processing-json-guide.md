@@ -179,12 +179,19 @@ Optional:
 Notes:
 - If the input text parses as space-separated integers, they are treated as token ids.
 
-### tensor (placeholder)
+### tensor (implemented)
 Required:
-- TBD (not implemented).
+- `dimensions.width` (element count)
 
 Optional:
-- `dimensions` and `format` as needed by future tensor processor.
+- `dimensions.block_len` (patch length)
+- `dimensions.chunk_stride` (stride)
+- `format` (`FLOAT32`, `FLOAT16`, `INT32`, `INT16`, or `INT8`)
+
+Notes:
+- Tensor input is treated as a flat 1D buffer.
+- Integer inputs are converted to float internally for model inference.
+- If patch fields are omitted, the processor defaults to a single window covering the full length.
 
 ### bool (implemented)
 Required:

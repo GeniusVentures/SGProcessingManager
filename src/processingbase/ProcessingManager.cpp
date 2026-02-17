@@ -79,6 +79,7 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( 4, [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );
         RegisterProcessorFactory( 5, [] { return std::make_unique<sgprocessing::MNN_Mat3>(); } );
         RegisterProcessorFactory( 6, [] { return std::make_unique<sgprocessing::MNN_Mat4>(); } );
+        RegisterProcessorFactory( 8, [] { return std::make_unique<sgprocessing::MNN_Tensor>(); } );
         RegisterProcessorFactory( 9, [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
         RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
 
@@ -358,7 +359,30 @@ namespace sgns::sgprocessing
                     break;
                 }
                 case DataType::TENSOR:
+                {
+                    if ( !input.get_dimensions() || !input.get_dimensions()->get_width() )
+                    {
+                        m_logger->error( "Tensor type missing width" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 &&
+                             format != sgns::InputFormat::INT32 && format != sgns::InputFormat::INT16 &&
+                             format != sgns::InputFormat::INT8 )
+                        {
+                            m_logger->error( "Tensor type supports FLOAT32/FLOAT16/INT32/INT16/INT8 only" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->warn( "Tensor input missing format; defaulting to FLOAT32" );
+                    }
                     break;
+                }
                 case DataType::TEXTURE1_D:
                 {
                     if ( !input.get_dimensions() )
