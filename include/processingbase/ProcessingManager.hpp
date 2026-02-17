@@ -9,6 +9,7 @@
 #include <processors/processing_processor_mnn_volume.hpp>
 #include <processors/processing_processor_mnn_texture1d.hpp>
 #include <processors/processing_processor_mnn_mat2.hpp>
+#include <processors/processing_processor_mnn_mat3.hpp>
 #include <processors/processing_processor_mnn_bool.hpp>
 #include <processors/processing_processor_mnn_buffer.hpp>
 #include <processors/processing_processor_mnn_float.hpp>

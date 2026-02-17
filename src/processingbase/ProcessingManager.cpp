@@ -77,6 +77,7 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( 2, [] { return std::make_unique<sgprocessing::MNN_Float>(); } );
         RegisterProcessorFactory( 3, [] { return std::make_unique<sgprocessing::MNN_Int>(); } );
         RegisterProcessorFactory( 4, [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );
+        RegisterProcessorFactory( 5, [] { return std::make_unique<sgprocessing::MNN_Mat3>(); } );
         RegisterProcessorFactory( 9, [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
         RegisterProcessorFactory( 13, [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
 
@@ -260,7 +261,28 @@ namespace sgns::sgprocessing
                     break;
                 }
                 case DataType::MAT3:
+                {
+                    if ( !input.get_dimensions() || !input.get_dimensions()->get_width() )
+                    {
+                        m_logger->error( "Mat3 type missing width" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 )
+                        {
+                            m_logger->error( "Mat3 type supports FLOAT32/FLOAT16 formats only" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->warn( "Mat3 input missing format; defaulting to FLOAT32" );
+                    }
                     break;
+                }
                 case DataType::MAT4:
                     break;
                 case DataType::STRING:

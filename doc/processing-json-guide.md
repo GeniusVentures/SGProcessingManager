@@ -219,7 +219,21 @@ Notes:
 - The processor treats `width` as the number of matrices, not the number of floats.
 - If patch fields are omitted, the processor defaults to a single window covering the full length.
 
-### mat3, mat4 (placeholder)
+### mat3 (implemented)
+Required:
+- `dimensions.width` (matrix count)
+
+Optional:
+- `dimensions.block_len` (patch length, in matrices)
+- `dimensions.chunk_stride` (stride, in matrices)
+- `format` (`FLOAT32` or `FLOAT16`)
+
+Notes:
+- Input data is a contiguous array of mat3 values in row-major order (9 floats per matrix).
+- The processor treats `width` as the number of matrices, not the number of floats.
+- If patch fields are omitted, the processor defaults to a single window covering the full length.
+
+### mat4 (placeholder)
 Required:
 - TBD.
 
