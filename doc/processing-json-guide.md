@@ -220,7 +220,21 @@ Optional:
 Notes:
 - A scalar bool is represented by length 1.
 
-### vec2, vec3, vec4 (placeholder)
+### vec2 (implemented)
+Required:
+- `dimensions.width` (vector count)
+
+Optional:
+- `dimensions.block_len` (patch length, in vectors)
+- `dimensions.chunk_stride` (stride, in vectors)
+- `format` (`FLOAT32` or `FLOAT16`)
+
+Notes:
+- Input data is a contiguous array of vec2 values (2 floats per vector, X and Y components).
+- The processor treats `width` as the number of vectors, not the number of floats.
+- If patch fields are omitted, the processor defaults to a single window covering the full length.
+
+### vec3, vec4 (placeholder)
 Required:
 - TBD.
 

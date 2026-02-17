@@ -11,6 +11,7 @@
 #include <processors/processing_processor_mnn_mat2.hpp>
 #include <processors/processing_processor_mnn_mat3.hpp>
 #include <processors/processing_processor_mnn_mat4.hpp>
+#include <processors/processing_processor_mnn_vec2.hpp>
 #include <processors/processing_processor_mnn_tensor.hpp>
 #include <processors/processing_processor_mnn_texturecube.hpp>
 #include <processors/processing_processor_mnn_bool.hpp>
