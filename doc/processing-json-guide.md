@@ -205,7 +205,21 @@ Required:
 Optional:
 - `format` where applicable.
 
-### mat2, mat3, mat4 (placeholder)
+### mat2 (implemented)
+Required:
+- `dimensions.width` (matrix count)
+
+Optional:
+- `dimensions.block_len` (patch length, in matrices)
+- `dimensions.chunk_stride` (stride, in matrices)
+- `format` (`FLOAT32` or `FLOAT16`)
+
+Notes:
+- Input data is a contiguous array of mat2 values in row-major order (4 floats per matrix).
+- The processor treats `width` as the number of matrices, not the number of floats.
+- If patch fields are omitted, the processor defaults to a single window covering the full length.
+
+### mat3, mat4 (placeholder)
 Required:
 - TBD.
 

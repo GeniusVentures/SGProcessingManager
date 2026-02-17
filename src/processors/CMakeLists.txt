@@ -7,6 +7,7 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_buffer.cpp
 	processing_processor_mnn_float.cpp
 	processing_processor_mnn_int.cpp
+	processing_processor_mnn_mat2.cpp
 	processing_processor_mnn_texture1d.cpp
 	processing_processor_mnn_volume.cpp
 	../../include/processors/processing_processor.hpp
@@ -18,6 +19,7 @@ add_library(SGProcessors STATIC
 	../../include/processors/processing_processor_mnn_buffer.hpp
 	../../include/processors/processing_processor_mnn_float.hpp
 	../../include/processors/processing_processor_mnn_int.hpp
+	../../include/processors/processing_processor_mnn_mat2.hpp
 	../../include/processors/processing_processor_mnn_texture1d.hpp
 	../../include/processors/processing_processor_mnn_volume.hpp
 )
