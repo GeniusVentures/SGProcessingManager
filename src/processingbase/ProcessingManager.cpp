@@ -375,7 +375,8 @@ namespace sgns::sgprocessing
                         const auto format = input.get_format().value();
                         if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 &&
                              format != sgns::InputFormat::INT32 && format != sgns::InputFormat::INT16 &&
-                             format != sgns::InputFormat::INT8 )
+                             format != sgns::InputFormat::INT8 
+                             /*&& format != sgns::InputFormat::FP4_ULTRA*/ )
                         {
                             m_logger->error( "Tensor type supports FLOAT32/FLOAT16/INT32/INT16/INT8 only" );
                             return outcome::failure( Error::PROCESS_INFO_MISSING );
