@@ -23,5 +23,5 @@ namespace sgns {
     /**
      * Data format (e.g., RGBA8, FLOAT32)
      */
-    enum class InputFormat : int { FLOAT16, FLOAT32, INT16, INT32, INT8, RGB8, RGBA8 };
+    enum class InputFormat : int { FLOAT16, FLOAT32, FP4_ULTRA, INT16, INT32, INT8, RGB8, RGBA8 };
 }

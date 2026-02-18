@@ -386,6 +386,7 @@ namespace sgns {
     inline void from_json(const json & j, InputFormat & x) {
         if (j == "FLOAT16") x = InputFormat::FLOAT16;
         else if (j == "FLOAT32") x = InputFormat::FLOAT32;
+        else if (j == "FP4_ULTRA") x = InputFormat::FP4_ULTRA;
         else if (j == "INT16") x = InputFormat::INT16;
         else if (j == "INT32") x = InputFormat::INT32;
         else if (j == "INT8") x = InputFormat::INT8;
@@ -398,6 +399,7 @@ namespace sgns {
         switch (x) {
             case InputFormat::FLOAT16: j = "FLOAT16"; break;
             case InputFormat::FLOAT32: j = "FLOAT32"; break;
+            case InputFormat::FP4_ULTRA: j = "FP4_ULTRA"; break;
             case InputFormat::INT16: j = "INT16"; break;
             case InputFormat::INT32: j = "INT32"; break;
             case InputFormat::INT8: j = "INT8"; break;

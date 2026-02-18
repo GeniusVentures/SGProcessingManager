@@ -116,7 +116,7 @@
         "format": {
           "type": "string",
           "description": "Data format (e.g., RGBA8, FLOAT32)",
-          "enum": ["RGBA8", "RGB8", "FLOAT32", "FLOAT16", "INT32", "INT16", "INT8"]
+          "enum": ["RGBA8", "RGB8", "FLOAT32", "FLOAT16", "INT32", "INT16", "INT8", "FP4_ULTRA"]
         }
       }
     },
