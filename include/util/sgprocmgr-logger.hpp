@@ -18,6 +18,6 @@ namespace sgns::sgprocmanager
    * @return logger object
    */
     Logger createLogger( const std::string &tag, const std::string &basepath = "" );
-} // namespace sgns::sgprocmanager
+}
 
 #endif // SGPROCESSINGMANAGER_LOGGER_HPP
