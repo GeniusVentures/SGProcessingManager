@@ -35,7 +35,8 @@ target_include_directories(sgprocmanagertypes PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
 	$<BUILD_INTERFACE:${libp2p_INCLUDE_DIR}>
-)	
+	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/generated>
+)
 
 target_link_libraries(
 		sgprocmanagertypes

@@ -23,47 +23,6 @@ find_package(GTest CONFIG REQUIRED)
 include_directories(${GTest_INCLUDE_DIR})
 add_compile_definitions(CRYPTO3_CODEC_BASE58)
 
-#Absl
-set(absl_DIR "${_THIRDPARTY_BUILD_DIR}/grpc/lib/cmake/absl")
-set(utf8_range_DIR "${_THIRDPARTY_BUILD_DIR}/grpc/lib/cmake/utf8_range")
-#Protobuf
-if(NOT DEFINED Protobuf_DIR)
-    set(Protobuf_DIR "${_THIRDPARTY_BUILD_DIR}/grpc/lib/cmake/protobuf")
-endif()
-
-if(NOT DEFINED grpc_INCLUDE_DIR)
-    set(grpc_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/grpc/include")
-endif()
-
-if(NOT DEFINED Protobuf_INCLUDE_DIR)
-    set(Protobuf_INCLUDE_DIR "${grpc_INCLUDE_DIR}/google/protobuf")
-endif()
-
-find_package(Protobuf CONFIG REQUIRED)
-
-if(NOT DEFINED PROTOC_EXECUTABLE)
-    set(PROTOC_EXECUTABLE "${_THIRDPARTY_BUILD_DIR}/grpc/bin/protoc${CMAKE_EXECUTABLE_SUFFIX}")
-endif()
-
-set(Protobuf_PROTOC_EXECUTABLE ${PROTOC_EXECUTABLE} CACHE PATH "Initial cache" FORCE)
-
-if(NOT TARGET protobuf::protoc)
-    add_executable(protobuf::protoc IMPORTED)
-endif()
-
-if(EXISTS "${Protobuf_PROTOC_EXECUTABLE}")
-    set_target_properties(protobuf::protoc PROPERTIES
-        IMPORTED_LOCATION ${Protobuf_PROTOC_EXECUTABLE})
-endif()
-
-# protoc definition
-get_target_property(PROTOC_LOCATION protobuf::protoc IMPORTED_LOCATION)
-print("PROTOC_LOCATION: ${PROTOC_LOCATION}")
-
-if(Protobuf_FOUND)
-    message(STATUS "Protobuf version : ${Protobuf_VERSION}")
-    message(STATUS "Protobuf compiler : ${Protobuf_PROTOC_EXECUTABLE}")
-endif()
 #OpenSSL
 set(OpenSSL_DIR "${_THIRDPARTY_BUILD_DIR}/openssl/build/lib/cmake/OpenSSL" CACHE PATH "Path to OpenSSL install folder")
 set(OPENSSL_ROOT_DIR "${_THIRDPARTY_BUILD_DIR}/openssl/build" CACHE PATH "Path to OpenSSL install root folder")
@@ -83,6 +42,10 @@ if(NOT TARGET Vulkan::Vulkan)
 
     find_package(Vulkan REQUIRED)
 endif()
+
+# for compression, we need snappy
+set(Snappy_DIR "${_THIRDPARTY_BUILD_DIR}/snappy/lib/cmake/Snappy")
+find_package(Snappy CONFIG REQUIRED)
 
 # rocksdb
 set(RocksDB_DIR "${_THIRDPARTY_BUILD_DIR}/rocksdb/lib/cmake/rocksdb")
@@ -124,6 +87,55 @@ option(Boost_USE_STATIC_RUNTIME "Use static runtimes" ON)
 # header only libraries must not be added here
 find_package(Boost REQUIRED COMPONENTS date_time filesystem random regex system thread log log_setup program_options)
 include_directories(${Boost_INCLUDE_DIRS})
+
+# absl
+if(NOT DEFINED absl_DIR)
+    set(absl_DIR "${_THIRDPARTY_BUILD_DIR}/protobuf/lib/cmake/absl")
+endif()
+
+# utf8_range
+if(NOT DEFINED utf8_range_DIR)
+    set(utf8_range_DIR "${_THIRDPARTY_BUILD_DIR}/protobuf/lib/cmake/utf8_range")
+endif()
+
+# protobuf project
+if(NOT DEFINED Protobuf_DIR)
+    set(Protobuf_DIR "${_THIRDPARTY_BUILD_DIR}/protobuf/lib/cmake/protobuf")
+endif()
+
+if(NOT DEFINED grpc_INCLUDE_DIR)
+    set(grpc_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/grpc/include")
+endif()
+
+if(NOT DEFINED Protobuf_INCLUDE_DIR)
+    set(Protobuf_INCLUDE_DIR "${grpc_INCLUDE_DIR}/google/protobuf")
+endif()
+
+find_package(Protobuf CONFIG REQUIRED)
+
+if(NOT DEFINED PROTOC_EXECUTABLE)
+    set(PROTOC_EXECUTABLE "${_THIRDPARTY_BUILD_DIR}/protobuf/bin/protoc${CMAKE_EXECUTABLE_SUFFIX}")
+endif()
+
+set(Protobuf_PROTOC_EXECUTABLE ${PROTOC_EXECUTABLE} CACHE PATH "Initial cache" FORCE)
+
+if(NOT TARGET protobuf::protoc)
+    add_executable(protobuf::protoc IMPORTED)
+endif()
+
+if(EXISTS "${Protobuf_PROTOC_EXECUTABLE}")
+    set_target_properties(protobuf::protoc PROPERTIES
+            IMPORTED_LOCATION ${Protobuf_PROTOC_EXECUTABLE})
+endif()
+
+# protoc definition
+get_target_property(PROTOC_LOCATION protobuf::protoc IMPORTED_LOCATION)
+print("PROTOC_LOCATION: ${PROTOC_LOCATION}")
+
+if(Protobuf_FOUND)
+    message(STATUS "Protobuf version : ${Protobuf_VERSION}")
+    message(STATUS "Protobuf compiler : ${Protobuf_PROTOC_EXECUTABLE}")
+endif()
 
 # SQLiteModernCpp project
 set(SQLiteModernCpp_ROOT_DIR "${_THIRDPARTY_BUILD_DIR}/SQLiteModernCpp")
@@ -210,8 +222,8 @@ add_subdirectory(${PROJECT_ROOT}/src ${CMAKE_BINARY_DIR}/src)
 # endif()
 
 # Install Headers
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}" FILES_MATCHING PATTERN "*.h*")
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/generated/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}" FILES_MATCHING PATTERN "*.h*")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/generated/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/generated" FILES_MATCHING PATTERN "*.h*")
 # install(TARGETS ${PROJECT_NAME} EXPORT SGProcessingManagerTargets
         # LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         # ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
