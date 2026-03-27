@@ -2,10 +2,40 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_image.cpp
 	processing_processor_mnn_audio.cpp
 	processing_processor_mnn_ml.cpp
+	processing_processor_mnn_string.cpp
+	processing_processor_mnn_bool.cpp
+	processing_processor_mnn_buffer.cpp
+	processing_processor_mnn_float.cpp
+	processing_processor_mnn_int.cpp
+	processing_processor_mnn_mat2.cpp
+	processing_processor_mnn_mat3.cpp
+	processing_processor_mnn_mat4.cpp
+	processing_processor_mnn_vec2.cpp
+	processing_processor_mnn_vec3.cpp
+	processing_processor_mnn_vec4.cpp
+	processing_processor_mnn_tensor.cpp
+	processing_processor_mnn_texturecube.cpp
+	processing_processor_mnn_texture1d.cpp
+	processing_processor_mnn_volume.cpp
 	../../include/processors/processing_processor.hpp
 	../../include/processors/processing_processor_mnn_audio.hpp
 	../../include/processors/processing_processor_mnn_image.hpp
 	../../include/processors/processing_processor_mnn_ml.hpp
+	../../include/processors/processing_processor_mnn_string.hpp
+	../../include/processors/processing_processor_mnn_bool.hpp
+	../../include/processors/processing_processor_mnn_buffer.hpp
+	../../include/processors/processing_processor_mnn_float.hpp
+	../../include/processors/processing_processor_mnn_int.hpp
+	../../include/processors/processing_processor_mnn_mat2.hpp
+	../../include/processors/processing_processor_mnn_mat3.hpp
+	../../include/processors/processing_processor_mnn_mat4.hpp
+	../../include/processors/processing_processor_mnn_vec2.hpp
+	../../include/processors/processing_processor_mnn_vec3.hpp
+	../../include/processors/processing_processor_mnn_vec4.hpp
+	../../include/processors/processing_processor_mnn_tensor.hpp
+	../../include/processors/processing_processor_mnn_texturecube.hpp
+	../../include/processors/processing_processor_mnn_texture1d.hpp
+	../../include/processors/processing_processor_mnn_volume.hpp
 )
 
 

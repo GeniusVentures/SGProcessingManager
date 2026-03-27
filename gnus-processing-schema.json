@@ -116,7 +116,7 @@
         "format": {
           "type": "string",
           "description": "Data format (e.g., RGBA8, FLOAT32)",
-          "enum": ["RGBA8", "RGB8", "FLOAT32", "FLOAT16", "INT32", "INT16", "INT8"]
+          "enum": ["RGBA8", "RGB8", "FLOAT32", "FLOAT16", "INT32", "INT16", "INT8", "FP4_ULTRA"]
         }
       }
     },
@@ -453,7 +453,6 @@
       "type": "string",
       "enum": [
         "texture1D", "texture2D", "texture3D", "textureCube",
-        "texture1D_array", "texture2D_array", "texture3D_array",
         "tensor", "float", "int", "bool", "vec2", "vec3", "vec4",
         "mat2", "mat3", "mat4", "buffer", "string"
       ]

@@ -5,6 +5,21 @@
 #include <util/sgprocmgr-logger.hpp>
 #include <SGNSProcMain.hpp>
 #include <processors/processing_processor_mnn_image.hpp>
+#include <processors/processing_processor_mnn_string.hpp>
+#include <processors/processing_processor_mnn_volume.hpp>
+#include <processors/processing_processor_mnn_texture1d.hpp>
+#include <processors/processing_processor_mnn_mat2.hpp>
+#include <processors/processing_processor_mnn_mat3.hpp>
+#include <processors/processing_processor_mnn_mat4.hpp>
+#include <processors/processing_processor_mnn_vec2.hpp>
+#include <processors/processing_processor_mnn_vec3.hpp>
+#include <processors/processing_processor_mnn_vec4.hpp>
+#include <processors/processing_processor_mnn_tensor.hpp>
+#include <processors/processing_processor_mnn_texturecube.hpp>
+#include <processors/processing_processor_mnn_bool.hpp>
+#include <processors/processing_processor_mnn_buffer.hpp>
+#include <processors/processing_processor_mnn_float.hpp>
+#include <processors/processing_processor_mnn_int.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 
