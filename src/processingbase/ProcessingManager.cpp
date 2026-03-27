@@ -62,7 +62,7 @@ namespace sgns::sgprocessing
     outcome::result<std::shared_ptr<ProcessingManager>> ProcessingManager::Create( const std::string &jsondata )
     {
         auto instance = std::shared_ptr<ProcessingManager>( new ProcessingManager() );
-        OUTCOME_TRY( instance->Init( jsondata ) );
+        BOOST_OUTCOME_TRY( instance->Init( jsondata ) );
         return instance;
     }
 

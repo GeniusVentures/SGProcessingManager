@@ -14,8 +14,6 @@ namespace sgns::sgprocessing
         blockstride_( blockstride ), blocklinestride_( blocklinestride ), blocklen_( blocklen ), channels_( channels )
     {
         // Set inputImage and imageSize from the provided buffer
-        //inputImage = reinterpret_cast<const unsigned char*>(buffer.data());
-
         inputImage = reinterpret_cast<const unsigned char *>( buffer.data() );
         imageSize  = buffer.size();
         SplitImageData();
@@ -63,18 +61,12 @@ namespace sgns::sgprocessing
             uint32_t bufferoffset  = 0 + ( i / blocklen_ * blockstride_ );
             bufferoffset          -= ( blockstride_ + blocklinestride_ ) * rowsdone;
             bufferoffset          += rowsdone * ( blocklen_ * ( ( blockstride_ + blocklinestride_ ) / blockstride_ ) );
-            //std::cout << "buffer offset:  " << bufferoffset << std::endl;
             for ( uint64_t size = 0; size < blocklen_; size += blockstride_ )
             {
                 auto chunkData = inputImage + bufferoffset;
                 std::memcpy( chunkBuffer.data() + ( size ), chunkData, blockstride_ );
                 bufferoffset += blockstride_ + blocklinestride_;
             }
-            //std::string filename = "chunk_" + std::to_string(i) + ".png";
-            //int result = stbi_write_png(filename.c_str(), blockstride_ / 4, blocklen_ / blockstride_, 4, chunkBuffer.data(), blockstride_);
-            //if (!result) {
-            //    std::cerr << "Error writing PNG file: " << filename << "\n";
-            //}
             splitparts_.push_back( chunkBuffer );
             chunkWidthActual_.push_back( blockstride_ / channels_ );
             chunkHeightActual_.push_back( blocklen_ / blockstride_ );

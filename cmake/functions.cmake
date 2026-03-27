@@ -57,11 +57,11 @@ endfunction()
 ### sgnus_install should be called right after add_library(target)
 function(sgnus_install target)
     install(TARGETS ${target} EXPORT SGProcessingManagerTargets
-        LIBRARY       DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE       DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY       DESTINATION ${CMAKE_INSTALL_LIBDIR}/SGProcessingManager
+        ARCHIVE       DESTINATION ${CMAKE_INSTALL_LIBDIR}/SGProcessingManager
         RUNTIME       DESTINATION ${CMAKE_INSTALL_BINDIR}
-        INCLUDES      DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        INCLUDES      DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager
         FRAMEWORK     DESTINATION ${CMAKE_INSTALL_PREFIX}
         BUNDLE        DESTINATION ${CMAKE_INSTALL_BINDIR}
         )

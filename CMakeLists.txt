@@ -11,11 +11,12 @@ include(cmake/functions.cmake)
 
 set(libp2p_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/libp2p/include")
 
+
 #add_subdirectory(generated)
 add_subdirectory(src)
 
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/generated" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/generated/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/generated" FILES_MATCHING PATTERN "*.h*")
 
 set(SGProcessingManager_CONFIG_DESTINATION_DIR "lib/cmake/SGProcessingManager")
 install(EXPORT SGProcessingManagerTargets

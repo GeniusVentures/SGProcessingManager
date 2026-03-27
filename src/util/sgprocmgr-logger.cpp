@@ -62,4 +62,4 @@ namespace sgns::sgprocmanager
         }
         return logger;
     }
-} // namespace sgns::sgprocmanager
+}
