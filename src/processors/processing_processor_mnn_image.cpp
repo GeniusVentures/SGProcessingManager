@@ -58,9 +58,16 @@ namespace sgns::sgprocessing
             
             auto totalChunks = proc.get_dimensions().value().get_chunk_count().value();
             m_progress = 0.0f; // Reset progress at start
+            ResetCancellation();
             
             for ( int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx )
             {
+                if ( IsCancellationRequested() )
+                {
+                    m_logger->info( "MNN image processing cancelled at chunk {}/{}", chunkIdx, totalChunks );
+                    break;
+                }
+
                 m_logger->info( "Chunk IDX {} Total {}",
                                 chunkIdx,
                                 totalChunks );
@@ -84,8 +91,16 @@ namespace sgns::sgprocessing
                 
                 // Update progress: round to 2 decimal places
                 m_progress = std::round(((chunkIdx + 1) * 100.0f / totalChunks) * 100.0f) / 100.0f;
-                
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                // Keep a small pacing delay to reduce contention with UI/render GPU work.
+                for ( int sleepSlice = 0; sleepSlice < 10; ++sleepSlice )
+                {
+                    if ( IsCancellationRequested() )
+                    {
+                        break;
+                    }
+                    std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
+                }
             }
             return subTaskResultHash;
         //}

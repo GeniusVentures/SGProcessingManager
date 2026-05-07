@@ -7,6 +7,7 @@
 #define PROCESSING_PROCESSOR_HPP
 
 #include <cmath>
+#include <atomic>
 #include <memory>
 #include <vector>
 #include <SGNSProcMain.hpp>
@@ -39,8 +40,13 @@ namespace sgns::sgprocessing
         */
         virtual float GetProgress() const { return m_progress; }
 
+        void CancelProcessing() { m_cancelRequested = true; }
+        void ResetCancellation() { m_cancelRequested = false; }
+        bool IsCancellationRequested() const { return m_cancelRequested.load(); }
+
     protected:
         std::atomic<float> m_progress{0.0f}; // Progress percentage
+        std::atomic<bool> m_cancelRequested{false};
         sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "SGProcessor" );
     };
 }

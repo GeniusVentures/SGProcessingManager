@@ -28,9 +28,14 @@ namespace sgns::sgprocessing
 
             auto totalChunks = proc.get_dimensions().value().get_chunk_count().value();
             m_progress = 0.0f; // Reset progress at start
+            ResetCancellation();
             
             for ( int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx )
             {
+                if ( IsCancellationRequested() )
+                {
+                    break;
+                }
                 // Update progress after each chunk
                 m_progress = std::round(((chunkIdx + 1) * 100.0f / totalChunks) * 100.0f) / 100.0f;
             }

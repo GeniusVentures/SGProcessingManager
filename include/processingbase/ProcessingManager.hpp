@@ -7,6 +7,7 @@
 #include <processors/processing_processor_mnn_image.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
+#include <atomic>
 
 
 
@@ -28,6 +29,7 @@ namespace sgns::sgprocessing
             NO_PROCESSOR             = 4,
             MISSING_INPUT            = 5,
             INPUT_UNAVAIL            = 6,
+            PROCESS_CANCELLED        = 7,
         };
         static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 
@@ -66,6 +68,9 @@ namespace sgns::sgprocessing
             return 0.0f;
         }
 
+        void Cancel();
+        bool IsCancellationRequested() const { return m_cancelRequested.load(); }
+
     private:
         ProcessingManager() = default;
         outcome::result<void>       Init( const std::string &jsondata ); 
@@ -92,6 +97,7 @@ namespace sgns::sgprocessing
         std::unique_ptr<ProcessingProcessor> m_processor;
         std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>> m_processorFactories;
         std::unordered_map<std::string, size_t>                                        m_inputMap;
+        std::atomic<bool>                                                               m_cancelRequested{ false };
     };
 }
 

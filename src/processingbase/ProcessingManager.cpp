@@ -1,4 +1,4 @@
-#include <processingbase/ProcessingManager.hpp>
+#include "../../include/processingbase/ProcessingManager.hpp"
 #include <Generators.hpp>
 #include <datasplitter/ImageSplitter.hpp>
 #include "FileManager.hpp"
@@ -20,6 +20,8 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
             return "Input missing";
         case sgns::sgprocessing::ProcessingManager::Error::INPUT_UNAVAIL:
             return "Could not get input from source";
+        case sgns::sgprocessing::ProcessingManager::Error::PROCESS_CANCELLED:
+            return "Processing was cancelled";
     }
     return "Unknown error";
 }
@@ -27,7 +29,19 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
 namespace sgns::sgprocessing
 {
 
-    ProcessingManager::~ProcessingManager() {}
+    ProcessingManager::~ProcessingManager()
+    {
+        Cancel();
+    }
+
+    void ProcessingManager::Cancel()
+    {
+        m_cancelRequested = true;
+        if ( m_processor )
+        {
+            m_processor->CancelProcessing();
+        }
+    }
 
     outcome::result<std::shared_ptr<ProcessingManager>> ProcessingManager::Create( const std::string &jsondata )
     {
@@ -214,6 +228,11 @@ namespace sgns::sgprocessing
                                                                       std::vector<std::vector<uint8_t>> &chunkhashes,
                                                                       sgns::ModelNode                    &model )
     {
+        if ( IsCancellationRequested() )
+        {
+            return outcome::failure( Error::PROCESS_CANCELLED );
+        }
+
         //Get input index
         auto modelname = model.get_source().value();
         auto index     = GetInputIndex( modelname );
@@ -226,15 +245,35 @@ namespace sgns::sgprocessing
         {
             return maybe_buffers.error();
         }
+
+        if ( IsCancellationRequested() )
+        {
+            return outcome::failure( Error::PROCESS_CANCELLED );
+        }
+
         auto buffers = maybe_buffers.value();
         if (!SetProcessorByName(static_cast<int>(processing_.get_inputs()[index.value()].get_type())))
         {
             return outcome::failure( Error::NO_PROCESSOR );
         }
+
+        m_processor->ResetCancellation();
+        if ( IsCancellationRequested() )
+        {
+            m_processor->CancelProcessing();
+            return outcome::failure( Error::PROCESS_CANCELLED );
+        }
+
         auto process = m_processor->StartProcessing( chunkhashes,
                                                      processing_.get_inputs()[index.value()],
                                                      *buffers->second,
                                                      *buffers->first );
+
+        if ( IsCancellationRequested() )
+        {
+            return outcome::failure( Error::PROCESS_CANCELLED );
+        }
+
         return process;
     }
 
@@ -242,6 +281,11 @@ namespace sgns::sgprocessing
         std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
     ProcessingManager::GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, sgns::ModelNode &model )
     {
+        if ( IsCancellationRequested() )
+        {
+            return outcome::failure( Error::PROCESS_CANCELLED );
+        }
+
         auto modelname = model.get_source().value();
         auto index     = GetInputIndex( modelname );
         if ( !index )
@@ -273,6 +317,11 @@ namespace sgns::sgprocessing
         //Run IO
         ioc->reset();
         ioc->run();
+
+        if ( IsCancellationRequested() )
+        {
+            return outcome::failure( Error::PROCESS_CANCELLED );
+        }
 
         if ( mainbuffers == nullptr )
         {
@@ -312,6 +361,11 @@ namespace sgns::sgprocessing
             ioc,
             [this, results]( outcome::result<std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>> buffers )
             {
+                if ( IsCancellationRequested() )
+                {
+                    return;
+                }
+
                 if (buffers)
                 {
                     if ( results )
