@@ -666,7 +666,8 @@ namespace sgns::sgprocessing
         {
             return outcome::failure( Error::NO_PROCESSOR );
         }
-        const auto *parameters = processing_.get_parameters() ? &processing_.get_parameters().value() : nullptr;
+        auto parametersOpt = processing_.get_parameters();
+        const auto *parameters = parametersOpt ? &parametersOpt.value() : nullptr;
         auto processResult = m_processor->StartProcessing( chunkhashes,
                                    processing_.get_inputs()[index.value()],
                                    *buffers->second,
