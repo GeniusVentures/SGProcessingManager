@@ -75,7 +75,9 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( static_cast<int>(DataType::BOOL), [] { return std::make_unique<sgprocessing::MNN_Bool>(); } );
         RegisterProcessorFactory( static_cast<int>(DataType::BUFFER), [] { return std::make_unique<sgprocessing::MNN_Buffer>(); } );
         RegisterProcessorFactory( static_cast<int>(DataType::FLOAT), [] { return std::make_unique<sgprocessing::MNN_Float>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::FP4_ULTRA), [] { return std::make_unique<sgprocessing::MNN_FP4Ultra>(); } );
         RegisterProcessorFactory( static_cast<int>(DataType::INT), [] { return std::make_unique<sgprocessing::MNN_Int>(); } );
+        RegisterProcessorFactory( static_cast<int>(DataType::LLM), [] { return std::make_unique<sgprocessing::MNN_LLM>(); } );
         RegisterProcessorFactory( static_cast<int>(DataType::MAT2), [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );
         RegisterProcessorFactory( static_cast<int>(DataType::MAT3), [] { return std::make_unique<sgprocessing::MNN_Mat3>(); } );
         RegisterProcessorFactory( static_cast<int>(DataType::MAT4), [] { return std::make_unique<sgprocessing::MNN_Mat4>(); } );
@@ -375,10 +377,10 @@ namespace sgns::sgprocessing
                         const auto format = input.get_format().value();
                         if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 &&
                              format != sgns::InputFormat::INT32 && format != sgns::InputFormat::INT16 &&
-                             format != sgns::InputFormat::INT8 
-                             /*&& format != sgns::InputFormat::FP4_ULTRA*/ )
+                             format != sgns::InputFormat::INT8 &&
+                             format != sgns::InputFormat::FP4_ULTRA )
                         {
-                            m_logger->error( "Tensor type supports FLOAT32/FLOAT16/INT32/INT16/INT8 only" );
+                            m_logger->error( "Tensor type supports FLOAT32/FLOAT16/INT32/INT16/INT8/FP4_ULTRA only" );
                             return outcome::failure( Error::PROCESS_INFO_MISSING );
                         }
                     }
@@ -539,6 +541,34 @@ namespace sgns::sgprocessing
                     else
                     {
                         m_logger->warn( "TextureCube input missing format; defaulting to RGB8" );
+                    }
+                    break;
+                }
+                case DataType::FP4_ULTRA:
+                {
+                    if ( !input.get_dimensions() || !input.get_dimensions()->get_width() )
+                    {
+                        m_logger->error( "FP4_ULTRA type missing width" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+
+                    if ( input.get_format() )
+                    {
+                        const auto format = input.get_format().value();
+                        if ( format != sgns::InputFormat::FP4_ULTRA )
+                        {
+                            m_logger->error( "FP4_ULTRA data type requires FP4_ULTRA format" );
+                            return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        }
+                    }
+                    break;
+                }
+                case DataType::LLM:
+                {
+                    // LLM processor requires parameters for generation config
+                    if ( !processing_.get_parameters() )
+                    {
+                        m_logger->warn( "LLM input missing parameters; using defaults (maxTokens=512, temperature=0.7)" );
                     }
                     break;
                 }

@@ -6,7 +6,9 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_bool.cpp
 	processing_processor_mnn_buffer.cpp
 	processing_processor_mnn_float.cpp
+	processing_processor_mnn_fp4ultra.cpp
 	processing_processor_mnn_int.cpp
+	processing_processor_mnn_llm.cpp
 	processing_processor_mnn_mat2.cpp
 	processing_processor_mnn_mat3.cpp
 	processing_processor_mnn_mat4.cpp
@@ -19,7 +21,9 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_volume.cpp
 	../../include/processors/processing_processor.hpp
 	../../include/processors/processing_processor_mnn_audio.hpp
+	../../include/processors/processing_processor_mnn_fp4ultra.hpp
 	../../include/processors/processing_processor_mnn_image.hpp
+	../../include/processors/processing_processor_mnn_llm.hpp
 	../../include/processors/processing_processor_mnn_ml.hpp
 	../../include/processors/processing_processor_mnn_string.hpp
 	../../include/processors/processing_processor_mnn_bool.hpp

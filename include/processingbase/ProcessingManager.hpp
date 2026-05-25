@@ -19,7 +19,9 @@
 #include <processors/processing_processor_mnn_bool.hpp>
 #include <processors/processing_processor_mnn_buffer.hpp>
 #include <processors/processing_processor_mnn_float.hpp>
+#include <processors/processing_processor_mnn_fp4ultra.hpp>
 #include <processors/processing_processor_mnn_int.hpp>
+#include <processors/processing_processor_mnn_llm.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 
