@@ -4,6 +4,7 @@
 #include <outcome/sgprocmgr-outcome.hpp>
 #include <util/sgprocmgr-logger.hpp>
 #include <SGNSProcMain.hpp>
+
 #include <processors/processing_processor_mnn_image.hpp>
 #include <processors/processing_processor_mnn_string.hpp>
 #include <processors/processing_processor_mnn_volume.hpp>
@@ -22,14 +23,12 @@
 #include <processors/processing_processor_mnn_int.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
-
-
+#include <Generators.hpp>
 
 namespace sgns::sgprocessing
 {
     // Move enum to namespace level
     using ProcessingProcessor = sgns::sgprocessing::ProcessingProcessor;
-
 
     class ProcessingManager
     {
@@ -46,17 +45,17 @@ namespace sgns::sgprocessing
         };
         static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 
-        outcome::result<uint64_t> ParseBlockSize();
-        outcome::result<void>        CheckProcessValidity();
+        outcome::result<uint64_t>             ParseBlockSize();
+        outcome::result<void>                 CheckProcessValidity();
         outcome::result<std::vector<uint8_t>> Process( std::shared_ptr<boost::asio::io_context> ioc,
                                                        std::vector<std::vector<uint8_t>>       &chunkhashes,
-                                                       sgns::ModelNode                          &model );
+                                                       sgns::ModelNode                         &model );
 
         /** Register an available processor
         * @param name - Name of processor
         * @param factoryFunction - Pointer to processor
         */
-        void RegisterProcessorFactory( const int                                    &name,
+        void RegisterProcessorFactory( const int                                            &name,
                                        std::function<std::unique_ptr<ProcessingProcessor>()> factoryFunction )
         {
             m_processorFactories[name] = std::move( factoryFunction );
@@ -75,20 +74,53 @@ namespace sgns::sgprocessing
         */
         float GetProgress() const
         {
-            if (m_processor) {
+            if ( m_processor )
+            {
                 return m_processor->GetProgress();
             }
             return 0.0f;
         }
 
+        /**
+         * @brief       Checks whether a processing json is valid by attempting to create a ProcessingManager instance with it
+         * @param[in]   jsondata JSON string containing the processing data to validate.
+         * @return      True if the processing is valid and a ProcessingManager instance can be created, false otherwise.
+         */
+        static bool IsProcessingValid( const std::string &jsondata )
+        {
+            auto result = Create( jsondata );
+            return result.has_value();
+        }
+
+        /**
+         * @brief       Checks if a json encoded data contains a valid ModelNode structure by attempting to parse it.
+         * @param[in]   jsondata JSON string containing the ModelNode data to validate.
+         * @return      True if the json can be parsed into a ModelNode, false otherwise.
+         */
+        static bool IsProcessingModelValid( const std::string &jsondata )
+        {
+            sgns::ModelNode model;
+            try
+            {
+                auto data = nlohmann::json::parse( jsondata );
+                sgns::from_json( data, model );
+            }
+            catch ( const nlohmann::json::exception &e )
+            {
+                return false;
+            }
+            return true;
+        }
+
     private:
         ProcessingManager() = default;
-        outcome::result<void>       Init( const std::string &jsondata ); 
-        outcome::result<std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
+        outcome::result<void> Init( const std::string &jsondata );
+        outcome::result<
+            std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
              GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, sgns::ModelNode &model );
         void GetSubCidForProc( std::shared_ptr<boost::asio::io_context> ioc,
-                                                  std::string                              url,
-                                                  std::shared_ptr<std::vector<char>>       results );
+                               std::string                              url,
+                               std::shared_ptr<std::vector<char>>       results );
 
         bool SetProcessorByName( const int &name )
         {
@@ -101,9 +133,9 @@ namespace sgns::sgprocessing
             std::cerr << "Unknown processor name: " << name << std::endl;
             return false;
         }
-        
-        sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "SGProcessingManager" );
-        sgns::SgnsProcessing        processing_;
+
+        sgns::sgprocmanager::Logger          m_logger = sgns::sgprocmanager::createLogger( "SGProcessingManager" );
+        sgns::SgnsProcessing                 processing_;
         std::unique_ptr<ProcessingProcessor> m_processor;
         std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>> m_processorFactories;
         std::unordered_map<std::string, size_t>                                        m_inputMap;
