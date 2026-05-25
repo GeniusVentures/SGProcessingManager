@@ -414,7 +414,9 @@ namespace sgns {
             {"bool", DataType::BOOL},
             {"buffer", DataType::BUFFER},
             {"float", DataType::FLOAT},
+            {"fp4_ultra", DataType::FP4_ULTRA},
             {"int", DataType::INT},
+            {"llm", DataType::LLM},
             {"mat2", DataType::MAT2},
             {"mat3", DataType::MAT3},
             {"mat4", DataType::MAT4},
@@ -439,7 +441,9 @@ namespace sgns {
             case DataType::BOOL: j = "bool"; break;
             case DataType::BUFFER: j = "buffer"; break;
             case DataType::FLOAT: j = "float"; break;
+            case DataType::FP4_ULTRA: j = "fp4_ultra"; break;
             case DataType::INT: j = "int"; break;
+            case DataType::LLM: j = "llm"; break;
             case DataType::MAT2: j = "mat2"; break;
             case DataType::MAT3: j = "mat3"; break;
             case DataType::MAT4: j = "mat4"; break;

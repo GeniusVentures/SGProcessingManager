@@ -16,5 +16,5 @@
 namespace sgns {
     using nlohmann::json;
 
-    enum class DataType : int { BOOL, BUFFER, FLOAT, INT, MAT2, MAT3, MAT4, STRING, TENSOR, TEXTURE1_D, TEXTURE2_D, TEXTURE3_D, TEXTURE_CUBE, VEC2, VEC3, VEC4 };
+    enum class DataType : int { BOOL, BUFFER, FLOAT, FP4_ULTRA, INT, LLM, MAT2, MAT3, MAT4, STRING, TENSOR, TEXTURE1_D, TEXTURE2_D, TEXTURE3_D, TEXTURE_CUBE, VEC2, VEC3, VEC4 };
 }
