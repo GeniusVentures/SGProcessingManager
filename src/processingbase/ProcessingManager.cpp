@@ -4,7 +4,6 @@
 #include "FileManager.hpp"
 #include "URLStringUtil.h"
 
-
 OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
 {
     switch ( e )
@@ -70,22 +69,38 @@ namespace sgns::sgprocessing
     {
         m_processor = nullptr;
         //Register Processors
-        RegisterProcessorFactory( static_cast<int>(DataType::TEXTURE2_D), [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::STRING), [] { return std::make_unique<sgprocessing::MNN_String>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::BOOL), [] { return std::make_unique<sgprocessing::MNN_Bool>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::BUFFER), [] { return std::make_unique<sgprocessing::MNN_Buffer>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::FLOAT), [] { return std::make_unique<sgprocessing::MNN_Float>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::INT), [] { return std::make_unique<sgprocessing::MNN_Int>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::MAT2), [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::MAT3), [] { return std::make_unique<sgprocessing::MNN_Mat3>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::MAT4), [] { return std::make_unique<sgprocessing::MNN_Mat4>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::VEC2), [] { return std::make_unique<sgprocessing::MNN_Vec2>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::VEC3), [] { return std::make_unique<sgprocessing::MNN_Vec3>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::VEC4), [] { return std::make_unique<sgprocessing::MNN_Vec4>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::TENSOR), [] { return std::make_unique<sgprocessing::MNN_Tensor>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::TEXTURE1_D), [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::TEXTURE3_D), [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
-        RegisterProcessorFactory( static_cast<int>(DataType::TEXTURE_CUBE), [] { return std::make_unique<sgprocessing::MNN_TextureCube>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::TEXTURE2_D ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Image>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::STRING ),
+                                  [] { return std::make_unique<sgprocessing::MNN_String>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::BOOL ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Bool>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::BUFFER ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Buffer>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::FLOAT ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Float>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::INT ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Int>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::MAT2 ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::MAT3 ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Mat3>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::MAT4 ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Mat4>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::VEC2 ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Vec2>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::VEC3 ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Vec3>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::VEC4 ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Vec4>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::TENSOR ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Tensor>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::TEXTURE1_D ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Texture1D>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::TEXTURE3_D ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
+        RegisterProcessorFactory( static_cast<int>( DataType::TEXTURE_CUBE ),
+                                  [] { return std::make_unique<sgprocessing::MNN_TextureCube>(); } );
 
         //Parse Json
         //This will check required fields inherently.
@@ -108,17 +123,17 @@ namespace sgns::sgprocessing
         {
             std::string sourceKey = "input:" + inputs[i].get_name();
             m_inputMap[sourceKey] = i;
-        } 
+        }
         // Successful parse
         return outcome::success();
     }
 
     outcome::result<void> ProcessingManager::CheckProcessValidity()
     {
-        for (auto& pass : processing_.get_passes())
+        for ( auto &pass : processing_.get_passes() )
         {
             //Check optional params if needed
-            switch(pass.get_type())
+            switch ( pass.get_type() )
             {
                 case PassType::INFERENCE:
                 {
@@ -141,13 +156,11 @@ namespace sgns::sgprocessing
                     m_logger->error( "Somehow pass has no type" );
                     return outcome::failure( Error::PROCESS_INFO_MISSING );
             }
-            
-            
         }
         //Check Input optionals
-        for (auto& input : processing_.get_inputs())
+        for ( auto &input : processing_.get_inputs() )
         {
-            switch (input.get_type())
+            switch ( input.get_type() )
             {
                 case DataType::BOOL:
                 {
@@ -320,8 +333,9 @@ namespace sgns::sgprocessing
                         return outcome::failure( Error::PROCESS_INFO_MISSING );
                     }
 
-                    const auto params = processing_.get_parameters().value();
-                    auto find_param = [&params]( const std::string &name ) -> const sgns::Parameter * {
+                    const auto params     = processing_.get_parameters().value();
+                    auto       find_param = [&params]( const std::string &name ) -> const sgns::Parameter *
+                    {
                         for ( const auto &param : params )
                         {
                             if ( param.get_name() == name )
@@ -375,7 +389,7 @@ namespace sgns::sgprocessing
                         const auto format = input.get_format().value();
                         if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 &&
                              format != sgns::InputFormat::INT32 && format != sgns::InputFormat::INT16 &&
-                             format != sgns::InputFormat::INT8 
+                             format != sgns::InputFormat::INT8
                              /*&& format != sgns::InputFormat::FP4_ULTRA*/ )
                         {
                             m_logger->error( "Tensor type supports FLOAT32/FLOAT16/INT32/INT16/INT8 only" );
@@ -429,8 +443,11 @@ namespace sgns::sgprocessing
                     {
                         auto dimensions = input.get_dimensions().value();
                         //We need these dimensions
-                        if ( !dimensions.get_block_len() || !dimensions.get_block_line_stride() || !dimensions.get_width() || !dimensions.get_height() || !dimensions.get_block_stride() || !dimensions.get_chunk_line_stride() || 
-                            !dimensions.get_chunk_offset() || !dimensions.get_chunk_stride() || !dimensions.get_chunk_subchunk_height() || !dimensions.get_chunk_subchunk_width() )
+                        if ( !dimensions.get_block_len() || !dimensions.get_block_line_stride() ||
+                             !dimensions.get_width() || !dimensions.get_height() || !dimensions.get_block_stride() ||
+                             !dimensions.get_chunk_line_stride() || !dimensions.get_chunk_offset() ||
+                             !dimensions.get_chunk_stride() || !dimensions.get_chunk_subchunk_height() ||
+                             !dimensions.get_chunk_subchunk_width() )
                         {
                             m_logger->error( "Texture2d type missing dimension values" );
                             return outcome::failure( Error::PROCESS_INFO_MISSING );
@@ -445,12 +462,12 @@ namespace sgns::sgprocessing
                             return outcome::failure( Error::INVALID_BLOCK_PARAMETERS );
                         }
 
-                        if (!dimensions.get_chunk_count())
+                        if ( !dimensions.get_chunk_count() )
                         {
                             m_logger->error( "Texture2d type has no chunk count" );
                             return outcome::failure( Error::PROCESS_INFO_MISSING );
                         }
-                        
+
                         break;
                     }
                 }
@@ -507,18 +524,18 @@ namespace sgns::sgprocessing
                     }
 
                     const bool hasAnyChunk = dimensions.get_block_len() || dimensions.get_block_line_stride() ||
-                        dimensions.get_block_stride() || dimensions.get_chunk_line_stride() ||
-                        dimensions.get_chunk_offset() || dimensions.get_chunk_stride() ||
-                        dimensions.get_chunk_subchunk_height() || dimensions.get_chunk_subchunk_width() ||
-                        dimensions.get_chunk_count();
+                                             dimensions.get_block_stride() || dimensions.get_chunk_line_stride() ||
+                                             dimensions.get_chunk_offset() || dimensions.get_chunk_stride() ||
+                                             dimensions.get_chunk_subchunk_height() ||
+                                             dimensions.get_chunk_subchunk_width() || dimensions.get_chunk_count();
 
                     if ( hasAnyChunk )
                     {
                         const bool hasAllChunk = dimensions.get_block_len() && dimensions.get_block_line_stride() &&
-                            dimensions.get_block_stride() && dimensions.get_chunk_line_stride() &&
-                            dimensions.get_chunk_offset() && dimensions.get_chunk_stride() &&
-                            dimensions.get_chunk_subchunk_height() && dimensions.get_chunk_subchunk_width() &&
-                            dimensions.get_chunk_count();
+                                                 dimensions.get_block_stride() && dimensions.get_chunk_line_stride() &&
+                                                 dimensions.get_chunk_offset() && dimensions.get_chunk_stride() &&
+                                                 dimensions.get_chunk_subchunk_height() &&
+                                                 dimensions.get_chunk_subchunk_width() && dimensions.get_chunk_count();
                         if ( !hasAllChunk )
                         {
                             m_logger->error( "TextureCube chunking requires all texture2D chunk fields" );
@@ -616,9 +633,8 @@ namespace sgns::sgprocessing
             }
         }
         //Check Output optionals. Anything to do here?
-        for (auto& output : processing_.get_outputs())
+        for ( auto &output : processing_.get_outputs() )
         {
-
         }
 
         return outcome::success();
@@ -634,7 +650,7 @@ namespace sgns::sgprocessing
             for ( auto &model : input_nodes )
             {
                 auto index = GetInputIndex( model.get_source().value() );
-                if (!index)
+                if ( !index )
                 {
                     return index.error();
                 }
@@ -647,39 +663,39 @@ namespace sgns::sgprocessing
 
     outcome::result<std::vector<uint8_t>> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc,
                                                                       std::vector<std::vector<uint8_t>> &chunkhashes,
-                                                                      sgns::ModelNode                    &model )
+                                                                      sgns::ModelNode                   &model )
     {
         //Get input index
         auto modelname = model.get_source().value();
         auto index     = GetInputIndex( modelname );
-        if (!index)
+        if ( !index )
         {
             return outcome::failure( Error::MISSING_INPUT );
         }
         auto maybe_buffers = GetCidForProc( ioc, model );
-        if (!maybe_buffers)
+        if ( !maybe_buffers )
         {
             return maybe_buffers.error();
         }
         auto buffers = maybe_buffers.value();
-        if (!SetProcessorByName(static_cast<int>(processing_.get_inputs()[index.value()].get_type())))
+        if ( !SetProcessorByName( static_cast<int>( processing_.get_inputs()[index.value()].get_type() ) ) )
         {
             return outcome::failure( Error::NO_PROCESSOR );
         }
-        const auto maybeParameters = processing_.get_parameters();
-        const auto *parameters = maybeParameters ? &maybeParameters.value() : nullptr;
+        const auto  maybeParameters = processing_.get_parameters();
+        const auto *parameters      = maybeParameters ? &maybeParameters.value() : nullptr;
 
         auto processResult = m_processor->StartProcessing( chunkhashes,
-                                   processing_.get_inputs()[index.value()],
-                                   *buffers->second,
-                                   *buffers->first,
-                                   parameters );
+                                                           processing_.get_inputs()[index.value()],
+                                                           *buffers->second,
+                                                           *buffers->first,
+                                                           parameters );
 
         const auto &outputs = processing_.get_outputs();
         if ( processResult.output_buffers && !outputs.empty() )
         {
             const auto &bufferNames = processResult.output_buffers->first;
-            const auto &bufferData = processResult.output_buffers->second;
+            const auto &bufferData  = processResult.output_buffers->second;
 
             if ( !bufferData.empty() )
             {
@@ -688,7 +704,7 @@ namespace sgns::sgprocessing
 
                 for ( size_t outputIndex = 0; outputIndex < outputs.size(); ++outputIndex )
                 {
-                    const auto &output = outputs[outputIndex];
+                    const auto &output    = outputs[outputIndex];
                     const auto &outputUrl = output.get_source_uri_param();
                     if ( outputUrl.empty() )
                     {
@@ -707,7 +723,7 @@ namespace sgns::sgprocessing
                     }
 
                     const size_t nameIndex = ( bufferNames.size() == outputs.size() ) ? outputIndex : 0;
-                    std::string outputFileName;
+                    std::string  outputFileName;
                     if ( !UrlHasExtension( outputUrl ) )
                     {
                         std::string baseName;
@@ -730,20 +746,23 @@ namespace sgns::sgprocessing
                         }
                     }
 
-                    auto saveBuffers = std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
+                    auto saveBuffers =
+                        std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
                     saveBuffers->first.push_back( outputFileName );
                     saveBuffers->second.push_back( bufferData[dataIndex] );
 
-                    FileManager::GetInstance().SaveASync(
-                        outputUrl,
-                        outcome::success( saveBuffers ),
-                        ioc,
-                        [this, outputUrl]( const FileManager::ResultType &result ) {
-                            if ( !result )
-                            {
-                                m_logger->error( "Failed to save output to {}: {}", outputUrl, result.error().message() );
-                            }
-                        } );
+                    FileManager::GetInstance().SaveASync( outputUrl,
+                                                          outcome::success( saveBuffers ),
+                                                          ioc,
+                                                          [this, outputUrl]( const FileManager::ResultType &result )
+                                                          {
+                                                              if ( !result )
+                                                              {
+                                                                  m_logger->error( "Failed to save output to {}: {}",
+                                                                                   outputUrl,
+                                                                                   result.error().message() );
+                                                              }
+                                                          } );
                     hasSaves = true;
                 }
 
@@ -758,8 +777,7 @@ namespace sgns::sgprocessing
         return processResult.hash;
     }
 
-    outcome::result <
-        std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
+    outcome::result<std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
     ProcessingManager::GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, sgns::ModelNode &model )
     {
         auto modelname = model.get_source().value();
@@ -822,17 +840,19 @@ namespace sgns::sgprocessing
     }
 
     void ProcessingManager::GetSubCidForProc( std::shared_ptr<boost::asio::io_context> ioc,
-                                               std::string                              url,
-                                               std::shared_ptr<std::vector<char>>       results )
+                                              std::string                              url,
+                                              std::shared_ptr<std::vector<char>>       results )
     {
         auto modeldata = FileManager::GetInstance().LoadASync(
             url,
             false,
             false,
             ioc,
-            [this, results]( outcome::result<std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>> buffers )
+            [this, results](
+                outcome::result<std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>>
+                    buffers )
             {
-                if (buffers)
+                if ( buffers )
                 {
                     if ( results )
                     {
@@ -845,8 +865,34 @@ namespace sgns::sgprocessing
                 {
                     m_logger->error( "Failed to obtain processing source: {}", buffers.error().message() );
                 }
-
             },
             "file" );
+    }
+
+    bool ProcessingManager::IsProcessingValid( const std::string &jsondata )
+    {
+        auto result = Create( jsondata );
+        return result.has_value();
+    }
+
+    bool ProcessingManager::IsProcessingModelValid( const std::string &jsondata )
+    {
+        auto result = GetModelNodeFromJson( jsondata );
+        return result.has_value();
+    }
+
+    outcome::result<sgns::ModelNode> ProcessingManager::GetModelNodeFromJson( const std::string &jsondata )
+    {
+        sgns::ModelNode model;
+        try
+        {
+            auto data = nlohmann::json::parse( jsondata );
+            sgns::from_json( data, model );
+        }
+        catch ( const nlohmann::json::exception &e )
+        {
+            return outcome::failure( Error::INVALID_JSON );
+        }
+        return model;
     }
 }

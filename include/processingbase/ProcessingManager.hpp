@@ -86,31 +86,20 @@ namespace sgns::sgprocessing
          * @param[in]   jsondata JSON string containing the processing data to validate.
          * @return      True if the processing is valid and a ProcessingManager instance can be created, false otherwise.
          */
-        static bool IsProcessingValid( const std::string &jsondata )
-        {
-            auto result = Create( jsondata );
-            return result.has_value();
-        }
-
+        static bool IsProcessingValid( const std::string &jsondata );
         /**
          * @brief       Checks if a json encoded data contains a valid ModelNode structure by attempting to parse it.
          * @param[in]   jsondata JSON string containing the ModelNode data to validate.
          * @return      True if the json can be parsed into a ModelNode, false otherwise.
          */
-        static bool IsProcessingModelValid( const std::string &jsondata )
-        {
-            sgns::ModelNode model;
-            try
-            {
-                auto data = nlohmann::json::parse( jsondata );
-                sgns::from_json( data, model );
-            }
-            catch ( const nlohmann::json::exception &e )
-            {
-                return false;
-            }
-            return true;
-        }
+        static bool IsProcessingModelValid( const std::string &jsondata );
+
+        /**
+         * @brief       Gets the ModelNode structure parsed from a json string.
+         * @param[in]   jsondata JSON string containing the ModelNode data to parse
+         * @return      The ModelNode parsed from the json string, or an error if the json is invalid or the ModelNode structure cannot be parsed.
+         */
+        static outcome::result<sgns::ModelNode> GetModelNodeFromJson( const std::string &jsondata );
 
     private:
         ProcessingManager() = default;
