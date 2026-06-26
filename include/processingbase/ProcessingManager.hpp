@@ -49,7 +49,8 @@ namespace sgns::sgprocessing
         outcome::result<void>                 CheckProcessValidity();
         outcome::result<std::vector<uint8_t>> Process( std::shared_ptr<boost::asio::io_context> ioc,
                                                        std::vector<std::vector<uint8_t>>       &chunkhashes,
-                                                       sgns::ModelNode                         &model );
+                                                       sgns::ModelNode                         &model,
+                                                       std::vector<std::string>                &output_locations );
 
         /** Register an available processor
         * @param name - Name of processor

@@ -663,7 +663,8 @@ namespace sgns::sgprocessing
 
     outcome::result<std::vector<uint8_t>> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc,
                                                                       std::vector<std::vector<uint8_t>> &chunkhashes,
-                                                                      sgns::ModelNode                   &model )
+                                                                      sgns::ModelNode                   &model,
+                                                                      std::vector<std::string>          &output_locations )
     {
         //Get input index
         auto modelname = model.get_source().value();
@@ -701,6 +702,14 @@ namespace sgns::sgprocessing
             {
                 FileManager::GetInstance().InitializeSingletons();
                 bool hasSaves = false;
+
+                // Pre-allocate location slots matching the number of outputs
+                output_locations.clear();
+                output_locations.resize( outputs.size() );
+
+                // Collect save location shared_ptrs for post-ioc collection
+                std::vector<std::shared_ptr<std::string>> locationPtrs;
+                locationPtrs.resize( outputs.size() );
 
                 for ( size_t outputIndex = 0; outputIndex < outputs.size(); ++outputIndex )
                 {
@@ -751,6 +760,10 @@ namespace sgns::sgprocessing
                     saveBuffers->first.push_back( outputFileName );
                     saveBuffers->second.push_back( bufferData[dataIndex] );
 
+                    // Create a shared_ptr to capture the save location from the saver
+                    auto saveLocation = std::make_shared<std::string>();
+                    locationPtrs[outputIndex] = saveLocation;
+
                     FileManager::GetInstance().SaveASync( outputUrl,
                                                           outcome::success( saveBuffers ),
                                                           ioc,
@@ -762,7 +775,8 @@ namespace sgns::sgprocessing
                                                                                    outputUrl,
                                                                                    result.error().message() );
                                                               }
-                                                          } );
+                                                          },
+                                                          saveLocation );
                     hasSaves = true;
                 }
 
@@ -770,6 +784,15 @@ namespace sgns::sgprocessing
                 {
                     ioc->reset();
                     ioc->run();
+
+                    // After async IO completes, collect the save locations
+                    for ( size_t i = 0; i < locationPtrs.size(); ++i )
+                    {
+                        if ( locationPtrs[i] && !locationPtrs[i]->empty() )
+                        {
+                            output_locations[i] = *locationPtrs[i];
+                        }
+                    }
                 }
             }
         }

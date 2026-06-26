@@ -20,6 +20,8 @@ namespace sgns::sgprocessing
     {
         std::vector<uint8_t> hash;
         std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>> output_buffers;
+        /// Output locations for each saved result (file paths, IPFS CIDs, URLs, etc.)
+        std::vector<std::string> output_locations;
     };
 
     class ProcessingProcessor
