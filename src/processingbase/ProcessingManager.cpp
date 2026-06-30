@@ -778,6 +778,26 @@ namespace sgns::sgprocessing
                                                           },
                                                           saveLocation );
                     hasSaves = true;
+
+                    // Dual-save: persist a local copy when output is IPFS
+                    // This ensures the producing node can re-serve data after restart.
+                    std::string urlPrefix, urlPath, urlExt;
+                    getURLComponents( outputUrl, urlPrefix, urlPath, urlExt );
+                    if ( urlPrefix == "ipfs" )
+                    {
+                        auto cacheDir = FileManager::GetInstance().getCacheDir();
+                        if ( !cacheDir.empty() )
+                        {
+                            auto localUrl = "file://" + cacheDir + "/results/" +
+                                            output.get_name() + outputFileName;
+                            FileManager::GetInstance().SaveASync(
+                                localUrl,
+                                outcome::success( saveBuffers ),
+                                ioc,
+                                nullptr,  // no callback needed for local save
+                                nullptr ); // no save_location needed
+                        }
+                    }
                 }
 
                 if ( hasSaves )
