@@ -306,7 +306,7 @@ namespace sgns::sgprocessing
             return ProcessingResult{};
         }
 
-        const auto &dimensions = proc.get_dimensions().value();
+        const auto dimensions = proc.get_dimensions().value();
         const bool hasChunkFields = HasAnyTexture2DChunkFields( dimensions );
         if ( hasChunkFields && !HasAllTexture2DChunkFields( dimensions ) )
         {
