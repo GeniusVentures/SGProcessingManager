@@ -1,6 +1,7 @@
 #include "processors/processing_processor_mnn_image.hpp"
 #include "datasplitter/ImageSplitter.hpp"
 #include <functional>
+#include <mutex>
 #include <thread>
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include "util/sha256.hpp"
@@ -74,6 +75,11 @@ namespace sgns::sgprocessing
                 auto procresults =
                     Process( ChunkSplit.GetPart( chunkIdx ), modelFile_bytes, channels, ChunkSplit.GetPartWidthActual( chunkIdx ),
                                 ChunkSplit.GetPartHeightActual( chunkIdx ) );
+                if ( !procresults || procresults->elementSize() == 0 || !procresults->host<float>() )
+                {
+                    m_logger->error( "MNN image processing failed for chunk {}", chunkIdx );
+                    return ProcessingResult{};
+                }
 
                 const float *data     = procresults->host<float>();
                 size_t       dataSize = procresults->elementSize() * sizeof( float );
@@ -103,6 +109,11 @@ namespace sgns::sgprocessing
                                                          const int origheight, 
                                                          const std::string filename) 
     {
+        // ponytail: MNN's Vulkan backend is not safe to initialize concurrently. Keep the
+        // process-wide lock until MNN exposes a shareable runtime/session API.
+        static std::mutex mnn_vulkan_mutex;
+        std::lock_guard lock( mnn_vulkan_mutex );
+
         std::vector<uint8_t> ret_vect(imgdata);
 
         // Get Target Width
@@ -117,6 +128,11 @@ namespace sgns::sgprocessing
         // Create net and session
         const void* buffer = static_cast<const void*>( modelFile.data() );
         auto mnnNet = std::shared_ptr<MNN::Interpreter>( MNN::Interpreter::createFromBuffer( buffer, modelFile.size() ) );
+        if ( !mnnNet )
+        {
+            m_logger->error( "Failed to create MNN image interpreter" );
+            return std::make_unique<MNN::Tensor>();
+        }
 
         //auto backendConfig           = new MNN::BackendConfig();
         //backendConfig->power         = MNN::BackendConfig::Power_Low;
@@ -128,8 +144,18 @@ namespace sgns::sgprocessing
         netConfig.mode = 0;
         //netConfig.backendConfig = backendConfig;
         auto session        = mnnNet->createSession( netConfig );
+        if ( !session )
+        {
+            m_logger->error( "Failed to create MNN Vulkan image session" );
+            return std::make_unique<MNN::Tensor>();
+        }
 
         auto input = mnnNet->getSessionInput( session, nullptr );
+        if ( !input )
+        {
+            m_logger->error( "MNN image model has no input tensor" );
+            return std::make_unique<MNN::Tensor>();
+        }
 
         if ( input->elementSize() <= 4 )
         {
@@ -154,6 +180,11 @@ namespace sgns::sgprocessing
             preProcessConfig.filterType = CV::BILINEAR;
 
             auto       pretreat = std::shared_ptr<CV::ImageProcess>( CV::ImageProcess::create( preProcessConfig ) );
+            if ( !pretreat )
+            {
+                m_logger->error( "Failed to create MNN image preprocessor" );
+                return std::make_unique<MNN::Tensor>();
+            }
             CV::Matrix trans;
 
             // Dst -> [0, 1]
@@ -177,6 +208,11 @@ namespace sgns::sgprocessing
         }
 
         auto outputTensor = mnnNet->getSessionOutput( session, nullptr );
+        if ( !outputTensor )
+        {
+            m_logger->error( "MNN image model has no output tensor" );
+            return std::make_unique<MNN::Tensor>();
+        }
         auto outputHost   = std::make_unique<MNN::Tensor>( outputTensor, MNN::Tensor::CAFFE );
         outputTensor->copyToHostTensor( outputHost.get() );
 
