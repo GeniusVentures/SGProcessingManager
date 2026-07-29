@@ -195,6 +195,10 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     get_target_property(MNN_LIB_PATH MNN::MNN IMPORTED_LOCATION_RELWITHDEBINFO)
 endif()
 
+# vk-bootstrap
+set(vk-bootstrap_DIR "${_THIRDPARTY_BUILD_DIR}/vk-bootstrap/lib/cmake/vk-bootstrap")
+find_package(vk-bootstrap CONFIG REQUIRED)
+
 # AsyncioManager
 set(AsyncIOManager_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/AsyncIOManager/include")
 set(AsyncIOManager_DIR "${_THIRDPARTY_BUILD_DIR}/AsyncIOManager/lib/cmake/AsyncIOManager")
