@@ -1,5 +1,6 @@
 #include "processors/processing_processor_mnn_image.hpp"
 #include "datasplitter/ImageSplitter.hpp"
+#include "processingbase/vulkan_init_guard.hpp"
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -109,10 +110,7 @@ namespace sgns::sgprocessing
                                                          const int origheight, 
                                                          const std::string filename) 
     {
-        // ponytail: MNN's Vulkan backend is not safe to initialize concurrently. Keep the
-        // process-wide lock until MNN exposes a shareable runtime/session API.
-        static std::mutex mnn_vulkan_mutex;
-        std::lock_guard lock( mnn_vulkan_mutex );
+        std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
 
         std::vector<uint8_t> ret_vect(imgdata);
 
