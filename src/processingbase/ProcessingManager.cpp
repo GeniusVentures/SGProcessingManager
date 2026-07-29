@@ -101,6 +101,8 @@ namespace sgns::sgprocessing
                                   [] { return std::make_unique<sgprocessing::MNN_Volume>(); } );
         RegisterProcessorFactory( static_cast<int>( DataType::TEXTURE_CUBE ),
                                   [] { return std::make_unique<sgprocessing::MNN_TextureCube>(); } );
+        RegisterPassProcessorFactory( PassType::RENDER,
+                                      [] { return std::make_unique<sgprocessing::RenderProcessor>(); } );
 
         //Parse Json
         //This will check required fields inherently.
@@ -149,7 +151,14 @@ namespace sgns::sgprocessing
                 case PassType::DATA_TRANSFORM:
                     break;
                 case PassType::RENDER:
+                {
+                    if ( !pass.get_shader() )
+                    {
+                        m_logger->error( "Render pass has no shader config" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
                     break;
+                }
                 case PassType::RETRAIN:
                     break;
                 default:
@@ -646,6 +655,10 @@ namespace sgns::sgprocessing
         auto     passes          = processing_.get_passes();
         for ( const auto &pass : passes )
         {
+            if ( !pass.get_model() )
+            {
+                continue;
+            }
             auto input_nodes = pass.get_model().value().get_input_nodes();
             for ( auto &model : input_nodes )
             {
@@ -679,9 +692,20 @@ namespace sgns::sgprocessing
             return maybe_buffers.error();
         }
         auto buffers = maybe_buffers.value();
-        if ( !SetProcessorByName( static_cast<int>( processing_.get_inputs()[index.value()].get_type() ) ) )
+        const auto &pass = processing_.get_passes()[index.value()];
+        if ( pass.get_type() == PassType::RENDER )
         {
-            return outcome::failure( Error::NO_PROCESSOR );
+            if ( !SetProcessorByPassType( PassType::RENDER ) )
+            {
+                return outcome::failure( Error::NO_PROCESSOR );
+            }
+        }
+        else
+        {
+            if ( !SetProcessorByName( static_cast<int>( processing_.get_inputs()[index.value()].get_type() ) ) )
+            {
+                return outcome::failure( Error::NO_PROCESSOR );
+            }
         }
         const auto  maybeParameters = processing_.get_parameters();
         const auto *parameters      = maybeParameters ? &maybeParameters.value() : nullptr;
@@ -837,7 +861,14 @@ namespace sgns::sgprocessing
                 std::make_shared<std::vector<char>>(),
                 std::make_shared<std::vector<char>>() );
 
-        std::string modelFile = processing_.get_passes()[index.value()].get_model().value().get_source_uri_param();
+        std::string modelFile = [&]() -> std::string {
+            const auto &p = processing_.get_passes()[index.value()];
+            if ( p.get_type() == PassType::RENDER && p.get_shader() )
+            {
+                return p.get_shader().value().get_source();
+            }
+            return p.get_model().value().get_source_uri_param();
+        }();
 
         std::string image = processing_.get_inputs()[index.value()].get_source_uri_param();
         m_logger->info( "Model Input URL: {}", modelFile );

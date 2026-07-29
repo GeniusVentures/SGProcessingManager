@@ -21,6 +21,7 @@
 #include <processors/processing_processor_mnn_buffer.hpp>
 #include <processors/processing_processor_mnn_float.hpp>
 #include <processors/processing_processor_mnn_int.hpp>
+#include <processors/processing_processor_render.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 #include <Generators.hpp>
@@ -52,14 +53,24 @@ namespace sgns::sgprocessing
                                                        sgns::ModelNode                         &model,
                                                        std::vector<std::string>                &output_locations );
 
-        /** Register an available processor
-        * @param name - Name of processor
-        * @param factoryFunction - Pointer to processor
-        */
+        /** Register an available processor keyed by DataType
+         * @param name - DataType cast to int
+         * @param factoryFunction - Pointer to processor
+         */
         void RegisterProcessorFactory( const int                                            &name,
                                        std::function<std::unique_ptr<ProcessingProcessor>()> factoryFunction )
         {
             m_processorFactories[name] = std::move( factoryFunction );
+        }
+
+        /** Register an available processor keyed by PassType
+         * @param type - PassType enum
+         * @param factoryFunction - Pointer to processor
+         */
+        void RegisterPassProcessorFactory( PassType                                          type,
+                                           std::function<std::unique_ptr<ProcessingProcessor>()> factoryFunction )
+        {
+            m_passFactories[type] = std::move( factoryFunction );
         }
 
         /** Get Processing Data item which can be used to access any processing data, inputs, or params.
@@ -124,11 +135,29 @@ namespace sgns::sgprocessing
             return false;
         }
 
+        bool SetProcessorByPassType( PassType type )
+        {
+            auto factoryFunction = m_passFactories.find( type );
+            if ( factoryFunction != m_passFactories.end() )
+            {
+                m_processor = factoryFunction->second();
+                return true;
+            }
+            std::cerr << "Unknown pass type: " << static_cast<int>( type ) << std::endl;
+            return false;
+        }
+
+        struct PassTypeHash
+        {
+            size_t operator()( PassType p ) const { return static_cast<size_t>( p ); }
+        };
+
         sgns::sgprocmanager::Logger          m_logger = sgns::sgprocmanager::createLogger( "SGProcessingManager" );
         sgns::SgnsProcessing                 processing_;
         std::unique_ptr<ProcessingProcessor> m_processor;
-        std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>> m_processorFactories;
-        std::unordered_map<std::string, size_t>                                        m_inputMap;
+        std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>>     m_processorFactories;
+        std::unordered_map<PassType, std::function<std::unique_ptr<ProcessingProcessor>()>, PassTypeHash> m_passFactories;
+        std::unordered_map<std::string, size_t>                                            m_inputMap;
     };
 }
 
