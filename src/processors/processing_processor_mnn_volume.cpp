@@ -1,5 +1,7 @@
 #include "processors/processing_processor_mnn_volume.hpp"
+#include "processingbase/vulkan_init_guard.hpp"
 #include <functional>
+#include <mutex>
 #include <thread>
 #include <sstream>
 #include <sstream>
@@ -583,7 +585,11 @@ namespace sgns::sgprocessing
         m_logger->info( "Using MNN Vulkan backend" );
         config.numThread = 4;
 
-        auto session = interpreter->createSession(config);
+        MNN::Session *session = nullptr;
+        {
+            std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
+            session = interpreter->createSession(config);
+        }
         if (!session) {
             m_logger->error( "Failed to create MNN session" );
             return std::make_unique<MNN::Tensor>();
