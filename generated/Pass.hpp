@@ -14,9 +14,15 @@
 #include "helper.hpp"
 
 #include "DataTransform.hpp"
+#include "IndexBuffer.hpp"
 #include "PassIoBinding.hpp"
 #include "ModelConfig.hpp"
+#include "PipelineState.hpp"
+#include "RenderShaderConfig.hpp"
+#include "RenderTarget.hpp"
 #include "ShaderConfig.hpp"
+#include "VertexBuffer.hpp"
+#include "VertexLayoutEntry.hpp"
 
 namespace sgns {
     enum class PassType : int;
@@ -36,13 +42,19 @@ namespace sgns {
         boost::optional<std::vector<DataTransform>> data_transforms;
         boost::optional<std::string> description;
         boost::optional<bool> enabled;
+        boost::optional<IndexBuffer> index_buffer;
         boost::optional<std::vector<PassIoBinding>> inputs;
         boost::optional<ModelConfig> model;
         std::string name;
         ClassMemberConstraints name_constraint;
         boost::optional<std::vector<PassIoBinding>> outputs;
+        boost::optional<PipelineState> pipeline_state;
+        boost::optional<RenderShaderConfig> render_shader;
+        boost::optional<RenderTarget> render_target;
         boost::optional<ShaderConfig> shader;
         PassType type;
+        boost::optional<VertexBuffer> vertex_buffer;
+        boost::optional<std::vector<VertexLayoutEntry>> vertex_layout;
 
         public:
         /**
@@ -59,6 +71,12 @@ namespace sgns {
          */
         boost::optional<bool> get_enabled() const { return enabled; }
         void set_enabled(boost::optional<bool> value) { this->enabled = value; }
+
+        /**
+         * Index buffer binding + index type for render passes
+         */
+        boost::optional<IndexBuffer> get_index_buffer() const { return index_buffer; }
+        void set_index_buffer(boost::optional<IndexBuffer> value) { this->index_buffer = value; }
 
         /**
          * Input bindings for non-model passes
@@ -86,7 +104,25 @@ namespace sgns {
         void set_outputs(boost::optional<std::vector<PassIoBinding>> value) { this->outputs = value; }
 
         /**
-         * Shader configuration for compute/render passes
+         * Fixed-function pipeline state for render passes
+         */
+        boost::optional<PipelineState> get_pipeline_state() const { return pipeline_state; }
+        void set_pipeline_state(boost::optional<PipelineState> value) { this->pipeline_state = value; }
+
+        /**
+         * Multi-stage (vertex+fragment) shader configuration for render passes
+         */
+        boost::optional<RenderShaderConfig> get_render_shader() const { return render_shader; }
+        void set_render_shader(boost::optional<RenderShaderConfig> value) { this->render_shader = value; }
+
+        /**
+         * Offscreen framebuffer (color+depth) config for render passes
+         */
+        boost::optional<RenderTarget> get_render_target() const { return render_target; }
+        void set_render_target(boost::optional<RenderTarget> value) { this->render_target = value; }
+
+        /**
+         * Shader configuration for compute passes
          */
         boost::optional<ShaderConfig> get_shader() const { return shader; }
         void set_shader(boost::optional<ShaderConfig> value) { this->shader = value; }
@@ -97,5 +133,18 @@ namespace sgns {
         const PassType & get_type() const { return type; }
         PassType & get_mutable_type() { return type; }
         void set_type(const PassType & value) { this->type = value; }
+
+        /**
+         * Buffer binding supplying vertex attribute data referenced by vertex_layout (D-16
+         * Amendment)
+         */
+        boost::optional<VertexBuffer> get_vertex_buffer() const { return vertex_buffer; }
+        void set_vertex_buffer(boost::optional<VertexBuffer> value) { this->vertex_buffer = value; }
+
+        /**
+         * Vertex attribute layout for render passes
+         */
+        boost::optional<std::vector<VertexLayoutEntry>> get_vertex_layout() const { return vertex_layout; }
+        void set_vertex_layout(boost::optional<std::vector<VertexLayoutEntry>> value) { this->vertex_layout = value; }
     };
 }

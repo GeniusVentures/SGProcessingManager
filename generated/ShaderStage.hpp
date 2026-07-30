@@ -5,7 +5,7 @@
 //
 //  Then include this file, and then do
 //
-//     ShaderConfig.hpp data = nlohmann::json::parse(jsonString);
+//     ShaderStage.hpp data = nlohmann::json::parse(jsonString);
 
 #pragma once
 
@@ -13,51 +13,45 @@
 #include <nlohmann/json.hpp>
 #include "helper.hpp"
 
-#include "ShaderUniform.hpp"
-
 namespace sgns {
+    enum class Stage : int;
     enum class ShaderSourceType : int;
 }
 
 namespace sgns {
-    /**
-     * Shader configuration for compute passes
-     */
-
     using nlohmann::json;
 
-    /**
-     * Shader configuration for compute passes
-     */
-    class ShaderConfig {
+    class ShaderStage {
         public:
-        ShaderConfig() = default;
-        virtual ~ShaderConfig() = default;
+        ShaderStage() = default;
+        virtual ~ShaderStage() = default;
 
         private:
         boost::optional<std::string> entry_point;
         std::string source;
-        boost::optional<ShaderSourceType> type;
-        boost::optional<std::map<std::string, ShaderUniform>> uniforms;
+        Stage stage;
+        ShaderSourceType type;
 
         public:
         boost::optional<std::string> get_entry_point() const { return entry_point; }
         void set_entry_point(boost::optional<std::string> value) { this->entry_point = value; }
 
         /**
-         * Shader source path or URI parameter
+         * Shader source path or URI parameter for this stage
          */
         const std::string & get_source() const { return source; }
         std::string & get_mutable_source() { return source; }
         void set_source(const std::string & value) { this->source = value; }
 
-        boost::optional<ShaderSourceType> get_type() const { return type; }
-        void set_type(boost::optional<ShaderSourceType> value) { this->type = value; }
-
         /**
-         * Uniform variable declarations
+         * Which pipeline stage this shader source targets
          */
-        boost::optional<std::map<std::string, ShaderUniform>> get_uniforms() const { return uniforms; }
-        void set_uniforms(boost::optional<std::map<std::string, ShaderUniform>> value) { this->uniforms = value; }
+        const Stage & get_stage() const { return stage; }
+        Stage & get_mutable_stage() { return stage; }
+        void set_stage(const Stage & value) { this->stage = value; }
+
+        const ShaderSourceType & get_type() const { return type; }
+        ShaderSourceType & get_mutable_type() { return type; }
+        void set_type(const ShaderSourceType & value) { this->type = value; }
     };
 }

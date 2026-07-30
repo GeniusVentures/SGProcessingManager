@@ -5,7 +5,7 @@
 //
 //  Then include this file, and then do
 //
-//     ShaderType.hpp data = nlohmann::json::parse(jsonString);
+//     Topology.hpp data = nlohmann::json::parse(jsonString);
 
 #pragma once
 
@@ -16,5 +16,5 @@
 namespace sgns {
     using nlohmann::json;
 
-    enum class ShaderType : int { GLSL, HLSL, METAL, SPIRV };
+    enum class Topology : int { LINE_LIST, POINT_LIST, TRIANGLE_LIST };
 }

@@ -5,7 +5,7 @@
 //
 //  Then include this file, and then do
 //
-//     Uniform.hpp data = nlohmann::json::parse(jsonString);
+//     RenderShaderUniform.hpp data = nlohmann::json::parse(jsonString);
 
 #pragma once
 
@@ -20,10 +20,10 @@ namespace sgns {
 namespace sgns {
     using nlohmann::json;
 
-    class Uniform {
+    class RenderShaderUniform {
         public:
-        Uniform() = default;
-        virtual ~Uniform() = default;
+        RenderShaderUniform() = default;
+        virtual ~RenderShaderUniform() = default;
 
         private:
         boost::optional<std::string> source;
