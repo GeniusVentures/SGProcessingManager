@@ -1,8 +1,10 @@
 #include "processors/processing_processor_mnn_vec2.hpp"
+#include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <openssl/sha.h>
 #include "util/sha256.hpp"
 
@@ -359,11 +361,15 @@ namespace sgns::sgprocessing
         }
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_CPU;
+        config.type = MNN_FORWARD_VULKAN;
         config.numThread = 4;
         config.backendConfig = nullptr;
 
-        auto session = interpreter->createSession( config );
+        MNN::Session *session = nullptr;
+        {
+            std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
+            session = interpreter->createSession( config );
+        }
         if ( !session )
         {
             m_logger->error( "Failed to create MNN session" );
