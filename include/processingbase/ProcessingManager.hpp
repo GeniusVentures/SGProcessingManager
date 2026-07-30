@@ -161,4 +161,6 @@ namespace sgns::sgprocessing
     };
 }
 
+OUTCOME_HPP_DECLARE_ERROR_2( sgns::sgprocessing, ProcessingManager::Error );
+
 #endif
