@@ -1,5 +1,6 @@
 #include "processors/processing_processor_render.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
+#include "util/sha256.hpp"
 #include <VkBootstrap.h>
 #include <algorithm>
 #include <cstring>
@@ -116,10 +117,24 @@ namespace sgns::sgprocessing
             return false;
         }
 
+        // Reused (never re-queried) by RecordAndSubmit()'s VkCommandPool creation --
+        // the same graphics queue family InitializeContext() already selected m_queue
+        // from, not a fresh PhysicalDeviceSelector-style re-selection.
+        auto queue_family_ret = vkb_device.get_queue_index( vkb::QueueType::graphics );
+        if ( !queue_family_ret )
+        {
+            m_logger->error( "RenderProcessor: failed to get graphics queue family index: {}",
+                             queue_family_ret.error().message() );
+            vkb::destroy_device( vkb_device );
+            vkb::destroy_instance( vkb_instance );
+            return false;
+        }
+
         m_instance = vkb_instance.instance;
         m_physicalDevice = vkb_device.physical_device;
         m_device = vkb_device.device;
         m_queue = queue_ret.value();
+        m_queueFamilyIndex = queue_family_ret.value();
         m_contextInitialized = true;
 
         return true;
@@ -1058,6 +1073,18 @@ namespace sgns::sgprocessing
         return VK_FORMAT_D32_SFLOAT;
     }
 
+    uint32_t RenderProcessor::ColorFormatByteSize( sgns::ColorFormat fmt )
+    {
+        switch ( fmt )
+        {
+            case sgns::ColorFormat::RGBA8:
+                return 4;
+            case sgns::ColorFormat::RGB8:
+                return 3;
+        }
+        return 4;
+    }
+
     bool RenderProcessor::BuildRenderPass( const sgns::RenderTarget &target, ProcessingResult &errorOut )
     {
         if ( target.get_width() < 1 || target.get_width() > static_cast<int64_t>( kMaxRenderDimension ) ||
@@ -1628,6 +1655,332 @@ namespace sgns::sgprocessing
             VkPipeline pipeline = m_pipeline;
             PushTeardown( [device, pipeline]() { vkDestroyPipeline( device, pipeline, nullptr ); } );
         }
+
+        return true;
+    }
+
+    bool RenderProcessor::UploadBuffers( const std::vector<uint8_t> &vertexBytes,
+                                          bool                        hasIndex,
+                                          sgns::IndexType             indexType,
+                                          const std::vector<uint8_t> &indexBytes,
+                                          uint32_t                    stride,
+                                          const ResolvedUniforms      &uniforms,
+                                          ProcessingResult            &errorOut )
+    {
+        // Validated BEFORE any buffer is created / any vkCmdBindVertexBuffers or
+        // vkCmdDrawIndexed is ever recorded -- closes T-03-03-02 (out-of-bounds GPU
+        // buffer read from a byte length that doesn't match the pipeline's implied
+        // stride/index count).
+        if ( stride == 0 || vertexBytes.size() % stride != 0 )
+        {
+            errorOut = MakeError( ProcessingErrorStage::RESOURCE_RESOLUTION,
+                                  "UploadBuffers: vertex buffer byte length (" +
+                                      std::to_string( vertexBytes.size() ) +
+                                      ") is not an exact multiple of the pipeline's computed stride (" +
+                                      std::to_string( stride ) + ")" );
+            return false;
+        }
+        m_vertexCount = static_cast<uint32_t>( vertexBytes.size() / stride );
+
+        m_hasIndexBuffer = hasIndex;
+        m_indexType      = indexType;
+        m_indexCount     = 0;
+
+        if ( hasIndex )
+        {
+            size_t indexElemSize = ( indexType == sgns::IndexType::UINT16 ) ? sizeof( uint16_t ) : sizeof( uint32_t );
+            if ( indexBytes.size() % indexElemSize != 0 )
+            {
+                errorOut = MakeError( ProcessingErrorStage::RESOURCE_RESOLUTION,
+                                      "UploadBuffers: index buffer byte length (" +
+                                          std::to_string( indexBytes.size() ) +
+                                          ") is not an exact multiple of the index type's byte size (" +
+                                          std::to_string( indexElemSize ) + ")" );
+                return false;
+            }
+            m_indexCount = static_cast<uint32_t>( indexBytes.size() / indexElemSize );
+        }
+
+        // Vertex buffer -- HOST_VISIBLE|HOST_COHERENT direct write (D-20/D-21), no
+        // staging+device-local path.
+        if ( !CreateBufferDedicated( vertexBytes.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                      m_vertexBuffer, m_vertexMemory, errorOut ) )
+        {
+            return false;
+        }
+        {
+            void    *mapped = nullptr;
+            VkResult result = vkMapMemory( m_device, m_vertexMemory, 0, vertexBytes.size(), 0, &mapped );
+            if ( result != VK_SUCCESS )
+            {
+                errorOut = MakeError( ProcessingErrorStage::BUFFER_ALLOCATION,
+                                      "UploadBuffers: vkMapMemory (vertex) failed: VkResult=" +
+                                          std::to_string( result ) );
+                return false;
+            }
+            std::memcpy( mapped, vertexBytes.data(), vertexBytes.size() );
+            vkUnmapMemory( m_device, m_vertexMemory ); // HOST_COHERENT -- no flush needed (D-20)
+        }
+
+        if ( hasIndex )
+        {
+            if ( !CreateBufferDedicated( indexBytes.size(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                          m_indexBuffer, m_indexMemory, errorOut ) )
+            {
+                return false;
+            }
+            void    *mapped = nullptr;
+            VkResult result = vkMapMemory( m_device, m_indexMemory, 0, indexBytes.size(), 0, &mapped );
+            if ( result != VK_SUCCESS )
+            {
+                errorOut = MakeError( ProcessingErrorStage::BUFFER_ALLOCATION,
+                                      "UploadBuffers: vkMapMemory (index) failed: VkResult=" +
+                                          std::to_string( result ) );
+                return false;
+            }
+            std::memcpy( mapped, indexBytes.data(), indexBytes.size() );
+            vkUnmapMemory( m_device, m_indexMemory );
+        }
+
+        m_usePushConstant   = uniforms.pushConstant && !uniforms.packedBytes.empty();
+        m_pushConstantBytes = m_usePushConstant ? uniforms.packedBytes : std::vector<uint8_t>();
+
+        // Descriptor-set path only -- the push-constant path needs no VkBuffer at
+        // all (bytes copied directly from m_pushConstantBytes at record time).
+        if ( !uniforms.packedBytes.empty() && !uniforms.pushConstant )
+        {
+            if ( !CreateBufferDedicated( uniforms.packedBytes.size(), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                          m_uniformBuffer, m_uniformMemory, errorOut ) )
+            {
+                return false;
+            }
+            void    *mapped = nullptr;
+            VkResult result = vkMapMemory( m_device, m_uniformMemory, 0, uniforms.packedBytes.size(), 0, &mapped );
+            if ( result != VK_SUCCESS )
+            {
+                errorOut = MakeError( ProcessingErrorStage::BUFFER_ALLOCATION,
+                                      "UploadBuffers: vkMapMemory (uniform) failed: VkResult=" +
+                                          std::to_string( result ) );
+                return false;
+            }
+            std::memcpy( mapped, uniforms.packedBytes.data(), uniforms.packedBytes.size() );
+            vkUnmapMemory( m_device, m_uniformMemory );
+
+            if ( m_descriptorSet != VK_NULL_HANDLE )
+            {
+                VkDescriptorBufferInfo bufferInfo{};
+                bufferInfo.buffer = m_uniformBuffer;
+                bufferInfo.offset = 0;
+                bufferInfo.range  = uniforms.packedBytes.size();
+
+                VkWriteDescriptorSet write{};
+                write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                write.dstSet          = m_descriptorSet;
+                write.dstBinding      = 0;
+                write.descriptorCount = 1;
+                write.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                write.pBufferInfo     = &bufferInfo;
+
+                vkUpdateDescriptorSets( m_device, 1, &write, 0, nullptr );
+            }
+        }
+
+        return true;
+    }
+
+    bool RenderProcessor::RecordAndSubmit( const sgns::RenderTarget &target, ProcessingResult &errorOut )
+    {
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags            = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        poolInfo.queueFamilyIndex = m_queueFamilyIndex;
+
+        VkResult result = vkCreateCommandPool( m_device, &poolInfo, nullptr, &m_commandPool );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::DRAW_SUBMISSION,
+                                  "RecordAndSubmit: vkCreateCommandPool failed: VkResult=" +
+                                      std::to_string( result ) );
+            return false;
+        }
+        {
+            VkDevice      device = m_device;
+            VkCommandPool pool   = m_commandPool;
+            // Pool destruction frees m_commandBuffer too -- no separate teardown entry.
+            PushTeardown( [device, pool]() { vkDestroyCommandPool( device, pool, nullptr ); } );
+        }
+
+        VkCommandBufferAllocateInfo cbAllocInfo{};
+        cbAllocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cbAllocInfo.commandPool        = m_commandPool;
+        cbAllocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cbAllocInfo.commandBufferCount = 1;
+
+        result = vkAllocateCommandBuffers( m_device, &cbAllocInfo, &m_commandBuffer );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::DRAW_SUBMISSION,
+                                  "RecordAndSubmit: vkAllocateCommandBuffers failed: VkResult=" +
+                                      std::to_string( result ) );
+            return false;
+        }
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        result = vkBeginCommandBuffer( m_commandBuffer, &beginInfo );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::DRAW_SUBMISSION,
+                                  "RecordAndSubmit: vkBeginCommandBuffer failed: VkResult=" +
+                                      std::to_string( result ) );
+            return false;
+        }
+
+        VkClearValue clearValues[2]{};
+        const auto  &clearColor = target.get_clear_color();
+        for ( size_t i = 0; i < 4 && i < clearColor.size(); ++i )
+        {
+            clearValues[0].color.float32[i] = static_cast<float>( clearColor[i] );
+        }
+        clearValues[1].depthStencil.depth   = static_cast<float>( target.get_clear_depth() );
+        clearValues[1].depthStencil.stencil = 0;
+
+        VkRenderPassBeginInfo rpBeginInfo{};
+        rpBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rpBeginInfo.renderPass        = m_renderPass;
+        rpBeginInfo.framebuffer       = m_framebuffer;
+        rpBeginInfo.renderArea.offset = { 0, 0 };
+        rpBeginInfo.renderArea.extent = { m_renderWidth, m_renderHeight };
+        rpBeginInfo.clearValueCount   = 2;
+        rpBeginInfo.pClearValues      = clearValues;
+
+        vkCmdBeginRenderPass( m_commandBuffer, &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
+
+        vkCmdBindPipeline( m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline );
+
+        VkDeviceSize vbOffset = 0;
+        vkCmdBindVertexBuffers( m_commandBuffer, 0, 1, &m_vertexBuffer, &vbOffset );
+
+        if ( m_hasIndexBuffer )
+        {
+            vkCmdBindIndexBuffer( m_commandBuffer, m_indexBuffer, 0,
+                                  ( m_indexType == sgns::IndexType::UINT16 ) ? VK_INDEX_TYPE_UINT16
+                                                                              : VK_INDEX_TYPE_UINT32 );
+        }
+
+        if ( m_usePushConstant && !m_pushConstantBytes.empty() )
+        {
+            vkCmdPushConstants( m_commandBuffer, m_pipelineLayout,
+                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                                static_cast<uint32_t>( m_pushConstantBytes.size() ), m_pushConstantBytes.data() );
+        }
+        else if ( m_descriptorSet != VK_NULL_HANDLE )
+        {
+            vkCmdBindDescriptorSets( m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, 1,
+                                     &m_descriptorSet, 0, nullptr );
+        }
+
+        if ( m_hasIndexBuffer )
+        {
+            vkCmdDrawIndexed( m_commandBuffer, m_indexCount, 1, 0, 0, 0 );
+        }
+        else
+        {
+            vkCmdDraw( m_commandBuffer, m_vertexCount, 1, 0, 0 );
+        }
+
+        vkCmdEndRenderPass( m_commandBuffer );
+
+        // Readback copy recorded INSIDE this same command buffer, immediately after
+        // vkCmdEndRenderPass and before vkEndCommandBuffer -- no second command
+        // buffer/submission (Pitfall 4). The render pass's color attachment
+        // finalLayout is already VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL (plan 03-04's
+        // BuildRenderPass), so no extra image-layout-transition barrier is needed
+        // here.
+        VkDeviceSize stagingSize = static_cast<VkDeviceSize>( target.get_width() ) *
+                                   static_cast<VkDeviceSize>( target.get_height() ) *
+                                   ColorFormatByteSize( target.get_color_format() );
+
+        if ( !CreateBufferDedicated( stagingSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                      m_stagingBuffer, m_stagingMemory, errorOut ) )
+        {
+            return false;
+        }
+
+        VkBufferImageCopy region{};
+        region.bufferOffset                    = 0;
+        region.bufferRowLength                 = 0;
+        region.bufferImageHeight                = 0;
+        region.imageSubresource.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel        = 0;
+        region.imageSubresource.baseArrayLayer  = 0;
+        region.imageSubresource.layerCount      = 1;
+        region.imageOffset                      = { 0, 0, 0 };
+        region.imageExtent                      = { m_renderWidth, m_renderHeight, 1 };
+
+        vkCmdCopyImageToBuffer( m_commandBuffer, m_colorImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_stagingBuffer,
+                                1, &region );
+
+        result = vkEndCommandBuffer( m_commandBuffer );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::DRAW_SUBMISSION,
+                                  "RecordAndSubmit: vkEndCommandBuffer failed: VkResult=" +
+                                      std::to_string( result ) );
+            return false;
+        }
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers    = &m_commandBuffer;
+
+        result = vkQueueSubmit( m_queue, 1, &submitInfo, VK_NULL_HANDLE );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::DRAW_SUBMISSION,
+                                  "RecordAndSubmit: vkQueueSubmit failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        // D-23: synchronous wait, RenderProcessor's own independent VkDevice -- this
+        // cannot stall a host application's separate VkDevice/queue.
+        result = vkDeviceWaitIdle( m_device );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::DRAW_SUBMISSION,
+                                  "RecordAndSubmit: vkDeviceWaitIdle failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        return true;
+    }
+
+    bool RenderProcessor::Readback( const sgns::RenderTarget &target, std::vector<uint8_t> &outBytes,
+                                     ProcessingResult &errorOut )
+    {
+        VkDeviceSize size = static_cast<VkDeviceSize>( target.get_width() ) *
+                            static_cast<VkDeviceSize>( target.get_height() ) *
+                            ColorFormatByteSize( target.get_color_format() );
+
+        void    *mapped = nullptr;
+        VkResult result = vkMapMemory( m_device, m_stagingMemory, 0, size, 0, &mapped );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::READBACK,
+                                  "Readback: vkMapMemory failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        outBytes.resize( static_cast<size_t>( size ) );
+        std::memcpy( outBytes.data(), mapped, static_cast<size_t>( size ) );
+        vkUnmapMemory( m_device, m_stagingMemory ); // HOST_COHERENT -- no invalidate needed (D-20)
 
         return true;
     }

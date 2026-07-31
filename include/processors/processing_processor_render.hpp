@@ -168,6 +168,48 @@ namespace sgns::sgprocessing
                              const ResolvedUniforms                     &uniforms,
                              ProcessingResult                           &errorOut );
 
+        /// Validates vertexBytes.size() % stride == 0 and (if hasIndex)
+        /// indexBytes.size() % index-type-byte-size == 0 BEFORE any buffer is
+        /// created (closes T-03-03-02 -- out-of-bounds vkCmdDraw(Indexed) read),
+        /// then uploads vertex/index/uniform bytes into dedicated HOST_VISIBLE|
+        /// HOST_COHERENT buffers via direct vkMapMemory/memcpy/vkUnmapMemory (D-20/
+        /// D-21 -- no staging+device-local path, no manual flush). Only allocates
+        /// m_uniformBuffer (descriptor-set path) when uniforms.pushConstant is
+        /// false; the push-constant path needs no VkBuffer (bytes copied directly
+        /// from ResolvedUniforms::packedBytes at record time via
+        /// RecordAndSubmit()/vkCmdPushConstants).
+        bool UploadBuffers( const std::vector<uint8_t> &vertexBytes,
+                             bool                        hasIndex,
+                             sgns::IndexType             indexType,
+                             const std::vector<uint8_t> &indexBytes,
+                             uint32_t                    stride,
+                             const ResolvedUniforms      &uniforms,
+                             ProcessingResult            &errorOut );
+
+        /// Records and submits ONE command buffer: begin render pass (clears from
+        /// target.get_clear_color()/get_clear_depth()) -> bind pipeline/vertex/
+        /// index buffers -> push constants or bind descriptor set -> draw(Indexed)
+        /// -> end render pass -> (Pitfall 4) record the vkCmdCopyImageToBuffer
+        /// readback copy INTO THIS SAME command buffer, immediately after
+        /// vkCmdEndRenderPass and before vkEndCommandBuffer -- no second command
+        /// buffer/submission, no extra image-layout-transition barrier (the render pass's
+        /// color attachment finalLayout is already VK_IMAGE_LAYOUT_TRANSFER_SRC_
+        /// OPTIMAL, plan 03-04) -- then vkQueueSubmit and a synchronous
+        /// vkDeviceWaitIdle (D-23). Allocates m_stagingBuffer/m_stagingMemory
+        /// (the readback destination Readback() later maps) as part of recording
+        /// this copy.
+        bool RecordAndSubmit( const sgns::RenderTarget &target, ProcessingResult &errorOut );
+
+        /// Maps m_stagingBuffer (already populated by RecordAndSubmit()'s
+        /// vkCmdCopyImageToBuffer + vkDeviceWaitIdle) and copies its bytes into
+        /// outBytes -- no vkInvalidateMappedMemoryRanges call (HOST_COHERENT,
+        /// D-20). Must be called after RecordAndSubmit() succeeds.
+        bool Readback( const sgns::RenderTarget &target, std::vector<uint8_t> &outBytes, ProcessingResult &errorOut );
+
+        /// Bytes per pixel for a given color attachment format. RGBA8 -> 4,
+        /// RGB8 -> 3.
+        static uint32_t ColorFormatByteSize( sgns::ColorFormat fmt );
+
         static VkFormat ToVkFormat( sgns::ColorFormat fmt );
         static VkFormat ToVkFormat( sgns::DepthFormat fmt );
         static VkFormat ToVkFormat( sgns::VertexLayoutFormat fmt );
@@ -185,6 +227,11 @@ namespace sgns::sgprocessing
         VkPhysicalDevice m_physicalDevice{VK_NULL_HANDLE};
         VkDevice m_device{VK_NULL_HANDLE};
         VkQueue m_queue{VK_NULL_HANDLE};
+        /// Graphics queue family index InitializeContext() resolved for m_queue --
+        /// stored so RecordAndSubmit()'s VkCommandPool creation reuses the same
+        /// already-selected graphics queue family instead of re-running device
+        /// queue-family selection.
+        uint32_t m_queueFamilyIndex{0};
         bool m_contextInitialized{false};
 
         /// Ordered teardown stack (D-22/D-24) -- every per-job Vulkan object
@@ -212,5 +259,27 @@ namespace sgns::sgprocessing
         VkDescriptorSetLayout m_descriptorSetLayout{VK_NULL_HANDLE};
         VkDescriptorPool      m_descriptorPool{VK_NULL_HANDLE};
         VkDescriptorSet       m_descriptorSet{VK_NULL_HANDLE};
+
+        VkBuffer       m_vertexBuffer{VK_NULL_HANDLE}, m_indexBuffer{VK_NULL_HANDLE};
+        VkBuffer       m_uniformBuffer{VK_NULL_HANDLE}, m_stagingBuffer{VK_NULL_HANDLE};
+        VkDeviceMemory m_vertexMemory{VK_NULL_HANDLE}, m_indexMemory{VK_NULL_HANDLE};
+        VkDeviceMemory m_uniformMemory{VK_NULL_HANDLE}, m_stagingMemory{VK_NULL_HANDLE};
+
+        VkCommandPool   m_commandPool{VK_NULL_HANDLE};
+        VkCommandBuffer m_commandBuffer{VK_NULL_HANDLE};
+
+        bool            m_hasIndexBuffer{false};
+        sgns::IndexType m_indexType{sgns::IndexType::UINT32};
+        uint32_t        m_vertexCount{0};
+        uint32_t        m_indexCount{0};
+
+        /// Set by UploadBuffers() from the ResolvedUniforms passed into it --
+        /// RecordAndSubmit()'s declared signature (target, errorOut) carries no
+        /// uniform data of its own, so the push-constant bytes/decision must be
+        /// stored here for RecordAndSubmit()'s vkCmdPushConstants call. The
+        /// descriptor-set path needs no equivalent member: m_descriptorSet
+        /// (already built by BuildPipeline()) is bound directly.
+        bool                 m_usePushConstant{false};
+        std::vector<uint8_t> m_pushConstantBytes;
     };
 }
