@@ -18,6 +18,7 @@ add_library(SGProcessors STATIC
 	processing_processor_mnn_texture1d.cpp
 	processing_processor_mnn_volume.cpp
 	processing_processor_render.cpp
+	vulkan_gpu_probe.cpp
 	../../include/processors/processing_processor.hpp
 	../../include/processors/processing_processor_mnn_audio.hpp
 	../../include/processors/processing_processor_mnn_image.hpp
@@ -38,6 +39,7 @@ add_library(SGProcessors STATIC
 	../../include/processors/processing_processor_mnn_texture1d.hpp
 	../../include/processors/processing_processor_mnn_volume.hpp
 	../../include/processors/processing_processor_render.hpp
+	../../include/processors/vulkan_gpu_probe.hpp
 )
 
 

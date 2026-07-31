@@ -28,6 +28,11 @@ namespace sgns::sgprocessing
                            std::vector<char>                 &modelFile,
                            const std::vector<sgns::Parameter> *parameters ) override;
 
+        /// Device-type filter (DISCRETE_GPU/INTEGRATED_GPU only). Public so
+        /// vulkan_gpu_probe.cpp's HasUsableVulkanDevice() can reuse the exact
+        /// same predicate instead of duplicating it (avoids drift risk).
+        static bool IsAcceptable( VkPhysicalDeviceType type );
+
     private:
         /// One parsed SPIR-V shader stage, inverted from ProcessingManager.cpp's
         /// SerializeCompiledStages( stages, entryPoints ) wire format (plan 03-01).
@@ -47,8 +52,6 @@ namespace sgns::sgprocessing
         };
 
         bool InitializeContext();
-
-        static bool IsAcceptable( VkPhysicalDeviceType type );
 
         static VkDeviceSize LargestDeviceLocalHeap( VkPhysicalDevice device );
 
