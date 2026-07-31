@@ -60,6 +60,11 @@ namespace sgns::sgprocessing
         auto vkb_instance = inst_ret.value();
 
         vkb::PhysicalDeviceSelector selector( vkb_instance );
+        // This is a headless/offscreen renderer -- no VkSurfaceKHR/swapchain ever exists
+        // (CTX-01/D-23). vk-bootstrap's PhysicalDeviceSelector defaults require_present to
+        // true, which rejects every device with vkb::PhysicalDeviceError::no_surface_provided
+        // when no surface was ever set. Disable that requirement explicitly.
+        selector.require_present( false );
         auto devices_ret = selector.select_devices();
         if ( !devices_ret )
         {
