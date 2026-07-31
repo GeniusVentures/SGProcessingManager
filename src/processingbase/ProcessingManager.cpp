@@ -953,7 +953,14 @@ namespace sgns::sgprocessing
 
         if ( isRender )
         {
-            const auto &stages = p.get_render_shader().value().get_stages();
+            // NOTE: get_render_shader() returns boost::optional<RenderShaderConfig> BY VALUE
+            // (quicktype's standard convention for optional accessors) -- binding `stages` as a
+            // reference into a chained `.value().get_stages()` call would dangle the moment this
+            // statement ends, since the temporary optional/RenderShaderConfig backing that
+            // reference is destroyed at the semicolon. Copy the optional into a named local first
+            // so its lifetime covers the loop below.
+            const auto                        renderShader = p.get_render_shader().value();
+            const std::vector<sgns::ShaderStage> &stages    = renderShader.get_stages();
             for ( const auto &stage : stages )
             {
                 auto tempBuffer = std::make_shared<std::vector<char>>();
