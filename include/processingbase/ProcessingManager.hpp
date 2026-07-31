@@ -43,6 +43,8 @@ namespace sgns::sgprocessing
             NO_PROCESSOR             = 4,
             MISSING_INPUT            = 5,
             INPUT_UNAVAIL            = 6,
+            SHADER_COMPILE_FAILED    = 7,
+            SPIRV_VALIDATION_FAILED  = 8,
         };
         static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 

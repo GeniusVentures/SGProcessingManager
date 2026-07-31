@@ -3,6 +3,9 @@
 #include <datasplitter/ImageSplitter.hpp>
 #include "FileManager.hpp"
 #include "URLStringUtil.h"
+#include "shaders/shader_compiler.hpp"
+
+#include <cstring>
 
 OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
 {
@@ -20,6 +23,10 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
             return "Input missing";
         case sgns::sgprocessing::ProcessingManager::Error::INPUT_UNAVAIL:
             return "Could not get input from source";
+        case sgns::sgprocessing::ProcessingManager::Error::SHADER_COMPILE_FAILED:
+            return "Shader source failed to compile";
+        case sgns::sgprocessing::ProcessingManager::Error::SPIRV_VALIDATION_FAILED:
+            return "SPIR-V failed validation";
     }
     return "Unknown error";
 }
@@ -53,6 +60,53 @@ namespace sgns::sgprocessing
                 return false;
             }
             return !extension.empty();
+        }
+
+        /**
+         * Packs validated per-stage SPIR-V into a single byte buffer.
+         *
+         * PROVISIONAL WIRE FORMAT -- this is this plan's own choice, not a
+         * negotiated Phase-3 contract. Phase 3's RenderProcessor has not been
+         * designed yet and does not currently consume mainbuffers->first for
+         * render passes at all; Phase 3's planning may revise this format
+         * once RenderProcessor's actual pipeline-construction needs are
+         * known.
+         *
+         * Layout (all integers little-endian, native uint32_t width):
+         *   uint32_t stage_count
+         *   per stage:
+         *     uint32_t stage_tag    (static_cast<uint32_t>(sgns::Stage))
+         *     uint32_t word_count   (number of following uint32_t SPIR-V words)
+         *     word_count * uint32_t spirv_words
+         */
+        std::vector<char> SerializeCompiledStages(
+            const std::vector<sgns::sgprocessing::CompiledShaderStage> &stages )
+        {
+            std::vector<char> out;
+
+            auto appendU32 = [&out]( uint32_t value )
+            {
+                size_t offset = out.size();
+                out.resize( offset + sizeof( uint32_t ) );
+                std::memcpy( out.data() + offset, &value, sizeof( uint32_t ) );
+            };
+
+            appendU32( static_cast<uint32_t>( stages.size() ) );
+            for ( const auto &compiled : stages )
+            {
+                appendU32( static_cast<uint32_t>( compiled.stage ) );
+                appendU32( static_cast<uint32_t>( compiled.spirv.size() ) );
+                if ( !compiled.spirv.empty() )
+                {
+                    size_t offset = out.size();
+                    out.resize( offset + compiled.spirv.size() * sizeof( uint32_t ) );
+                    std::memcpy( out.data() + offset,
+                                 compiled.spirv.data(),
+                                 compiled.spirv.size() * sizeof( uint32_t ) );
+                }
+            }
+
+            return out;
         }
     }
 
@@ -115,6 +169,15 @@ namespace sgns::sgprocessing
         {
             return outcome::failure( Error::INVALID_JSON );
         }
+        catch ( const std::exception &e )
+        {
+            // quicktype-generated enum from_json functions (e.g. the narrowed
+            // ShaderSourceType) throw a plain std::runtime_error -- not a
+            // nlohmann::json::exception subclass -- when a job submits a
+            // schema-invalid enum value (e.g. legacy "hlsl"/"metal"). Must be
+            // caught here as well or it propagates uncaught out of Init().
+            return outcome::failure( Error::INVALID_JSON );
+        }
         auto isvalid = CheckProcessValidity();
         if ( !isvalid )
         {
@@ -152,9 +215,24 @@ namespace sgns::sgprocessing
                     break;
                 case PassType::RENDER:
                 {
-                    if ( !pass.get_shader() )
+                    if ( !pass.get_render_shader() )
                     {
-                        m_logger->error( "Render pass has no shader config" );
+                        m_logger->error( "Render pass has no render_shader config" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+                    if ( !pass.get_render_target() )
+                    {
+                        m_logger->error( "Render pass has no render_target config" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+                    if ( !pass.get_vertex_buffer() )
+                    {
+                        m_logger->error( "Render pass has no vertex_buffer binding" );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    }
+                    if ( !pass.get_vertex_layout() || pass.get_vertex_layout()->empty() )
+                    {
+                        m_logger->error( "Render pass has no vertex_layout entries" );
                         return outcome::failure( Error::PROCESS_INFO_MISSING );
                     }
                     break;
@@ -861,23 +939,43 @@ namespace sgns::sgprocessing
                 std::make_shared<std::vector<char>>(),
                 std::make_shared<std::vector<char>>() );
 
-        std::string modelFile = [&]() -> std::string {
-            const auto &p = processing_.get_passes()[index.value()];
-            if ( p.get_type() == PassType::RENDER && p.get_shader() )
-            {
-                return p.get_shader().value().get_source();
-            }
-            return p.get_model().value().get_source_uri_param();
-        }();
+        const auto &p        = processing_.get_passes()[index.value()];
+        const bool  isRender = ( p.get_type() == PassType::RENDER && p.get_render_shader() );
 
-        std::string image = processing_.get_inputs()[index.value()].get_source_uri_param();
-        m_logger->info( "Model Input URL: {}", modelFile );
-        m_logger->info( "Data Input URL: {}", image );
         //Init Loaders
         FileManager::GetInstance().InitializeSingletons();
-        //Get Model
-        string modelURL = modelFile;
-        GetSubCidForProc( ioc, modelURL, mainbuffers->first );
+
+        // Per-stage fetch buffers for the render path -- queued alongside the
+        // existing image fetch below so the single existing ioc->run() call
+        // still drains everything in one pass (no new synchronization
+        // primitive needed).
+        std::vector<std::pair<sgns::ShaderStage, std::shared_ptr<std::vector<char>>>> stageBuffers;
+
+        if ( isRender )
+        {
+            const auto &stages = p.get_render_shader().value().get_stages();
+            for ( const auto &stage : stages )
+            {
+                auto tempBuffer = std::make_shared<std::vector<char>>();
+                GetSubCidForProc( ioc, stage.get_source(), tempBuffer );
+                stageBuffers.emplace_back( stage, tempBuffer );
+            }
+            // For a render pass, mainbuffers->first is populated by
+            // SerializeCompiledStages() below, not by a raw modelURL fetch --
+            // skip the old single GetSubCidForProc(ioc, modelURL, ...) call
+            // entirely for this pass type.
+        }
+        else
+        {
+            std::string modelFile = p.get_model().value().get_source_uri_param();
+            m_logger->info( "Model Input URL: {}", modelFile );
+
+            string modelURL = modelFile;
+            GetSubCidForProc( ioc, modelURL, mainbuffers->first );
+        }
+
+        std::string image = processing_.get_inputs()[index.value()].get_source_uri_param();
+        m_logger->info( "Data Input URL: {}", image );
 
         string imageUrl = image;
         GetSubCidForProc( ioc, imageUrl, mainbuffers->second );
@@ -885,6 +983,32 @@ namespace sgns::sgprocessing
         //Run IO
         ioc->reset();
         ioc->run();
+
+        if ( isRender )
+        {
+            std::vector<sgns::sgprocessing::CompiledShaderStage> compiledStages;
+            compiledStages.reserve( stageBuffers.size() );
+            for ( auto &entry : stageBuffers )
+            {
+                const auto &stage      = entry.first;
+                auto       &tempBuffer = entry.second;
+
+                sgns::sgprocessing::ShaderCompiler compiler;
+                auto                                compileResult = compiler.CompileAndValidate(
+                    *tempBuffer, stage.get_stage(), stage.get_type(), stage.get_entry_point().value_or( "main" ) );
+                if ( !compileResult )
+                {
+                    if ( compileResult.error() == sgns::sgprocessing::ShaderCompiler::Error::VALIDATION_FAILED )
+                    {
+                        return outcome::failure( Error::SPIRV_VALIDATION_FAILED );
+                    }
+                    return outcome::failure( Error::SHADER_COMPILE_FAILED );
+                }
+                compiledStages.push_back( compileResult.value() );
+            }
+
+            *mainbuffers->first = SerializeCompiledStages( compiledStages );
+        }
 
         if ( mainbuffers == nullptr )
         {
