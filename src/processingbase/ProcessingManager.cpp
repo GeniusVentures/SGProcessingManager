@@ -27,6 +27,8 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
             return "Shader source failed to compile";
         case sgns::sgprocessing::ProcessingManager::Error::SPIRV_VALIDATION_FAILED:
             return "SPIR-V failed validation";
+        case sgns::sgprocessing::ProcessingManager::Error::PROCESSING_FAILED:
+            return "Processor failed to produce a valid result";
     }
     return "Unknown error";
 }
