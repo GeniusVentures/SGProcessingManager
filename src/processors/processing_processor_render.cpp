@@ -1993,20 +1993,129 @@ namespace sgns::sgprocessing
         const std::vector<sgns::Parameter> *parameters )
     {
         (void)proc;
-        (void)imageData;
-        (void)modelFile;
-        (void)parameters;
+        (void)chunkhashes;
 
         if ( !InitializeContext() )
         {
-            ProcessingResult result;
-            result.hash = std::vector<uint8_t>( 32, 0 );
-            return result;
+            RunTeardown();
+            return MakeError( ProcessingErrorStage::CONTEXT_INIT_FAILED, "InitializeContext failed" );
         }
 
+        ProcessingResult errorOut;
+
+        // (1) Invert plan 03-01's compiled-stage wire format.
+        std::vector<ParsedStage> stages;
+        if ( !ParseCompiledStages( modelFile, stages, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        // (2) ParseRenderPassConfig() is the ONLY source of RenderTarget/
+        // PipelineState/VertexLayoutEntry/uniforms/vertex-index bytes/
+        // dataTransformCount -- StartProcessing()'s own parameters never carry a
+        // Pass/RenderShaderConfig object.
+        sgns::RenderTarget                                                renderTarget;
+        boost::optional<sgns::PipelineState>                              pipelineState;
+        std::vector<sgns::VertexLayoutEntry>                              vertexLayout;
+        boost::optional<std::map<std::string, sgns::RenderShaderUniform>> uniformsMap;
+        std::vector<uint8_t>                                              vertexBytes;
+        bool                                                              hasIndex  = false;
+        sgns::IndexType                                                   indexType = sgns::IndexType::UINT32;
+        std::vector<uint8_t>                                              indexBytes;
+        uint32_t                                                          dataTransformCount = 0;
+
+        if ( !ParseRenderPassConfig( imageData, renderTarget, pipelineState, vertexLayout, uniformsMap, vertexBytes,
+                                     hasIndex, indexType, indexBytes, dataTransformCount, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        // (3) Resolve literal/parameter:-sourced uniform values into packed bytes.
+        ResolvedUniforms resolvedUniforms;
+        if ( !ResolveUniforms( uniformsMap, parameters, resolvedUniforms, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        // (4)-(6): build the offscreen render pass/framebuffer/pipeline (plan 03-04).
+        if ( !BuildRenderPass( renderTarget, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        if ( !BuildFramebuffer( renderTarget, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        if ( !BuildPipeline( stages, vertexLayout, pipelineState, resolvedUniforms, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        // (7) Upload vertex/index/uniform buffers -- stride computed identically to
+        // BuildPipeline()'s own vertex-input stride (sum of VertexFormatByteSize()
+        // over vertexLayout), computed once and passed to both.
+        uint32_t stride = 0;
+        for ( const auto &entry : vertexLayout )
+        {
+            stride += VertexFormatByteSize( entry.get_format() );
+        }
+
+        if ( !UploadBuffers( vertexBytes, hasIndex, indexType, indexBytes, stride, resolvedUniforms, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        // (8) RENDER-07: no data_transform executor exists anywhere in this codebase
+        // (RESEARCH.md Pitfall 9) -- absent/empty data_transforms is a no-op
+        // (readback bytes flow through unmodified); any non-empty data_transforms
+        // fails cleanly with a structured, named error instead of silently ignoring
+        // the job's declared transform. Every object built in steps 4-7 must still
+        // be destroyed even though the job is rejected here.
+        if ( dataTransformCount > 0 )
+        {
+            RunTeardown();
+            return MakeError( ProcessingErrorStage::DATA_TRANSFORM_UNSUPPORTED,
+                              "data_transform declared (" + std::to_string( dataTransformCount ) +
+                                  " entries) but no executor exists in this phase" );
+        }
+
+        // (9)-(10): record+submit the single command buffer (including the readback
+        // copy recorded inline) and map the staging buffer's bytes out.
+        if ( !RecordAndSubmit( renderTarget, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        std::vector<uint8_t> readbackBytes;
+        if ( !Readback( renderTarget, readbackBytes, errorOut ) )
+        {
+            RunTeardown();
+            return errorOut;
+        }
+
+        // (11) Success: tear down every per-job Vulkan object (D-22/D-23) before
+        // populating the final ProcessingResult from the raw readback bytes.
+        RunTeardown();
+
         ProcessingResult result;
-        result.hash = std::vector<uint8_t>( 32, 0 );
-        m_progress = 100.0f;
+        result.hash = sgns::sgprocmanagersha::sha256( readbackBytes.data(), readbackBytes.size() );
+        result.output_buffers =
+            std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>(
+                std::vector<std::string>{ std::string{} },
+                std::vector<std::vector<char>>{ std::vector<char>( readbackBytes.begin(), readbackBytes.end() ) } );
+        result.error = std::nullopt;
+        m_progress   = 100.0f;
+
         return result;
     }
 
