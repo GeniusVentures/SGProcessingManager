@@ -6,6 +6,11 @@
 #include <mutex>
 #include <ColorFormat.hpp>
 #include <DepthFormat.hpp>
+#include <Topology.hpp>
+#include <CullMode.hpp>
+#include <FrontFace.hpp>
+#include <DepthTest.hpp>
+#include <VertexLayoutFormat.hpp>
 
 namespace sgns::sgprocessing
 {
@@ -1264,6 +1269,365 @@ namespace sgns::sgprocessing
 
         VkDevice device = m_device;
         PushTeardown( [device, framebuffer]() { vkDestroyFramebuffer( device, framebuffer, nullptr ); } );
+
+        return true;
+    }
+
+    VkFormat RenderProcessor::ToVkFormat( sgns::VertexLayoutFormat fmt )
+    {
+        switch ( fmt )
+        {
+            case sgns::VertexLayoutFormat::FLOAT32:
+                return VK_FORMAT_R32_SFLOAT;
+            case sgns::VertexLayoutFormat::FLOAT16:
+                return VK_FORMAT_R16_SFLOAT;
+            case sgns::VertexLayoutFormat::INT32:
+                return VK_FORMAT_R32_SINT;
+        }
+        return VK_FORMAT_R32_SFLOAT;
+    }
+
+    VkPrimitiveTopology RenderProcessor::ToVkTopology( sgns::Topology t )
+    {
+        switch ( t )
+        {
+            case sgns::Topology::TRIANGLE_LIST:
+                return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            case sgns::Topology::LINE_LIST:
+                return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+            case sgns::Topology::POINT_LIST:
+                return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+        }
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    }
+
+    VkCullModeFlags RenderProcessor::ToVkCullMode( sgns::CullMode c )
+    {
+        switch ( c )
+        {
+            case sgns::CullMode::NONE:
+                return VK_CULL_MODE_NONE;
+            case sgns::CullMode::FRONT:
+                return VK_CULL_MODE_FRONT_BIT;
+            case sgns::CullMode::BACK:
+                return VK_CULL_MODE_BACK_BIT;
+        }
+        return VK_CULL_MODE_BACK_BIT;
+    }
+
+    VkFrontFace RenderProcessor::ToVkFrontFace( sgns::FrontFace f )
+    {
+        switch ( f )
+        {
+            case sgns::FrontFace::CCW:
+                return VK_FRONT_FACE_COUNTER_CLOCKWISE;
+            case sgns::FrontFace::CW:
+                return VK_FRONT_FACE_CLOCKWISE;
+        }
+        return VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    }
+
+    VkBool32 RenderProcessor::ToVkBool( sgns::DepthTest d )
+    {
+        return ( d == sgns::DepthTest::ENABLED ) ? VK_TRUE : VK_FALSE;
+    }
+
+    uint32_t RenderProcessor::VertexFormatByteSize( sgns::VertexLayoutFormat f )
+    {
+        switch ( f )
+        {
+            case sgns::VertexLayoutFormat::FLOAT32:
+                return 4;
+            case sgns::VertexLayoutFormat::INT32:
+                return 4;
+            case sgns::VertexLayoutFormat::FLOAT16:
+                return 2;
+        }
+        return 4;
+    }
+
+    bool RenderProcessor::BuildPipeline( const std::vector<ParsedStage>             &stages,
+                                          const std::vector<sgns::VertexLayoutEntry> &vertexLayout,
+                                          const boost::optional<sgns::PipelineState> &pipelineState,
+                                          const ResolvedUniforms                     &uniforms,
+                                          ProcessingResult                           &errorOut )
+    {
+        std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+        shaderStages.reserve( stages.size() );
+
+        for ( const auto &s : stages )
+        {
+            VkShaderModuleCreateInfo moduleInfo{};
+            moduleInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            moduleInfo.codeSize = s.spirv.size() * sizeof( uint32_t );
+            moduleInfo.pCode    = s.spirv.data();
+
+            VkShaderModule module = VK_NULL_HANDLE;
+            VkResult       result = vkCreateShaderModule( m_device, &moduleInfo, nullptr, &module );
+            if ( result != VK_SUCCESS )
+            {
+                errorOut = MakeError( ProcessingErrorStage::SHADER_MODULE_CREATION,
+                                      "vkCreateShaderModule failed: VkResult=" + std::to_string( result ) );
+                return false;
+            }
+
+            VkDevice device = m_device;
+            PushTeardown( [device, module]() { vkDestroyShaderModule( device, module, nullptr ); } );
+
+            VkPipelineShaderStageCreateInfo stageInfo{};
+            stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageInfo.stage = ( s.stage == sgns::Stage::VERTEX ) ? VK_SHADER_STAGE_VERTEX_BIT
+                                                                  : VK_SHADER_STAGE_FRAGMENT_BIT;
+            stageInfo.module = module;
+            stageInfo.pName = s.entry_point.c_str();
+            shaderStages.push_back( stageInfo );
+        }
+
+        uint32_t stride = 0;
+        for ( const auto &entry : vertexLayout )
+        {
+            stride += VertexFormatByteSize( entry.get_format() );
+        }
+
+        VkVertexInputBindingDescription bindingDesc{};
+        bindingDesc.binding   = 0;
+        bindingDesc.stride    = stride;
+        bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        std::vector<VkVertexInputAttributeDescription> attributeDescs;
+        attributeDescs.reserve( vertexLayout.size() );
+        for ( size_t i = 0; i < vertexLayout.size(); ++i )
+        {
+            VkVertexInputAttributeDescription attr{};
+            attr.location = static_cast<uint32_t>( i );
+            attr.binding  = 0;
+            attr.format   = ToVkFormat( vertexLayout[i].get_format() );
+            attr.offset   = static_cast<uint32_t>( vertexLayout[i].get_offset() );
+            attributeDescs.push_back( attr );
+        }
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount   = vertexLayout.empty() ? 0 : 1;
+        vertexInputInfo.pVertexBindingDescriptions      = vertexLayout.empty() ? nullptr : &bindingDesc;
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>( attributeDescs.size() );
+        vertexInputInfo.pVertexAttributeDescriptions    = attributeDescs.empty() ? nullptr : attributeDescs.data();
+
+        sgns::Topology  topology  = sgns::Topology::TRIANGLE_LIST;
+        sgns::CullMode  cullMode  = sgns::CullMode::BACK;
+        sgns::FrontFace frontFace = sgns::FrontFace::CCW;
+        sgns::DepthTest depthTest = sgns::DepthTest::ENABLED;
+        if ( pipelineState )
+        {
+            if ( pipelineState->get_topology() )
+            {
+                topology = pipelineState->get_topology().value();
+            }
+            if ( pipelineState->get_cull_mode() )
+            {
+                cullMode = pipelineState->get_cull_mode().value();
+            }
+            if ( pipelineState->get_front_face() )
+            {
+                frontFace = pipelineState->get_front_face().value();
+            }
+            if ( pipelineState->get_depth_test() )
+            {
+                depthTest = pipelineState->get_depth_test().value();
+            }
+        }
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+        inputAssembly.sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssembly.topology               = ToVkTopology( topology );
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+        VkPipelineRasterizationStateCreateInfo rasterizer{};
+        rasterizer.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterizer.cullMode    = ToVkCullMode( cullMode );
+        rasterizer.frontFace   = ToVkFrontFace( frontFace );
+        rasterizer.lineWidth   = 1.0f;
+
+        VkPipelineDepthStencilStateCreateInfo depthStencil{};
+        depthStencil.sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencil.depthTestEnable  = ToVkBool( depthTest );
+        depthStencil.depthWriteEnable = depthStencil.depthTestEnable; // [ASSUMED] tied to depthTestEnable -- no
+                                                                       // separate schema field exists (RESEARCH.md A1)
+        depthStencil.depthCompareOp   = VK_COMPARE_OP_LESS;           // fixed per D-14, never schema-configurable
+
+        VkPipelineMultisampleStateCreateInfo multisample{};
+        multisample.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; // ALWAYS -- DETV-02, never configurable
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                               VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_FALSE;
+
+        VkPipelineColorBlendStateCreateInfo colorBlending{};
+        colorBlending.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments    = &colorBlendAttachment;
+
+        // Fixed (never a runtime-settable pipeline attribute, per D-22) viewport/
+        // scissor sized to BuildRenderPass()'s already-validated render target
+        // dimensions.
+        VkViewport viewport{};
+        viewport.x        = 0.0f;
+        viewport.y        = 0.0f;
+        viewport.width    = static_cast<float>( m_renderWidth );
+        viewport.height   = static_cast<float>( m_renderHeight );
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = { m_renderWidth, m_renderHeight };
+
+        VkPipelineViewportStateCreateInfo viewportState{};
+        viewportState.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportState.viewportCount = 1;
+        viewportState.pViewports    = &viewport;
+        viewportState.scissorCount  = 1;
+        viewportState.pScissors     = &scissor;
+
+        // D-29/D-30: fixed 128-byte push-constant threshold, all-or-nothing.
+        bool usePushConstant  = uniforms.pushConstant && !uniforms.packedBytes.empty();
+        bool useDescriptorSet = !uniforms.pushConstant && !uniforms.packedBytes.empty();
+
+        VkPushConstantRange pushConstantRange{};
+        if ( usePushConstant )
+        {
+            pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            pushConstantRange.offset     = 0;
+            pushConstantRange.size       = static_cast<uint32_t>( uniforms.packedBytes.size() );
+        }
+
+        VkResult result = VK_SUCCESS;
+
+        if ( useDescriptorSet )
+        {
+            VkDescriptorSetLayoutBinding binding{};
+            binding.binding         = 0;
+            binding.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            binding.descriptorCount = 1;
+            binding.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+            VkDescriptorSetLayoutCreateInfo layoutInfo{};
+            layoutInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = 1;
+            layoutInfo.pBindings    = &binding;
+
+            result = vkCreateDescriptorSetLayout( m_device, &layoutInfo, nullptr, &m_descriptorSetLayout );
+            if ( result != VK_SUCCESS )
+            {
+                errorOut = MakeError( ProcessingErrorStage::PIPELINE_CREATION,
+                                      "vkCreateDescriptorSetLayout failed: VkResult=" + std::to_string( result ) );
+                return false;
+            }
+            {
+                VkDevice              device = m_device;
+                VkDescriptorSetLayout layout  = m_descriptorSetLayout;
+                PushTeardown( [device, layout]() { vkDestroyDescriptorSetLayout( device, layout, nullptr ); } );
+            }
+
+            VkDescriptorPoolSize poolSize{};
+            poolSize.type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            poolSize.descriptorCount = 1;
+
+            VkDescriptorPoolCreateInfo poolInfo{};
+            poolInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            poolInfo.poolSizeCount = 1;
+            poolInfo.pPoolSizes    = &poolSize;
+            poolInfo.maxSets       = 1; // matches D-22's per-job-only lifetime
+
+            result = vkCreateDescriptorPool( m_device, &poolInfo, nullptr, &m_descriptorPool );
+            if ( result != VK_SUCCESS )
+            {
+                errorOut = MakeError( ProcessingErrorStage::PIPELINE_CREATION,
+                                      "vkCreateDescriptorPool failed: VkResult=" + std::to_string( result ) );
+                return false;
+            }
+            {
+                VkDevice         device = m_device;
+                VkDescriptorPool pool   = m_descriptorPool;
+                PushTeardown( [device, pool]() { vkDestroyDescriptorPool( device, pool, nullptr ); } );
+            }
+
+            VkDescriptorSetAllocateInfo allocInfo{};
+            allocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocInfo.descriptorPool     = m_descriptorPool;
+            allocInfo.descriptorSetCount = 1;
+            allocInfo.pSetLayouts        = &m_descriptorSetLayout;
+
+            result = vkAllocateDescriptorSets( m_device, &allocInfo, &m_descriptorSet );
+            if ( result != VK_SUCCESS )
+            {
+                errorOut = MakeError( ProcessingErrorStage::PIPELINE_CREATION,
+                                      "vkAllocateDescriptorSets failed: VkResult=" + std::to_string( result ) );
+                return false;
+            }
+            // m_descriptorSet is freed automatically when m_descriptorPool is
+            // destroyed -- no separate PushTeardown needed for the set itself.
+        }
+
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        if ( usePushConstant )
+        {
+            pipelineLayoutInfo.pushConstantRangeCount = 1;
+            pipelineLayoutInfo.pPushConstantRanges    = &pushConstantRange;
+        }
+        if ( useDescriptorSet )
+        {
+            pipelineLayoutInfo.setLayoutCount = 1;
+            pipelineLayoutInfo.pSetLayouts    = &m_descriptorSetLayout;
+        }
+        // If uniforms.packedBytes is empty (no uniforms declared at all), neither
+        // branch above ran -- pipelineLayoutInfo keeps zero push-constant ranges
+        // and zero descriptor sets, exactly as required.
+
+        result = vkCreatePipelineLayout( m_device, &pipelineLayoutInfo, nullptr, &m_pipelineLayout );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::PIPELINE_CREATION,
+                                  "vkCreatePipelineLayout failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+        {
+            VkDevice         device = m_device;
+            VkPipelineLayout layout = m_pipelineLayout;
+            PushTeardown( [device, layout]() { vkDestroyPipelineLayout( device, layout, nullptr ); } );
+        }
+
+        VkGraphicsPipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount          = static_cast<uint32_t>( shaderStages.size() );
+        pipelineInfo.pStages             = shaderStages.data();
+        pipelineInfo.pVertexInputState   = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState      = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState   = &multisample;
+        pipelineInfo.pDepthStencilState  = &depthStencil;
+        pipelineInfo.pColorBlendState    = &colorBlending;
+        pipelineInfo.layout              = m_pipelineLayout;
+        pipelineInfo.renderPass          = m_renderPass;
+        pipelineInfo.subpass             = 0;
+
+        result = vkCreateGraphicsPipelines( m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::PIPELINE_CREATION,
+                                  "vkCreateGraphicsPipelines failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+        {
+            VkDevice   device   = m_device;
+            VkPipeline pipeline = m_pipeline;
+            PushTeardown( [device, pipeline]() { vkDestroyPipeline( device, pipeline, nullptr ); } );
+        }
 
         return true;
     }

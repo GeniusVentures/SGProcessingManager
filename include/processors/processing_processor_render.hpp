@@ -156,8 +156,30 @@ namespace sgns::sgprocessing
         /// m_renderPass. Must be called after BuildRenderPass() succeeds.
         bool BuildFramebuffer( const sgns::RenderTarget &target, ProcessingResult &errorOut );
 
+        /// Builds the complete graphics pipeline: one VkShaderModule/shader-stage
+        /// per parsed stage (real per-stage entry point, never a hard-coded
+        /// "main"), fixed (never dynamic) pipeline state from pipelineState (or
+        /// schema-documented defaults when absent), the auto-computed vertex
+        /// input binding/attributes from vertexLayout, and a pipeline layout
+        /// branching on uniforms.pushConstant (D-29/D-30's all-or-nothing rule).
+        bool BuildPipeline( const std::vector<ParsedStage>             &stages,
+                             const std::vector<sgns::VertexLayoutEntry> &vertexLayout,
+                             const boost::optional<sgns::PipelineState> &pipelineState,
+                             const ResolvedUniforms                     &uniforms,
+                             ProcessingResult                           &errorOut );
+
         static VkFormat ToVkFormat( sgns::ColorFormat fmt );
         static VkFormat ToVkFormat( sgns::DepthFormat fmt );
+        static VkFormat ToVkFormat( sgns::VertexLayoutFormat fmt );
+        static VkPrimitiveTopology ToVkTopology( sgns::Topology t );
+        static VkCullModeFlags ToVkCullMode( sgns::CullMode c );
+        static VkFrontFace ToVkFrontFace( sgns::FrontFace f );
+        static VkBool32 ToVkBool( sgns::DepthTest d );
+
+        /// Byte size of a single scalar vertex-attribute component (this plan's
+        /// documented scalar-component reading of vertex_layout -- see
+        /// 03-04-PLAN.md's objective). FLOAT32/INT32 -> 4, FLOAT16 -> 2.
+        static uint32_t VertexFormatByteSize( sgns::VertexLayoutFormat f );
 
         VkInstance m_instance{VK_NULL_HANDLE};
         VkPhysicalDevice m_physicalDevice{VK_NULL_HANDLE};
@@ -184,5 +206,11 @@ namespace sgns::sgprocessing
         VkImage        m_colorImage{VK_NULL_HANDLE}, m_depthImage{VK_NULL_HANDLE};
         VkImageView    m_colorView{VK_NULL_HANDLE}, m_depthView{VK_NULL_HANDLE};
         VkDeviceMemory m_colorMemory{VK_NULL_HANDLE}, m_depthMemory{VK_NULL_HANDLE};
+
+        VkPipelineLayout      m_pipelineLayout{VK_NULL_HANDLE};
+        VkPipeline            m_pipeline{VK_NULL_HANDLE};
+        VkDescriptorSetLayout m_descriptorSetLayout{VK_NULL_HANDLE};
+        VkDescriptorPool      m_descriptorPool{VK_NULL_HANDLE};
+        VkDescriptorSet       m_descriptorSet{VK_NULL_HANDLE};
     };
 }
