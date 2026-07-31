@@ -6,6 +6,7 @@
 #include "shaders/shader_compiler.hpp"
 
 #include <cstring>
+#include <map>
 
 OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
 {
@@ -128,6 +129,225 @@ namespace sgns::sgprocessing
                                  compiled.spirv.size() * sizeof( uint32_t ) );
                 }
             }
+
+            return out;
+        }
+
+        /**
+         * Packs render_target/pipeline_state/vertex_layout/uniforms alongside the
+         * independently-resolved vertex/index buffer bytes into the single wire-format
+         * buffer GetCidForProc() places into mainbuffers->second for a render pass.
+         *
+         * This is the ONLY channel any of this Pass-level data has to reach
+         * RenderProcessor -- StartProcessing()'s fixed signature never carries the
+         * Pass or RenderShaderConfig object itself (D-25's no-signature-change
+         * constraint). Plan 03-03's RenderProcessor parser must be the exact inverse
+         * of this function.
+         *
+         * Layout (all integers little-endian, native uint32_t width; clear_color/
+         * clear_depth narrowed from the schema's double to float on write):
+         *   uint32_t width
+         *   uint32_t height
+         *   uint32_t color_format_tag   (static_cast<uint32_t>(ColorFormat))
+         *   uint32_t depth_format_tag   (static_cast<uint32_t>(DepthFormat))
+         *   float    clear_color[4]
+         *   float    clear_depth
+         *   uint8_t  has_pipeline_state
+         *   if has_pipeline_state:
+         *     uint8_t has_topology    + [uint32_t topology_tag]
+         *     uint8_t has_cull_mode   + [uint32_t cull_mode_tag]
+         *     uint8_t has_front_face  + [uint32_t front_face_tag]
+         *     uint8_t has_depth_test  + [uint32_t depth_test_tag]
+         *   uint32_t vertex_layout_count
+         *   per entry:
+         *     uint32_t name_len + name bytes (raw UTF-8, no null terminator)
+         *     uint32_t format_tag   (static_cast<uint32_t>(VertexLayoutFormat))
+         *     uint32_t offset
+         *   uint8_t has_uniforms
+         *   if has_uniforms:
+         *     uint32_t uniform_count
+         *     per entry (std::map's natural key-sorted iteration order):
+         *       uint32_t name_len + name bytes
+         *       uint8_t has_source + [uint32_t source_len + source bytes]
+         *       uint8_t has_type   + [uint32_t type_tag (static_cast<uint32_t>(DataType))]
+         *       uint32_t value_json_len + value bytes (nlohmann::json::dump() UTF-8;
+         *                                               empty string if get_value().is_null())
+         *   uint32_t vertex_len + vertex bytes
+         *   uint8_t has_index
+         *   if has_index:
+         *     uint32_t index_type_tag (static_cast<uint32_t>(IndexType))
+         *     uint32_t index_len + index bytes
+         *   uint32_t data_transform_count
+         */
+        std::vector<char> SerializeRenderPassConfig(
+            const sgns::RenderTarget                                                &target,
+            const boost::optional<sgns::PipelineState>                              &pipelineState,
+            const std::vector<sgns::VertexLayoutEntry>                              &vertexLayout,
+            const boost::optional<std::map<std::string, sgns::RenderShaderUniform>> &uniforms,
+            const std::vector<char>                                                 &vertexBytes,
+            bool                                                                     hasIndexBuffer,
+            sgns::IndexType                                                          indexType,
+            const std::vector<char>                                                 &indexBytes,
+            uint32_t                                                                 dataTransformCount )
+        {
+            std::vector<char> out;
+
+            auto appendBytes = [&out]( const char *data, size_t size )
+            {
+                if ( size > 0 )
+                {
+                    size_t offset = out.size();
+                    out.resize( offset + size );
+                    std::memcpy( out.data() + offset, data, size );
+                }
+            };
+            auto appendU32 = [&out]( uint32_t value )
+            {
+                size_t offset = out.size();
+                out.resize( offset + sizeof( uint32_t ) );
+                std::memcpy( out.data() + offset, &value, sizeof( uint32_t ) );
+            };
+            auto appendU8 = [&out]( uint8_t value ) { out.push_back( static_cast<char>( value ) ); };
+            auto appendF32 = [&out]( float value )
+            {
+                size_t offset = out.size();
+                out.resize( offset + sizeof( float ) );
+                std::memcpy( out.data() + offset, &value, sizeof( float ) );
+            };
+            auto appendString = [&]( const std::string &value )
+            {
+                appendU32( static_cast<uint32_t>( value.size() ) );
+                appendBytes( value.data(), value.size() );
+            };
+
+            appendU32( static_cast<uint32_t>( target.get_width() ) );
+            appendU32( static_cast<uint32_t>( target.get_height() ) );
+            appendU32( static_cast<uint32_t>( target.get_color_format() ) );
+            appendU32( static_cast<uint32_t>( target.get_depth_format() ) );
+
+            const auto &clearColor = target.get_clear_color();
+            for ( size_t i = 0; i < 4; ++i )
+            {
+                appendF32( i < clearColor.size() ? static_cast<float>( clearColor[i] ) : 0.0f );
+            }
+            appendF32( static_cast<float>( target.get_clear_depth() ) );
+
+            if ( pipelineState )
+            {
+                appendU8( 1 );
+                const auto &ps = pipelineState.value();
+
+                if ( ps.get_topology() )
+                {
+                    appendU8( 1 );
+                    appendU32( static_cast<uint32_t>( ps.get_topology().value() ) );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+
+                if ( ps.get_cull_mode() )
+                {
+                    appendU8( 1 );
+                    appendU32( static_cast<uint32_t>( ps.get_cull_mode().value() ) );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+
+                if ( ps.get_front_face() )
+                {
+                    appendU8( 1 );
+                    appendU32( static_cast<uint32_t>( ps.get_front_face().value() ) );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+
+                if ( ps.get_depth_test() )
+                {
+                    appendU8( 1 );
+                    appendU32( static_cast<uint32_t>( ps.get_depth_test().value() ) );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+            }
+            else
+            {
+                appendU8( 0 );
+            }
+
+            appendU32( static_cast<uint32_t>( vertexLayout.size() ) );
+            for ( const auto &entry : vertexLayout )
+            {
+                appendString( entry.get_name() );
+                appendU32( static_cast<uint32_t>( entry.get_format() ) );
+                appendU32( static_cast<uint32_t>( entry.get_offset() ) );
+            }
+
+            if ( uniforms )
+            {
+                appendU8( 1 );
+                const auto &uniformMap = uniforms.value();
+                appendU32( static_cast<uint32_t>( uniformMap.size() ) );
+                // std::map iterates in key-sorted order already -- matches plan
+                // 03-03's ResolveUniforms iteration-order decision.
+                for ( const auto &uniformEntry : uniformMap )
+                {
+                    appendString( uniformEntry.first );
+                    const auto &uniform = uniformEntry.second;
+
+                    if ( uniform.get_source() )
+                    {
+                        appendU8( 1 );
+                        appendString( uniform.get_source().value() );
+                    }
+                    else
+                    {
+                        appendU8( 0 );
+                    }
+
+                    if ( uniform.get_type() )
+                    {
+                        appendU8( 1 );
+                        appendU32( static_cast<uint32_t>( uniform.get_type().value() ) );
+                    }
+                    else
+                    {
+                        appendU8( 0 );
+                    }
+
+                    std::string valueJson =
+                        uniform.get_value().is_null() ? std::string() : uniform.get_value().dump();
+                    appendString( valueJson );
+                }
+            }
+            else
+            {
+                appendU8( 0 );
+            }
+
+            appendU32( static_cast<uint32_t>( vertexBytes.size() ) );
+            appendBytes( vertexBytes.data(), vertexBytes.size() );
+
+            if ( hasIndexBuffer )
+            {
+                appendU8( 1 );
+                appendU32( static_cast<uint32_t>( indexType ) );
+                appendU32( static_cast<uint32_t>( indexBytes.size() ) );
+                appendBytes( indexBytes.data(), indexBytes.size() );
+            }
+            else
+            {
+                appendU8( 0 );
+            }
+
+            appendU32( dataTransformCount );
 
             return out;
         }
@@ -983,6 +1203,14 @@ namespace sgns::sgprocessing
         // primitive needed).
         std::vector<std::pair<sgns::ShaderStage, std::shared_ptr<std::vector<char>>>> stageBuffers;
 
+        // Independently-resolved vertex/index buffer fetch buffers (Task 1 --
+        // resolved via the "input:name" prefix, NOT the coincidental single
+        // model-index input `mainbuffers->second` used to carry today).
+        std::shared_ptr<std::vector<char>> vertexBuffer;
+        std::shared_ptr<std::vector<char>> indexBuffer;
+        bool                               hasIndexBuffer = false;
+        sgns::IndexType                    indexType      = sgns::IndexType::UINT16;
+
         if ( isRender )
         {
             // NOTE: get_render_shader() returns boost::optional<RenderShaderConfig> BY VALUE
@@ -1003,6 +1231,50 @@ namespace sgns::sgprocessing
             // SerializeCompiledStages() below, not by a raw modelURL fetch --
             // skip the old single GetSubCidForProc(ioc, modelURL, ...) call
             // entirely for this pass type.
+
+            // Resolve vertex_buffer.source as an independently-named "input:"
+            // reference. CheckProcessValidity() already requires vertex_buffer to
+            // be present and (Task 2) requires its source to start with "input:" --
+            // this call-site check is defense-in-depth, not the primary rejection
+            // point.
+            const auto        vertexBufferCfg = p.get_vertex_buffer().value();
+            const std::string vertexSource    = vertexBufferCfg.get_source();
+            if ( vertexSource.rfind( "input:", 0 ) != 0 )
+            {
+                return outcome::failure( Error::MISSING_INPUT );
+            }
+            auto vertexInputIndex = GetInputIndex( vertexSource );
+            if ( !vertexInputIndex )
+            {
+                return outcome::failure( Error::MISSING_INPUT );
+            }
+            std::string vertexUrl = processing_.get_inputs()[vertexInputIndex.value()].get_source_uri_param();
+            vertexBuffer          = std::make_shared<std::vector<char>>();
+            GetSubCidForProc( ioc, vertexUrl, vertexBuffer );
+
+            // index_buffer is optional; if present but its source is absent, that's
+            // a schema-permitted-but-unusable-here state -- treat as no index
+            // buffer (skip, do not error).
+            const auto indexBufferOpt = p.get_index_buffer();
+            if ( indexBufferOpt && indexBufferOpt.value().get_source() )
+            {
+                const auto  indexBufferCfg = indexBufferOpt.value();
+                std::string indexSource    = indexBufferCfg.get_source().value();
+                if ( indexSource.rfind( "input:", 0 ) != 0 )
+                {
+                    return outcome::failure( Error::MISSING_INPUT );
+                }
+                auto indexInputIndex = GetInputIndex( indexSource );
+                if ( !indexInputIndex )
+                {
+                    return outcome::failure( Error::MISSING_INPUT );
+                }
+                std::string indexUrl = processing_.get_inputs()[indexInputIndex.value()].get_source_uri_param();
+                indexBuffer           = std::make_shared<std::vector<char>>();
+                hasIndexBuffer        = true;
+                indexType             = indexBufferCfg.get_index_type().value_or( sgns::IndexType::UINT16 );
+                GetSubCidForProc( ioc, indexUrl, indexBuffer );
+            }
         }
         else
         {
@@ -1013,11 +1285,18 @@ namespace sgns::sgprocessing
             GetSubCidForProc( ioc, modelURL, mainbuffers->first );
         }
 
-        std::string image = processing_.get_inputs()[index.value()].get_source_uri_param();
-        m_logger->info( "Data Input URL: {}", image );
+        if ( !isRender )
+        {
+            // For a render pass, mainbuffers->second is populated by
+            // SerializeRenderPassConfig() below, not by this raw single fetch --
+            // `index` here is the coincidental pass-index-as-input-index value,
+            // not any render-specific buffer.
+            std::string image = processing_.get_inputs()[index.value()].get_source_uri_param();
+            m_logger->info( "Data Input URL: {}", image );
 
-        string imageUrl = image;
-        GetSubCidForProc( ioc, imageUrl, mainbuffers->second );
+            string imageUrl = image;
+            GetSubCidForProc( ioc, imageUrl, mainbuffers->second );
+        }
 
         //Run IO
         ioc->reset();
@@ -1054,6 +1333,32 @@ namespace sgns::sgprocessing
             }
 
             *mainbuffers->first = SerializeCompiledStages( compiledStages, entryPoints );
+
+            // Preserve the pre-existing INPUT_UNAVAIL failure semantics: previously
+            // this pass type's mainbuffers->second WAS the raw vertex/model fetch
+            // buffer, so an unresolvable source URI surfaced here via the
+            // mainbuffers->second->size() <= 0 check below. Now mainbuffers->second
+            // is always populated with a non-empty SerializeRenderPassConfig()
+            // header regardless of fetch success, so that check alone would no
+            // longer catch a failed vertex-buffer fetch -- check it explicitly.
+            if ( vertexBuffer->empty() )
+            {
+                return outcome::failure( Error::INPUT_UNAVAIL );
+            }
+
+            static const std::vector<char> kEmptyIndexBytes;
+            *mainbuffers->second = SerializeRenderPassConfig( p.get_render_target().value(),
+                                                               p.get_pipeline_state(),
+                                                               p.get_vertex_layout().value(),
+                                                               p.get_render_shader().value().get_uniforms(),
+                                                               *vertexBuffer,
+                                                               hasIndexBuffer,
+                                                               indexType,
+                                                               hasIndexBuffer ? *indexBuffer : kEmptyIndexBytes,
+                                                               p.get_data_transforms()
+                                                                   ? static_cast<uint32_t>(
+                                                                         p.get_data_transforms()->size() )
+                                                                   : 0u );
         }
 
         if ( mainbuffers == nullptr )
