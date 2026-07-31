@@ -478,6 +478,79 @@ namespace sgns::sgprocessing
                         m_logger->error( "Render pass has no vertex_layout entries" );
                         return outcome::failure( Error::PROCESS_INFO_MISSING );
                     }
+
+                    // Task 2: defensively reject vertex_buffer/index_buffer/uniform
+                    // sources this phase has no real resolution path for
+                    // (output:/internal:/parameter: for buffers; anything but
+                    // parameter: for uniforms) -- fail closed at Create() time
+                    // rather than reaching RenderProcessor unchecked (T-03-02-01,
+                    // T-03-02-02).
+                    auto rejectUnsupportedBufferSourcePrefix =
+                        [this]( const char *fieldName, const std::string &source ) -> outcome::result<void>
+                    {
+                        m_logger->error(
+                            "Render pass {}.source '{}' uses an unsupported prefix -- "
+                            "only input: is resolvable (no cross-pass output:/internal: dependency "
+                            "graph exists; parameter:-sourced raw buffers are not supported)",
+                            fieldName,
+                            source );
+                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                    };
+
+                    {
+                        const auto        vertexBufferCfg = pass.get_vertex_buffer().value();
+                        const std::string vertexSource    = vertexBufferCfg.get_source();
+                        if ( vertexSource.rfind( "input:", 0 ) != 0 )
+                        {
+                            return rejectUnsupportedBufferSourcePrefix( "vertex_buffer", vertexSource );
+                        }
+                    }
+
+                    if ( pass.get_index_buffer() && pass.get_index_buffer().value().get_source() )
+                    {
+                        const auto  indexBufferCfg = pass.get_index_buffer().value();
+                        std::string indexSource    = indexBufferCfg.get_source().value();
+                        if ( indexSource.rfind( "input:", 0 ) != 0 )
+                        {
+                            return rejectUnsupportedBufferSourcePrefix( "index_buffer", indexSource );
+                        }
+                    }
+
+                    {
+                        const auto renderShaderCfg = pass.get_render_shader().value();
+                        if ( renderShaderCfg.get_uniforms() )
+                        {
+                            const auto uniformsCfg = renderShaderCfg.get_uniforms().value();
+                            for ( const auto &uniformEntry : uniformsCfg )
+                            {
+                                const std::string &uniformName = uniformEntry.first;
+                                const auto         &uniform     = uniformEntry.second;
+
+                                if ( uniform.get_source() )
+                                {
+                                    const std::string &uniformSource = uniform.get_source().value();
+                                    if ( uniformSource.rfind( "parameter:", 0 ) != 0 )
+                                    {
+                                        m_logger->error(
+                                            "Render pass uniform '{}' has source '{}' with an "
+                                            "unsupported prefix -- only parameter: is resolvable for "
+                                            "uniform values in this phase",
+                                            uniformName,
+                                            uniformSource );
+                                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                                    }
+                                }
+                                else if ( uniform.get_value().is_null() )
+                                {
+                                    m_logger->error(
+                                        "Render pass uniform '{}' has neither a source nor a usable "
+                                        "value",
+                                        uniformName );
+                                    return outcome::failure( Error::PROCESS_INFO_MISSING );
+                                }
+                            }
+                        }
+                    }
                     break;
                 }
                 case PassType::RETRAIN:
