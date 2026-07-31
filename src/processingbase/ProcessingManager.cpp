@@ -77,14 +77,24 @@ namespace sgns::sgprocessing
          * Layout (all integers little-endian, native uint32_t width):
          *   uint32_t stage_count
          *   per stage:
-         *     uint32_t stage_tag    (static_cast<uint32_t>(sgns::Stage))
-         *     uint32_t word_count   (number of following uint32_t SPIR-V words)
+         *     uint32_t stage_tag       (static_cast<uint32_t>(sgns::Stage))
+         *     uint32_t entry_point_len (number of following raw UTF-8 bytes)
+         *     entry_point_len raw UTF-8 bytes (no null terminator)
+         *     uint32_t word_count      (number of following uint32_t SPIR-V words)
          *     word_count * uint32_t spirv_words
          */
         std::vector<char> SerializeCompiledStages(
-            const std::vector<sgns::sgprocessing::CompiledShaderStage> &stages )
+            const std::vector<sgns::sgprocessing::CompiledShaderStage> &stages,
+            const std::vector<std::string>                             &entryPoints )
         {
             std::vector<char> out;
+
+            if ( entryPoints.size() != stages.size() )
+            {
+                // Invariant of this plan's own call site -- a mismatch indicates a
+                // caller bug, not malformed job-supplied input.
+                return out;
+            }
 
             auto appendU32 = [&out]( uint32_t value )
             {
@@ -94,9 +104,20 @@ namespace sgns::sgprocessing
             };
 
             appendU32( static_cast<uint32_t>( stages.size() ) );
-            for ( const auto &compiled : stages )
+            for ( size_t i = 0; i < stages.size(); ++i )
             {
+                const auto &compiled = stages[i];
                 appendU32( static_cast<uint32_t>( compiled.stage ) );
+
+                const std::string &entryPoint = entryPoints[i];
+                appendU32( static_cast<uint32_t>( entryPoint.size() ) );
+                if ( !entryPoint.empty() )
+                {
+                    size_t offset = out.size();
+                    out.resize( offset + entryPoint.size() );
+                    std::memcpy( out.data() + offset, entryPoint.data(), entryPoint.size() );
+                }
+
                 appendU32( static_cast<uint32_t>( compiled.spirv.size() ) );
                 if ( !compiled.spirv.empty() )
                 {
@@ -796,6 +817,15 @@ namespace sgns::sgprocessing
                                                            *buffers->first,
                                                            parameters );
 
+        if ( processResult.error || processResult.hash.empty() )
+        {
+            m_logger->error( "Processing failed: {}",
+                             processResult.error
+                                 ? processResult.error->message
+                                 : std::string( "processor returned an empty hash with no result (legacy failure sentinel)" ) );
+            return outcome::failure( Error::PROCESSING_FAILED );
+        }
+
         const auto &outputs = processing_.get_outputs();
         if ( processResult.output_buffers && !outputs.empty() )
         {
@@ -996,15 +1026,21 @@ namespace sgns::sgprocessing
         if ( isRender )
         {
             std::vector<sgns::sgprocessing::CompiledShaderStage> compiledStages;
+            std::vector<std::string>                             entryPoints;
             compiledStages.reserve( stageBuffers.size() );
+            entryPoints.reserve( stageBuffers.size() );
             for ( auto &entry : stageBuffers )
             {
                 const auto &stage      = entry.first;
                 auto       &tempBuffer = entry.second;
 
+                std::string entryPoint = stage.get_entry_point().value_or( "main" );
+
                 sgns::sgprocessing::ShaderCompiler compiler;
-                auto                                compileResult = compiler.CompileAndValidate(
-                    *tempBuffer, stage.get_stage(), stage.get_type(), stage.get_entry_point().value_or( "main" ) );
+                auto compileResult = compiler.CompileAndValidate( *tempBuffer,
+                                                                   stage.get_stage(),
+                                                                   stage.get_type(),
+                                                                   entryPoint );
                 if ( !compileResult )
                 {
                     if ( compileResult.error() == sgns::sgprocessing::ShaderCompiler::Error::VALIDATION_FAILED )
@@ -1014,9 +1050,10 @@ namespace sgns::sgprocessing
                     return outcome::failure( Error::SHADER_COMPILE_FAILED );
                 }
                 compiledStages.push_back( compileResult.value() );
+                entryPoints.push_back( std::move( entryPoint ) );
             }
 
-            *mainbuffers->first = SerializeCompiledStages( compiledStages );
+            *mainbuffers->first = SerializeCompiledStages( compiledStages, entryPoints );
         }
 
         if ( mainbuffers == nullptr )
