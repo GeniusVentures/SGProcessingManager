@@ -1,5 +1,6 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -99,10 +100,52 @@ namespace sgns::sgprocessing
         /// CheckFormatSupport()/CreateBufferDedicated()/CreateImageDedicated().
         static ProcessingResult MakeError( sgns::sgprocessing::ProcessingErrorStage stage, const std::string &message );
 
+        /// Appends a teardown action to the ordered teardown stack (D-22/D-24).
+        void PushTeardown( std::function<void()> fn );
+
+        /// Invokes every entry in m_teardown in reverse order (rbegin()/rend()),
+        /// then clears the stack. The single, reused-by-every-later-plan
+        /// mechanism satisfying D-22/D-24's "always destroy whatever was
+        /// already created" rule.
+        void RunTeardown();
+
+        /// Queries vkGetPhysicalDeviceFormatProperties and checks that
+        /// requiredFeature is present in optimalTilingFeatures (RESEARCH.md
+        /// Pitfall 7) -- fails with a structured FORMAT_UNSUPPORTED error
+        /// naming the specific format, rather than letting image/render-pass
+        /// creation fail with an opaque VkResult or misbehave silently.
+        bool CheckFormatSupport( VkFormat format, VkFormatFeatureFlagBits requiredFeature, ProcessingResult &errorOut );
+
+        /// Allocates a VkBuffer with its own dedicated VkDeviceMemory
+        /// allocation (D-18/D-19), sized exactly to the buffer's memory
+        /// requirements -- no sub-allocation. Registers automatic teardown
+        /// via PushTeardown() on success; destroys the buffer itself (but not
+        /// via the teardown stack, since it isn't registered yet) on a
+        /// partial-failure path (D-24).
+        bool CreateBufferDedicated( VkDeviceSize          size,
+                                     VkBufferUsageFlags    usage,
+                                     VkMemoryPropertyFlags properties,
+                                     VkBuffer              &outBuffer,
+                                     VkDeviceMemory        &outMemory,
+                                     ProcessingResult      &errorOut );
+
+        /// Allocates a VkImage with its own dedicated VkDeviceMemory
+        /// allocation (D-18/D-19), identical in shape to CreateBufferDedicated.
+        bool CreateImageDedicated( const VkImageCreateInfo &imageInfo,
+                                    VkMemoryPropertyFlags   properties,
+                                    VkImage                 &outImage,
+                                    VkDeviceMemory          &outMemory,
+                                    ProcessingResult        &errorOut );
+
         VkInstance m_instance{VK_NULL_HANDLE};
         VkPhysicalDevice m_physicalDevice{VK_NULL_HANDLE};
         VkDevice m_device{VK_NULL_HANDLE};
         VkQueue m_queue{VK_NULL_HANDLE};
         bool m_contextInitialized{false};
+
+        /// Ordered teardown stack (D-22/D-24) -- every per-job Vulkan object
+        /// this plan (and every later plan in this phase) allocates pushes its
+        /// own destroy lambda here; RunTeardown() unwinds in reverse order.
+        std::vector<std::function<void()>> m_teardown;
     };
 }

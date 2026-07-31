@@ -130,6 +130,20 @@ namespace sgns::sgprocessing
         return result;
     }
 
+    void RenderProcessor::PushTeardown( std::function<void()> fn )
+    {
+        m_teardown.push_back( std::move( fn ) );
+    }
+
+    void RenderProcessor::RunTeardown()
+    {
+        for ( auto it = m_teardown.rbegin(); it != m_teardown.rend(); ++it )
+        {
+            ( *it )();
+        }
+        m_teardown.clear();
+    }
+
     namespace
     {
         /// Bounds-checked little-endian primitive readers over a raw byte
@@ -822,6 +836,193 @@ namespace sgns::sgprocessing
         }
 
         outResolved.pushConstant = ( outResolved.packedBytes.size() <= 128 );
+
+        return true;
+    }
+
+    bool RenderProcessor::CheckFormatSupport( VkFormat                format,
+                                               VkFormatFeatureFlagBits requiredFeature,
+                                               ProcessingResult        &errorOut )
+    {
+        VkFormatProperties props{};
+        vkGetPhysicalDeviceFormatProperties( m_physicalDevice, format, &props );
+
+        if ( !( props.optimalTilingFeatures & requiredFeature ) )
+        {
+            errorOut = MakeError( ProcessingErrorStage::FORMAT_UNSUPPORTED,
+                                  "CheckFormatSupport: VkFormat " + std::to_string( static_cast<int>( format ) ) +
+                                      " does not support required feature " +
+                                      std::to_string( static_cast<uint32_t>( requiredFeature ) ) +
+                                      " for optimal tiling" );
+            return false;
+        }
+
+        return true;
+    }
+
+    namespace
+    {
+        /// Linear scan over VkPhysicalDeviceMemoryProperties::memoryTypes for
+        /// an index whose bit is set in `typeBits` and whose propertyFlags
+        /// contain all of `properties` -- mirrors LargestDeviceLocalHeap's
+        /// existing enumeration style.
+        bool FindMemoryTypeIndex( const VkPhysicalDeviceMemoryProperties &memProps,
+                                   uint32_t                                typeBits,
+                                   VkMemoryPropertyFlags                  properties,
+                                   uint32_t                               &outIndex )
+        {
+            for ( uint32_t i = 0; i < memProps.memoryTypeCount; ++i )
+            {
+                if ( ( typeBits & ( 1u << i ) ) &&
+                     ( memProps.memoryTypes[i].propertyFlags & properties ) == properties )
+                {
+                    outIndex = i;
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    bool RenderProcessor::CreateBufferDedicated( VkDeviceSize          size,
+                                                  VkBufferUsageFlags    usage,
+                                                  VkMemoryPropertyFlags properties,
+                                                  VkBuffer              &outBuffer,
+                                                  VkDeviceMemory        &outMemory,
+                                                  ProcessingResult      &errorOut )
+    {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size        = size;
+        bufferInfo.usage       = usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VkResult result = vkCreateBuffer( m_device, &bufferInfo, nullptr, &buffer );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::BUFFER_ALLOCATION,
+                                  "vkCreateBuffer failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        VkMemoryRequirements memRequirements{};
+        vkGetBufferMemoryRequirements( m_device, buffer, &memRequirements );
+
+        VkPhysicalDeviceMemoryProperties memProps{};
+        vkGetPhysicalDeviceMemoryProperties( m_physicalDevice, &memProps );
+
+        uint32_t memTypeIndex = 0;
+        if ( !FindMemoryTypeIndex( memProps, memRequirements.memoryTypeBits, properties, memTypeIndex ) )
+        {
+            vkDestroyBuffer( m_device, buffer, nullptr );
+            errorOut = MakeError( ProcessingErrorStage::BUFFER_ALLOCATION,
+                                  "CreateBufferDedicated: no suitable memory type found" );
+            return false;
+        }
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize  = memRequirements.size;
+        allocInfo.memoryTypeIndex = memTypeIndex;
+
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        result                = vkAllocateMemory( m_device, &allocInfo, nullptr, &memory );
+        if ( result != VK_SUCCESS )
+        {
+            vkDestroyBuffer( m_device, buffer, nullptr );
+            errorOut = MakeError( ProcessingErrorStage::BUFFER_ALLOCATION,
+                                  "CreateBufferDedicated: dedicated memory allocation failed: VkResult=" +
+                                      std::to_string( result ) );
+            return false;
+        }
+
+        result = vkBindBufferMemory( m_device, buffer, memory, 0 );
+        if ( result != VK_SUCCESS )
+        {
+            vkFreeMemory( m_device, memory, nullptr );
+            vkDestroyBuffer( m_device, buffer, nullptr );
+            errorOut = MakeError( ProcessingErrorStage::BUFFER_ALLOCATION,
+                                  "vkBindBufferMemory failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        outBuffer = buffer;
+        outMemory = memory;
+
+        VkDevice device = m_device;
+        PushTeardown( [device, buffer, memory]() {
+            vkDestroyBuffer( device, buffer, nullptr );
+            vkFreeMemory( device, memory, nullptr );
+        } );
+
+        return true;
+    }
+
+    bool RenderProcessor::CreateImageDedicated( const VkImageCreateInfo &imageInfo,
+                                                 VkMemoryPropertyFlags   properties,
+                                                 VkImage                 &outImage,
+                                                 VkDeviceMemory          &outMemory,
+                                                 ProcessingResult        &errorOut )
+    {
+        VkImage  image  = VK_NULL_HANDLE;
+        VkResult result = vkCreateImage( m_device, &imageInfo, nullptr, &image );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "vkCreateImage failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        VkMemoryRequirements memRequirements{};
+        vkGetImageMemoryRequirements( m_device, image, &memRequirements );
+
+        VkPhysicalDeviceMemoryProperties memProps{};
+        vkGetPhysicalDeviceMemoryProperties( m_physicalDevice, &memProps );
+
+        uint32_t memTypeIndex = 0;
+        if ( !FindMemoryTypeIndex( memProps, memRequirements.memoryTypeBits, properties, memTypeIndex ) )
+        {
+            vkDestroyImage( m_device, image, nullptr );
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "CreateImageDedicated: no suitable memory type found" );
+            return false;
+        }
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize  = memRequirements.size;
+        allocInfo.memoryTypeIndex = memTypeIndex;
+
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        result                = vkAllocateMemory( m_device, &allocInfo, nullptr, &memory );
+        if ( result != VK_SUCCESS )
+        {
+            vkDestroyImage( m_device, image, nullptr );
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "CreateImageDedicated: dedicated memory allocation failed: VkResult=" +
+                                      std::to_string( result ) );
+            return false;
+        }
+
+        result = vkBindImageMemory( m_device, image, memory, 0 );
+        if ( result != VK_SUCCESS )
+        {
+            vkFreeMemory( m_device, memory, nullptr );
+            vkDestroyImage( m_device, image, nullptr );
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "vkBindImageMemory failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        outImage  = image;
+        outMemory = memory;
+
+        VkDevice device = m_device;
+        PushTeardown( [device, image, memory]() {
+            vkDestroyImage( device, image, nullptr );
+            vkFreeMemory( device, memory, nullptr );
+        } );
 
         return true;
     }
