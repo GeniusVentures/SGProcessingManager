@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cstring>
 #include <mutex>
+#include <ColorFormat.hpp>
+#include <DepthFormat.hpp>
 
 namespace sgns::sgprocessing
 {
@@ -1023,6 +1025,245 @@ namespace sgns::sgprocessing
             vkDestroyImage( device, image, nullptr );
             vkFreeMemory( device, memory, nullptr );
         } );
+
+        return true;
+    }
+
+    VkFormat RenderProcessor::ToVkFormat( sgns::ColorFormat fmt )
+    {
+        switch ( fmt )
+        {
+            case sgns::ColorFormat::RGBA8:
+                return VK_FORMAT_R8G8B8A8_UNORM;
+            case sgns::ColorFormat::RGB8:
+                return VK_FORMAT_R8G8B8_UNORM;
+        }
+        return VK_FORMAT_R8G8B8A8_UNORM;
+    }
+
+    VkFormat RenderProcessor::ToVkFormat( sgns::DepthFormat fmt )
+    {
+        switch ( fmt )
+        {
+            case sgns::DepthFormat::D32_SFLOAT:
+                return VK_FORMAT_D32_SFLOAT;
+            case sgns::DepthFormat::D24_UNORM_S8_UINT:
+                return VK_FORMAT_D24_UNORM_S8_UINT;
+        }
+        return VK_FORMAT_D32_SFLOAT;
+    }
+
+    bool RenderProcessor::BuildRenderPass( const sgns::RenderTarget &target, ProcessingResult &errorOut )
+    {
+        if ( target.get_width() < 1 || target.get_width() > static_cast<int64_t>( kMaxRenderDimension ) ||
+             target.get_height() < 1 || target.get_height() > static_cast<int64_t>( kMaxRenderDimension ) )
+        {
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "BuildRenderPass: render_target width/height out of bounds" );
+            return false;
+        }
+
+        VkFormat colorFormat = ToVkFormat( target.get_color_format() );
+        VkFormat depthFormat = ToVkFormat( target.get_depth_format() );
+
+        if ( !CheckFormatSupport( colorFormat, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT, errorOut ) )
+        {
+            return false;
+        }
+        if ( !CheckFormatSupport( depthFormat, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, errorOut ) )
+        {
+            return false;
+        }
+
+        VkAttachmentDescription colorAttachment{};
+        colorAttachment.format = colorFormat;
+        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+        VkAttachmentDescription depthAttachment{};
+        depthAttachment.format = depthFormat;
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentDescription attachments[2] = { colorAttachment, depthAttachment };
+
+        VkAttachmentReference colorRef{};
+        colorRef.attachment = 0;
+        colorRef.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference depthRef{};
+        depthRef.attachment = 1;
+        depthRef.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpass{};
+        subpass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount    = 1;
+        subpass.pColorAttachments       = &colorRef;
+        subpass.pDepthStencilAttachment = &depthRef;
+
+        VkRenderPassCreateInfo renderPassInfo{};
+        renderPassInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        renderPassInfo.attachmentCount = 2;
+        renderPassInfo.pAttachments    = attachments;
+        renderPassInfo.subpassCount    = 1;
+        renderPassInfo.pSubpasses      = &subpass;
+
+        VkRenderPass renderPass = VK_NULL_HANDLE;
+        VkResult     result     = vkCreateRenderPass( m_device, &renderPassInfo, nullptr, &renderPass );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::RENDER_PASS_CREATION,
+                                  "vkCreateRenderPass failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        m_renderPass   = renderPass;
+        m_renderWidth  = static_cast<uint32_t>( target.get_width() );
+        m_renderHeight = static_cast<uint32_t>( target.get_height() );
+
+        VkDevice device = m_device;
+        PushTeardown( [device, renderPass]() { vkDestroyRenderPass( device, renderPass, nullptr ); } );
+
+        return true;
+    }
+
+    bool RenderProcessor::BuildFramebuffer( const sgns::RenderTarget &target, ProcessingResult &errorOut )
+    {
+        uint32_t width  = static_cast<uint32_t>( target.get_width() );
+        uint32_t height = static_cast<uint32_t>( target.get_height() );
+
+        VkFormat colorFormat = ToVkFormat( target.get_color_format() );
+        VkFormat depthFormat = ToVkFormat( target.get_depth_format() );
+
+        VkImageCreateInfo colorImageInfo{};
+        colorImageInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        colorImageInfo.imageType     = VK_IMAGE_TYPE_2D;
+        colorImageInfo.format        = colorFormat;
+        colorImageInfo.extent        = { width, height, 1 };
+        colorImageInfo.mipLevels     = 1;
+        colorImageInfo.arrayLayers   = 1;
+        colorImageInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+        colorImageInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        colorImageInfo.usage         = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        colorImageInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        colorImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        if ( !CreateImageDedicated( colorImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_colorImage, m_colorMemory,
+                                     errorOut ) )
+        {
+            return false;
+        }
+
+        VkImageCreateInfo depthImageInfo{};
+        depthImageInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        depthImageInfo.imageType     = VK_IMAGE_TYPE_2D;
+        depthImageInfo.format        = depthFormat;
+        depthImageInfo.extent        = { width, height, 1 };
+        depthImageInfo.mipLevels     = 1;
+        depthImageInfo.arrayLayers   = 1;
+        depthImageInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+        depthImageInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        depthImageInfo.usage         = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        depthImageInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+        depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        if ( !CreateImageDedicated( depthImageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_depthImage, m_depthMemory,
+                                     errorOut ) )
+        {
+            return false;
+        }
+
+        VkImageViewCreateInfo colorViewInfo{};
+        colorViewInfo.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        colorViewInfo.image                           = m_colorImage;
+        colorViewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        colorViewInfo.format                          = colorFormat;
+        colorViewInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        colorViewInfo.subresourceRange.baseMipLevel   = 0;
+        colorViewInfo.subresourceRange.levelCount     = 1;
+        colorViewInfo.subresourceRange.baseArrayLayer = 0;
+        colorViewInfo.subresourceRange.layerCount     = 1;
+
+        VkResult result = vkCreateImageView( m_device, &colorViewInfo, nullptr, &m_colorView );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "vkCreateImageView (color) failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+        {
+            VkDevice    device = m_device;
+            VkImageView view   = m_colorView;
+            PushTeardown( [device, view]() { vkDestroyImageView( device, view, nullptr ); } );
+        }
+
+        // D24_UNORM_S8_UINT has a stencil component the schema never exposes/uses;
+        // the image view's aspectMask must still include it when present, per
+        // Vulkan's depth-stencil-attachment image-view rules.
+        VkImageAspectFlags depthAspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if ( target.get_depth_format() == sgns::DepthFormat::D24_UNORM_S8_UINT )
+        {
+            depthAspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+
+        VkImageViewCreateInfo depthViewInfo{};
+        depthViewInfo.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        depthViewInfo.image                           = m_depthImage;
+        depthViewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        depthViewInfo.format                          = depthFormat;
+        depthViewInfo.subresourceRange.aspectMask     = depthAspect;
+        depthViewInfo.subresourceRange.baseMipLevel   = 0;
+        depthViewInfo.subresourceRange.levelCount     = 1;
+        depthViewInfo.subresourceRange.baseArrayLayer = 0;
+        depthViewInfo.subresourceRange.layerCount     = 1;
+
+        result = vkCreateImageView( m_device, &depthViewInfo, nullptr, &m_depthView );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "vkCreateImageView (depth) failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+        {
+            VkDevice    device = m_device;
+            VkImageView view   = m_depthView;
+            PushTeardown( [device, view]() { vkDestroyImageView( device, view, nullptr ); } );
+        }
+
+        VkImageView attachments[2] = { m_colorView, m_depthView };
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass      = m_renderPass;
+        framebufferInfo.attachmentCount = 2;
+        framebufferInfo.pAttachments    = attachments;
+        framebufferInfo.width           = width;
+        framebufferInfo.height          = height;
+        framebufferInfo.layers          = 1;
+
+        VkFramebuffer framebuffer = VK_NULL_HANDLE;
+        result                    = vkCreateFramebuffer( m_device, &framebufferInfo, nullptr, &framebuffer );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "vkCreateFramebuffer failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+
+        m_framebuffer = framebuffer;
+
+        VkDevice device = m_device;
+        PushTeardown( [device, framebuffer]() { vkDestroyFramebuffer( device, framebuffer, nullptr ); } );
 
         return true;
     }

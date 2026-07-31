@@ -137,6 +137,28 @@ namespace sgns::sgprocessing
                                     VkDeviceMemory          &outMemory,
                                     ProcessingResult        &errorOut );
 
+        /// Sane, conservative maximum render_target width/height (Security Domain
+        /// V5's DoS concern -- the schema only enforces minimum:1, no maximum). 8192
+        /// is a generous-but-bounded default; no specific value is mandated by
+        /// REQUIREMENTS.md/CONTEXT.md.
+        static constexpr uint32_t kMaxRenderDimension = 8192;
+
+        /// Builds the offscreen VkRenderPass (color+depth, explicit CLEAR load ops
+        /// on both, VK_SAMPLE_COUNT_1_BIT unconditionally per DETV-02). Bounds-checks
+        /// target.get_width()/get_height() against kMaxRenderDimension and format-
+        /// support-checks both formats via CheckFormatSupport() (RESEARCH.md Pitfall
+        /// 7) before creating anything. Sets m_renderWidth/m_renderHeight for
+        /// plan 03-04 Task 2's BuildPipeline() to consume for its fixed viewport.
+        bool BuildRenderPass( const sgns::RenderTarget &target, ProcessingResult &errorOut );
+
+        /// Builds the offscreen VkFramebuffer: a color+depth VkImage/VkImageView
+        /// pair (each image via CreateImageDedicated(), DEVICE_LOCAL) referencing
+        /// m_renderPass. Must be called after BuildRenderPass() succeeds.
+        bool BuildFramebuffer( const sgns::RenderTarget &target, ProcessingResult &errorOut );
+
+        static VkFormat ToVkFormat( sgns::ColorFormat fmt );
+        static VkFormat ToVkFormat( sgns::DepthFormat fmt );
+
         VkInstance m_instance{VK_NULL_HANDLE};
         VkPhysicalDevice m_physicalDevice{VK_NULL_HANDLE};
         VkDevice m_device{VK_NULL_HANDLE};
@@ -147,5 +169,20 @@ namespace sgns::sgprocessing
         /// this plan (and every later plan in this phase) allocates pushes its
         /// own destroy lambda here; RunTeardown() unwinds in reverse order.
         std::vector<std::function<void()>> m_teardown;
+
+        /// render_target width/height, set by BuildRenderPass() after its bounds
+        /// check succeeds -- consumed by Task 2's BuildPipeline() for its fixed
+        /// (never a runtime-settable pipeline attribute, per D-22) viewport/
+        /// scissor, since VkGraphicsPipelineCreateInfo requires a concrete
+        /// VkPipelineViewportStateCreateInfo when no dynamic viewport/scissor
+        /// state is used.
+        uint32_t m_renderWidth{0};
+        uint32_t m_renderHeight{0};
+
+        VkRenderPass   m_renderPass{VK_NULL_HANDLE};
+        VkFramebuffer  m_framebuffer{VK_NULL_HANDLE};
+        VkImage        m_colorImage{VK_NULL_HANDLE}, m_depthImage{VK_NULL_HANDLE};
+        VkImageView    m_colorView{VK_NULL_HANDLE}, m_depthView{VK_NULL_HANDLE};
+        VkDeviceMemory m_colorMemory{VK_NULL_HANDLE}, m_depthMemory{VK_NULL_HANDLE};
     };
 }
