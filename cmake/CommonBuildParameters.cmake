@@ -43,6 +43,15 @@ if(NOT TARGET Vulkan::Vulkan)
     find_package(Vulkan REQUIRED)
 endif()
 
+# On Android, override Vulkan::Vulkan to use our vendored Vulkan-Headers
+# instead of the NDK's system headers (see matching comment in
+# SuperGenius/build/CommonBuildParameters.cmake).
+if(ANDROID)
+    set_target_properties(Vulkan::Vulkan PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
+    )
+endif()
+
 # for compression, we need snappy
 set(Snappy_DIR "${_THIRDPARTY_BUILD_DIR}/snappy/lib/cmake/Snappy")
 find_package(Snappy CONFIG REQUIRED)

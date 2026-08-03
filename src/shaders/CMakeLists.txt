@@ -13,7 +13,6 @@ target_link_libraries(SGShaderCompiler PUBLIC
     sgprocmanagerlogger
     sgprocmanagertypes
     shaderc::shaderc
-    SPIRV-Tools::SPIRV-Tools
 )
 
 sgnus_install(SGShaderCompiler)
