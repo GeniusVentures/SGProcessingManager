@@ -22,6 +22,7 @@
 #include <processors/processing_processor_mnn_float.hpp>
 #include <processors/processing_processor_mnn_int.hpp>
 #include <processors/processing_processor_render.hpp>
+#include <capability/capability_validator.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 #include <Generators.hpp>
@@ -55,6 +56,17 @@ namespace sgns::sgprocessing
                                                        std::vector<std::vector<uint8_t>>       &chunkhashes,
                                                        sgns::ModelNode                         &model,
                                                        std::vector<std::string>                &output_locations );
+
+        /** Pre-execution capability gate (D-02, D-19).
+         * Validates whether this node can execute the given pass — checks PassType
+         * registration, Vulkan limits, MNN model compatibility, GPU memory, and disk
+         * space against the cached startup snapshot. Caller's responsibility to call
+         * this before Process(); Process() trusts the caller validated.
+         * @param pass     — the job pass definition to validate
+         * @param callback — invoked with CanExecuteResult
+         */
+        void CanExecute( const sgns::Pass                         &pass,
+                         sgns::sgprocessing::CanExecuteCallback callback );
 
         /** Register an available processor keyed by DataType
          * @param name - DataType cast to int
@@ -150,17 +162,13 @@ namespace sgns::sgprocessing
             return false;
         }
 
-        struct PassTypeHash
-        {
-            size_t operator()( PassType p ) const { return static_cast<size_t>( p ); }
-        };
-
         sgns::sgprocmanager::Logger          m_logger = sgns::sgprocmanager::createLogger( "SGProcessingManager" );
         sgns::SgnsProcessing                 processing_;
         std::unique_ptr<ProcessingProcessor> m_processor;
-        std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>>     m_processorFactories;
+        std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>>                    m_processorFactories;
         std::unordered_map<PassType, std::function<std::unique_ptr<ProcessingProcessor>()>, PassTypeHash> m_passFactories;
-        std::unordered_map<std::string, size_t>                                            m_inputMap;
+        std::unordered_map<std::string, size_t>                                                           m_inputMap;
+        std::unique_ptr<CapabilityValidator>                                                              m_capabilityValidator;
     };
 }
 

@@ -33,6 +33,15 @@ namespace sgns::sgprocessing
         /// same predicate instead of duplicating it (avoids drift risk).
         static bool IsAcceptable( VkPhysicalDeviceType type );
 
+        /// Lazy-init Vulkan instance/device (idempotent, double-checked locking).
+        /// Public so CapabilityValidator::BuildSnapshot can ensure the device exists
+        /// before querying its properties (D-10).
+        bool InitializeContext();
+
+        /// Returns the physical device handle after InitializeContext() has succeeded.
+        /// Returns VK_NULL_HANDLE if context not yet initialized.
+        VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
+
     private:
         /// One parsed SPIR-V shader stage, inverted from ProcessingManager.cpp's
         /// SerializeCompiledStages( stages, entryPoints ) wire format (plan 03-01).
@@ -50,8 +59,6 @@ namespace sgns::sgprocessing
             std::vector<uint8_t> packedBytes;
             bool                 pushConstant = true;
         };
-
-        bool InitializeContext();
 
         static VkDeviceSize LargestDeviceLocalHeap( VkPhysicalDevice device );
 

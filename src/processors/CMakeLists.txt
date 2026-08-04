@@ -1,3 +1,14 @@
+# Vulkan validation layers toggle (D-24, VVAL-03)
+# ON in Debug builds (development convenience), OFF in Release (production).
+# Best-effort: instance creation proceeds even if layers are not found (D-20).
+string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
+if(CMAKE_BUILD_TYPE_UPPER STREQUAL "DEBUG")
+    set(_vulkan_val_default ON)
+else()
+    set(_vulkan_val_default OFF)
+endif()
+option(ENABLE_VULKAN_VALIDATION "Enable Vulkan validation layers for RenderProcessor (best-effort)" ${_vulkan_val_default})
+
 add_library(SGProcessors STATIC 
 	processing_processor_mnn_image.cpp
 	processing_processor_mnn_audio.cpp
@@ -86,6 +97,14 @@ if(APPLE)
         target_link_libraries(SGProcessors PRIVATE
             "-framework UIKit")
     endif()
+endif()
+
+# Vulkan validation layers compile definition (D-23, D-24)
+if(ENABLE_VULKAN_VALIDATION)
+    target_compile_definitions(SGProcessors PUBLIC ENABLE_VULKAN_VALIDATION)
+    message(STATUS "Vulkan validation layers: ENABLED (best-effort)")
+else()
+    message(STATUS "Vulkan validation layers: DISABLED")
 endif()
 
 sgnus_install(SGProcessors)

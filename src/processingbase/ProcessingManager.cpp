@@ -401,6 +401,21 @@ namespace sgns::sgprocessing
         RegisterPassProcessorFactory( PassType::RENDER,
                                       [] { return std::make_unique<sgprocessing::RenderProcessor>(); } );
 
+        // Build capability snapshot after all executors are registered (D-01, D-09)
+        m_capabilityValidator = std::make_unique<CapabilityValidator>();
+        m_capabilityValidator->BuildSnapshot(
+            m_passFactories,
+            m_processorFactories.size(),
+            []() -> VkPhysicalDevice
+            {
+                // Ensure Vulkan device exists via a temporary RenderProcessor
+                // that lazy-initializes the shared Vulkan context under VulkanInitMutex.
+                static auto s_renderProc = std::make_unique<sgprocessing::RenderProcessor>();
+                if ( !s_renderProc->InitializeContext() )
+                    return VK_NULL_HANDLE;
+                return s_renderProc->GetPhysicalDevice();
+            } );
+
         //Parse Json
         //This will check required fields inherently.
         try
@@ -1489,6 +1504,22 @@ namespace sgns::sgprocessing
                 }
             },
             "file" );
+    }
+
+    void ProcessingManager::CanExecute( const sgns::Pass                         &pass,
+                                        sgns::sgprocessing::CanExecuteCallback callback )
+    {
+        if ( !m_capabilityValidator )
+        {
+            CanExecuteResult result;
+            result.executable = false;
+            result.unmet.push_back(
+                { UnmetRequirementCategory::RESOURCE,
+                  "CapabilityValidator not initialized" } );
+            callback( result );
+            return;
+        }
+        m_capabilityValidator->CanExecute( pass, std::move( callback ) );
     }
 
     bool ProcessingManager::IsProcessingValid( const std::string &jsondata )

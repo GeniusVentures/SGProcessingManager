@@ -49,7 +49,11 @@ namespace sgns::sgprocessing
         auto inst_ret = instance_builder
                             .set_app_name( "SGProcessingManager RenderProcessor" )
                             .set_app_version( 1, 0, 0 )
+#ifdef ENABLE_VULKAN_VALIDATION
+                            .request_validation_layers()           // best-effort (D-20, D-21)
+#else
                             .request_validation_layers( false )
+#endif
                             .build();
         if ( !inst_ret )
         {
