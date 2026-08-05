@@ -209,8 +209,11 @@ namespace sgns::sgprocessing
                                                    const sgns::IoDeclaration         &proc,
                                                    std::vector<char>                 &volumeData,
                                                    std::vector<char>                 &modelFile,
-                                                   const std::vector<sgns::Parameter> *parameters )
+                                                   const std::vector<sgns::Parameter> *parameters,
+                                                   const ExecutionContext            &execCtx )
     {
+        (void)parameters;
+        const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
 
@@ -323,6 +326,17 @@ namespace sgns::sgprocessing
 
         m_progress = 0.0f;
 
+        // LOAD_MODEL stage — fire progress and check cancel
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::LOAD_MODEL, 25.0f ) );
+        }
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Volume pass cancelled" } };
+        }
+
         std::vector<uint8_t> shahash( SHA256_DIGEST_LENGTH );
 
         const auto startsX = ComputeWindowStarts( width, patchWidth, strideX );
@@ -342,6 +356,12 @@ namespace sgns::sgprocessing
             {
                 for ( const int x : startsX )
                 {
+                    if ( execCtx.cancelToken.IsCancelled() )
+                    {
+                        RunTeardown();
+                        return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Volume pass cancelled" } };
+                    }
+
                     std::vector<float> patch;
                     patch.resize( static_cast<size_t>( patchWidth ) * patchHeight * patchDepth, 0.0f );
 
@@ -506,6 +526,13 @@ namespace sgns::sgprocessing
             }
         }
 
+        // RUN + READ_OUTPUT stages — fire progress
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::RUN, 75.0f ) );
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::READ_OUTPUT, 100.0f ) );
+        }
+
         m_progress = 100.0f;
 
         if ( !stitchedOutput.empty() )
@@ -546,6 +573,20 @@ namespace sgns::sgprocessing
 
         m_logger->info( "Volume processing complete" );
 
+        // Output budget check (EXEC-03)
+        if ( !stitchedOutput.empty() && execCtx.maxOutputArtifactBytes > 0 )
+        {
+            size_t outputSize = stitchedOutput.size() * sizeof( float );
+            if ( outputSize > execCtx.maxOutputArtifactBytes )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {},
+                    ProcessingError{ ProcessingErrorStage::BUDGET_EXCEEDED,
+                        "Output artifact size " + std::to_string( outputSize ) + " exceeds budget " +
+                            std::to_string( execCtx.maxOutputArtifactBytes ) } };
+            }
+        }
+
         ProcessingResult result;
         result.hash = subTaskResultHash;
 
@@ -559,6 +600,9 @@ namespace sgns::sgprocessing
             result.output_buffers->first.push_back( "" );
             result.output_buffers->second.push_back( std::move( outputBytes ) );
         }
+
+        // Tear down all MNN sessions accumulated during processing
+        RunTeardown();
 
         return result;
     }

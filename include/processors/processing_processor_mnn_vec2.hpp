@@ -17,7 +17,8 @@ namespace sgns::sgprocessing
                                           const sgns::IoDeclaration              &proc,
                                           std::vector<char>                      &vec2Data,
                                           std::vector<char>                      &modelFile,
-                                          const std::vector<sgns::Parameter>     *parameters )
+                                          const std::vector<sgns::Parameter>     *parameters,
+                                          const ExecutionContext                &execCtx )
             override;
 
     private:

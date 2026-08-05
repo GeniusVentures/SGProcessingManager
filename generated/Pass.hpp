@@ -48,6 +48,9 @@ namespace sgns {
         std::string name;
         ClassMemberConstraints name_constraint;
         boost::optional<std::vector<PassIoBinding>> outputs;
+        boost::optional<int64_t> estimated_gpu_memory_bytes;
+        boost::optional<int64_t> max_output_artifact_bytes;
+        boost::optional<int64_t> per_pass_deadline_ms;
         boost::optional<PipelineState> pipeline_state;
         boost::optional<RenderShaderConfig> render_shader;
         boost::optional<RenderTarget> render_target;
@@ -102,6 +105,24 @@ namespace sgns {
          */
         boost::optional<std::vector<PassIoBinding>> get_outputs() const { return outputs; }
         void set_outputs(boost::optional<std::vector<PassIoBinding>> value) { this->outputs = value; }
+
+        /**
+         * Estimated GPU memory needed for this pass in bytes. 0 means no estimate provided.
+         */
+        boost::optional<int64_t> get_estimated_gpu_memory_bytes() const { return estimated_gpu_memory_bytes; }
+        void set_estimated_gpu_memory_bytes(boost::optional<int64_t> value) { this->estimated_gpu_memory_bytes = value; }
+
+        /**
+         * Maximum output artifact size in bytes before the pass is considered budget-exceeded. 0 means no budget.
+         */
+        boost::optional<int64_t> get_max_output_artifact_bytes() const { return max_output_artifact_bytes; }
+        void set_max_output_artifact_bytes(boost::optional<int64_t> value) { this->max_output_artifact_bytes = value; }
+
+        /**
+         * Per-pass wall-clock deadline in milliseconds. 0 means no deadline.
+         */
+        boost::optional<int64_t> get_per_pass_deadline_ms() const { return per_pass_deadline_ms; }
+        void set_per_pass_deadline_ms(boost::optional<int64_t> value) { this->per_pass_deadline_ms = value; }
 
         /**
          * Fixed-function pipeline state for render passes

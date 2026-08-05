@@ -24,13 +24,6 @@ namespace sgns::sgprocessing
     // Forward declaration — ProcessingManager provides the factory map.
     class ProcessingProcessor;
 
-    /// Hash functor for PassType keys (duplicated from ProcessingManager.hpp:153-155
-    /// to avoid a circular dependency between ProcessingBase and SGCapability).
-    struct PassTypeHash
-    {
-        size_t operator()( PassType p ) const { return static_cast<size_t>( p ); }
-    };
-
     /// Callback type for async CanExecute (D-03).
     using CanExecuteCallback = std::function<void( CanExecuteResult )>;
 

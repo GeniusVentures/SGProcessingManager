@@ -5,6 +5,8 @@
 #include "URLStringUtil.h"
 #include "shaders/shader_compiler.hpp"
 
+#include <boost/asio/deadline_timer.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <cstring>
 #include <map>
 
@@ -399,22 +401,40 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( static_cast<int>( DataType::TEXTURE_CUBE ),
                                   [] { return std::make_unique<sgprocessing::MNN_TextureCube>(); } );
         RegisterPassProcessorFactory( PassType::RENDER,
-                                      [] { return std::make_unique<sgprocessing::RenderProcessor>(); } );
+                                      [] { return std::make_unique<sgprocessing::RenderProcessor>(); },
+                                      false /* supports_checkpointing */ );
 
         // Build capability snapshot after all executors are registered (D-01, D-09)
         m_capabilityValidator = std::make_unique<CapabilityValidator>();
-        m_capabilityValidator->BuildSnapshot(
-            m_passFactories,
-            m_processorFactories.size(),
-            []() -> VkPhysicalDevice
+        {
+            // Extract factory functions from ExecutorRegistryEntry for BuildSnapshot
+            std::unordered_map<PassType, std::function<std::unique_ptr<ProcessingProcessor>()>, PassTypeHash> factoriesOnly;
+            std::unordered_map<PassType, bool, PassTypeHash> checkpointFlags;
+            for ( auto &entry : m_passFactories )
             {
-                // Ensure Vulkan device exists via a temporary RenderProcessor
-                // that lazy-initializes the shared Vulkan context under VulkanInitMutex.
-                static auto s_renderProc = std::make_unique<sgprocessing::RenderProcessor>();
-                if ( !s_renderProc->InitializeContext() )
-                    return VK_NULL_HANDLE;
-                return s_renderProc->GetPhysicalDevice();
-            } );
+                factoriesOnly[entry.first]       = entry.second.factory;
+                checkpointFlags[entry.first]     = entry.second.supports_checkpointing;
+            }
+            m_capabilityValidator->BuildSnapshot(
+                factoriesOnly,
+                m_processorFactories.size(),
+                []() -> VkPhysicalDevice
+                {
+                    // Ensure Vulkan device exists via a temporary RenderProcessor
+                    // that lazy-initializes the shared Vulkan context under VulkanInitMutex.
+                    static auto s_renderProc = std::make_unique<sgprocessing::RenderProcessor>();
+                    if ( !s_renderProc->InitializeContext() )
+                        return VK_NULL_HANDLE;
+                    return s_renderProc->GetPhysicalDevice();
+                } );
+            // Populate checkpoint support flags onto the snapshot (D-20)
+            if ( auto *snap = m_capabilityValidator->GetSnapshot() )
+            {
+                // const_cast: GetSnapshot returns const*, but we own the snapshot
+                // and this is the only place it's populated during Init().
+                const_cast<CapabilitySnapshot *>( snap )->checkpointSupport = std::move( checkpointFlags );
+            }
+        }
 
         //Parse Json
         //This will check required fields inherently.
@@ -1102,6 +1122,12 @@ namespace sgns::sgprocessing
         }
         auto buffers = maybe_buffers.value();
         const auto &pass = processing_.get_passes()[index.value()];
+
+        // Extract budget fields from pass schema (D-06, D-07, D-08)
+        uint64_t gpuMemoryBudget    = pass.get_estimated_gpu_memory_bytes().value_or( 0 );
+        uint64_t outputArtifactBudget = pass.get_max_output_artifact_bytes().value_or( 0 );
+        uint64_t deadlineMs         = pass.get_per_pass_deadline_ms().value_or( 0 );
+
         if ( pass.get_type() == PassType::RENDER )
         {
             if ( !SetProcessorByPassType( PassType::RENDER ) )
@@ -1119,147 +1145,217 @@ namespace sgns::sgprocessing
         const auto  maybeParameters = processing_.get_parameters();
         const auto *parameters      = maybeParameters ? &maybeParameters.value() : nullptr;
 
-        auto processResult = m_processor->StartProcessing( chunkhashes,
-                                                           processing_.get_inputs()[index.value()],
-                                                           *buffers->second,
-                                                           *buffers->first,
-                                                           parameters );
-
-        if ( processResult.error || processResult.hash.empty() )
+        try
         {
-            m_logger->error( "Processing failed: {}",
-                             processResult.error
-                                 ? processResult.error->message
-                                 : std::string( "processor returned an empty hash with no result (legacy failure sentinel)" ) );
-            return outcome::failure( Error::PROCESSING_FAILED );
-        }
+            // Construct ExecutionContext per-job (D-02)
+            ExecutionContext execCtx;
+            execCtx.gpuMemoryBudget       = gpuMemoryBudget;
+            execCtx.maxOutputArtifactBytes = outputArtifactBudget;
+            execCtx.deadlineMs            = deadlineMs;
 
-        const auto &outputs = processing_.get_outputs();
-        if ( processResult.output_buffers && !outputs.empty() )
-        {
-            const auto &bufferNames = processResult.output_buffers->first;
-            const auto &bufferData  = processResult.output_buffers->second;
-
-            if ( !bufferData.empty() )
+            // Progress callback logs events at stage boundaries (D-10)
+            execCtx.progressCallback = [this]( const ProgressEvent &ev )
             {
-                FileManager::GetInstance().InitializeSingletons();
-                bool hasSaves = false;
+                m_logger->info( "Progress: pass={} percent={:.1f}", ev.pass_id, ev.percent );
+            };
 
-                // Pre-allocate location slots matching the number of outputs
-                output_locations.clear();
-                output_locations.resize( outputs.size() );
-
-                // Collect save location shared_ptrs for post-ioc collection
-                std::vector<std::shared_ptr<std::string>> locationPtrs;
-                locationPtrs.resize( outputs.size() );
-
-                for ( size_t outputIndex = 0; outputIndex < outputs.size(); ++outputIndex )
+            // Wire deadline timer (D-05, D-09)
+            boost::asio::deadline_timer deadlineTimer( *ioc );
+            if ( deadlineMs > 0 )
+            {
+                deadlineTimer.expires_from_now( boost::posix_time::milliseconds( deadlineMs ) );
+                deadlineTimer.async_wait( [&execCtx]( const boost::system::error_code &ec )
                 {
-                    const auto &output    = outputs[outputIndex];
-                    const auto &outputUrl = output.get_source_uri_param();
-                    if ( outputUrl.empty() )
+                    if ( !ec )
                     {
-                        continue;
+                        // D-09: deadline → unified cancel path
+                        execCtx.cancelToken.Cancel();
                     }
-                    if ( !IsUrl( outputUrl ) )
-                    {
-                        m_logger->warn( "Output source_uri_param '{}' is not a URL; skipping save", outputUrl );
-                        continue;
-                    }
+                } );
+            }
 
-                    const size_t dataIndex = ( bufferData.size() == outputs.size() ) ? outputIndex : 0;
-                    if ( dataIndex >= bufferData.size() )
-                    {
-                        continue;
-                    }
+            // Register cancel callback: if explicit cancel happens first, cancel the timer
+            execCtx.cancelToken.SetCallback( [&deadlineTimer]()
+            {
+                deadlineTimer.cancel();
+            } );
 
-                    const size_t nameIndex = ( bufferNames.size() == outputs.size() ) ? outputIndex : 0;
-                    std::string  outputFileName;
-                    if ( !UrlHasExtension( outputUrl ) )
-                    {
-                        std::string baseName;
-                        if ( nameIndex < bufferNames.size() && !bufferNames[nameIndex].empty() )
-                        {
-                            baseName = bufferNames[nameIndex];
-                        }
-                        else
-                        {
-                            baseName = output.get_name() + ".raw";
-                        }
+            // Call new 6-arg StartProcessing() overload (D-18)
+            auto processResult = m_processor->StartProcessing( chunkhashes,
+                                                               processing_.get_inputs()[index.value()],
+                                                               *buffers->second,
+                                                               *buffers->first,
+                                                               parameters,
+                                                               execCtx );
 
-                        if ( EndsWithSlash( outputUrl ) )
-                        {
-                            outputFileName = baseName;
-                        }
-                        else
-                        {
-                            outputFileName = "/" + baseName;
-                        }
-                    }
+            // Cancel deadline timer after StartProcessing returns (whether success or failure)
+            deadlineTimer.cancel();
 
-                    auto saveBuffers =
-                        std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
-                    saveBuffers->first.push_back( outputFileName );
-                    saveBuffers->second.push_back( bufferData[dataIndex] );
-
-                    // Create a shared_ptr to capture the save location from the saver
-                    auto saveLocation = std::make_shared<std::string>();
-                    locationPtrs[outputIndex] = saveLocation;
-
-                    FileManager::GetInstance().SaveASync( outputUrl,
-                                                          outcome::success( saveBuffers ),
-                                                          ioc,
-                                                          [this, outputUrl]( const FileManager::ResultType &result )
-                                                          {
-                                                              if ( !result )
-                                                              {
-                                                                  m_logger->error( "Failed to save output to {}: {}",
-                                                                                   outputUrl,
-                                                                                   result.error().message() );
-                                                              }
-                                                          },
-                                                          saveLocation );
-                    hasSaves = true;
-
-                    // Dual-save: persist a local copy when output is IPFS
-                    // This ensures the producing node can re-serve data after restart.
-                    std::string urlPrefix, urlPath, urlExt;
-                    getURLComponents( outputUrl, urlPrefix, urlPath, urlExt );
-                    if ( urlPrefix == "ipfs" )
-                    {
-                        auto cacheDir = FileManager::GetInstance().getCacheDir();
-                        if ( !cacheDir.empty() )
-                        {
-                            auto localUrl = "file://" + cacheDir + "/results/" +
-                                            output.get_name() + outputFileName;
-                            FileManager::GetInstance().SaveASync(
-                                localUrl,
-                                outcome::success( saveBuffers ),
-                                ioc,
-                                nullptr,  // no callback needed for local save
-                                nullptr ); // no save_location needed
-                        }
-                    }
+            // Check terminal conditions before saving (D-15)
+            if ( processResult.error )
+            {
+                if ( processResult.error->stage == ProcessingErrorStage::CANCELLED )
+                {
+                    m_logger->error( "Processing cancelled" );
+                    return outcome::failure( Error::PROCESSING_FAILED );
                 }
-
-                if ( hasSaves )
+                if ( processResult.error->stage == ProcessingErrorStage::TIMED_OUT )
                 {
-                    ioc->reset();
-                    ioc->run();
+                    m_logger->error( "Processing deadline exceeded" );
+                    return outcome::failure( Error::PROCESSING_FAILED );
+                }
+                if ( processResult.error->stage == ProcessingErrorStage::BUDGET_EXCEEDED )
+                {
+                    m_logger->error( "Processing output budget exceeded" );
+                    return outcome::failure( Error::PROCESSING_FAILED );
+                }
+            }
 
-                    // After async IO completes, collect the save locations
-                    for ( size_t i = 0; i < locationPtrs.size(); ++i )
+            if ( processResult.error || processResult.hash.empty() )
+            {
+                m_logger->error( "Processing failed: {}",
+                                 processResult.error
+                                     ? processResult.error->message
+                                     : std::string( "processor returned an empty hash with no result (legacy failure sentinel)" ) );
+                return outcome::failure( Error::PROCESSING_FAILED );
+            }
+
+            const auto &outputs = processing_.get_outputs();
+            if ( processResult.output_buffers && !outputs.empty() )
+            {
+                const auto &bufferNames = processResult.output_buffers->first;
+                const auto &bufferData  = processResult.output_buffers->second;
+
+                if ( !bufferData.empty() )
+                {
+                    FileManager::GetInstance().InitializeSingletons();
+                    bool hasSaves = false;
+
+                    // Pre-allocate location slots matching the number of outputs
+                    output_locations.clear();
+                    output_locations.resize( outputs.size() );
+
+                    // Collect save location shared_ptrs for post-ioc collection
+                    std::vector<std::shared_ptr<std::string>> locationPtrs;
+                    locationPtrs.resize( outputs.size() );
+
+                    for ( size_t outputIndex = 0; outputIndex < outputs.size(); ++outputIndex )
                     {
-                        if ( locationPtrs[i] && !locationPtrs[i]->empty() )
+                        const auto &output    = outputs[outputIndex];
+                        const auto &outputUrl = output.get_source_uri_param();
+                        if ( outputUrl.empty() )
                         {
-                            output_locations[i] = *locationPtrs[i];
+                            continue;
+                        }
+                        if ( !IsUrl( outputUrl ) )
+                        {
+                            m_logger->warn( "Output source_uri_param '{}' is not a URL; skipping save", outputUrl );
+                            continue;
+                        }
+
+                        const size_t dataIndex = ( bufferData.size() == outputs.size() ) ? outputIndex : 0;
+                        if ( dataIndex >= bufferData.size() )
+                        {
+                            continue;
+                        }
+
+                        const size_t nameIndex = ( bufferNames.size() == outputs.size() ) ? outputIndex : 0;
+                        std::string  outputFileName;
+                        if ( !UrlHasExtension( outputUrl ) )
+                        {
+                            std::string baseName;
+                            if ( nameIndex < bufferNames.size() && !bufferNames[nameIndex].empty() )
+                            {
+                                baseName = bufferNames[nameIndex];
+                            }
+                            else
+                            {
+                                baseName = output.get_name() + ".raw";
+                            }
+
+                            if ( EndsWithSlash( outputUrl ) )
+                            {
+                                outputFileName = baseName;
+                            }
+                            else
+                            {
+                                outputFileName = "/" + baseName;
+                            }
+                        }
+
+                        auto saveBuffers =
+                            std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
+                        saveBuffers->first.push_back( outputFileName );
+                        saveBuffers->second.push_back( bufferData[dataIndex] );
+
+                        // Create a shared_ptr to capture the save location from the saver
+                        auto saveLocation = std::make_shared<std::string>();
+                        locationPtrs[outputIndex] = saveLocation;
+
+                        FileManager::GetInstance().SaveASync( outputUrl,
+                                                              outcome::success( saveBuffers ),
+                                                              ioc,
+                                                              [this, outputUrl]( const FileManager::ResultType &result )
+                                                              {
+                                                                  if ( !result )
+                                                                  {
+                                                                      m_logger->error( "Failed to save output to {}: {}",
+                                                                                       outputUrl,
+                                                                                       result.error().message() );
+                                                                  }
+                                                              },
+                                                              saveLocation );
+                        hasSaves = true;
+
+                        // Dual-save: persist a local copy when output is IPFS
+                        // This ensures the producing node can re-serve data after restart.
+                        std::string urlPrefix, urlPath, urlExt;
+                        getURLComponents( outputUrl, urlPrefix, urlPath, urlExt );
+                        if ( urlPrefix == "ipfs" )
+                        {
+                            auto cacheDir = FileManager::GetInstance().getCacheDir();
+                            if ( !cacheDir.empty() )
+                            {
+                                auto localUrl = "file://" + cacheDir + "/results/" +
+                                                output.get_name() + outputFileName;
+                                FileManager::GetInstance().SaveASync(
+                                    localUrl,
+                                    outcome::success( saveBuffers ),
+                                    ioc,
+                                    nullptr,  // no callback needed for local save
+                                    nullptr ); // no save_location needed
+                            }
+                        }
+                    }
+
+                    if ( hasSaves )
+                    {
+                        ioc->reset();
+                        ioc->run();
+
+                        // After async IO completes, collect the save locations
+                        for ( size_t i = 0; i < locationPtrs.size(); ++i )
+                        {
+                            if ( locationPtrs[i] && !locationPtrs[i]->empty() )
+                            {
+                                output_locations[i] = *locationPtrs[i];
+                            }
                         }
                     }
                 }
             }
-        }
 
-        return processResult.hash;
+            return processResult.hash;
+        }
+        catch ( const std::exception &e )
+        {
+            m_logger->error( "Process() exception: {}", e.what() );
+            if ( m_processor )
+            {
+                m_processor->RunTeardown();
+            }
+            return outcome::failure( Error::PROCESSING_FAILED );
+        }
     }
 
     outcome::result<std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>

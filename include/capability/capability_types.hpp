@@ -13,11 +13,19 @@
 #include <PassType.hpp>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <vulkan/vulkan.h>
 
 namespace sgns::sgprocessing
 {
+
+    /// Hash functor for PassType keys.
+    /// Used by CapabilitySnapshot::checkpointSupport and elsewhere.
+    struct PassTypeHash
+    {
+        size_t operator()( PassType p ) const { return static_cast<size_t>( p ); }
+    };
 
     /// Category of unmet requirement for structured capability rejection (D-06).
     /// Follows same enum-prefix convention as ProcessingErrorStage in processing_processor.hpp.
@@ -50,11 +58,12 @@ namespace sgns::sgprocessing
     /// Cached for all subsequent CanExecute calls (D-12).
     struct CapabilitySnapshot
     {
-        VkPhysicalDeviceProperties      vulkanProps;       ///< From vkGetPhysicalDeviceProperties() (D-14)
-        VkPhysicalDeviceMemoryProperties memProps;         ///< From vkGetPhysicalDeviceMemoryProperties() (D-15)
-        std::vector<ExecutorCapability>  executorCaps;     ///< From registry query (D-11)
-        uint64_t                         availableDiskBytes = 0; ///< From platform syscall (D-16); 0 = query failed (degraded)
-        std::vector<uint8_t>             identityHash;     ///< SHA-256 of serialized snapshot (D-08)
+        VkPhysicalDeviceProperties           vulkanProps;       ///< From vkGetPhysicalDeviceProperties() (D-14)
+        VkPhysicalDeviceMemoryProperties     memProps;         ///< From vkGetPhysicalDeviceMemoryProperties() (D-15)
+        std::vector<ExecutorCapability>      executorCaps;     ///< From registry query (D-11)
+        uint64_t                             availableDiskBytes = 0; ///< From platform syscall (D-16); 0 = query failed (degraded)
+        std::vector<uint8_t>                 identityHash;     ///< SHA-256 of serialized snapshot (D-08)
+        std::unordered_map<PassType, bool, PassTypeHash> checkpointSupport; ///< Per-PassType checkpoint support flag (D-20)
     };
 
     /// Result of a CanExecute check (D-05, D-07).

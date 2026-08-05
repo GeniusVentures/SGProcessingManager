@@ -5,6 +5,8 @@ add_executable(capability_validator_test
     capability_validator_test.cpp
 )
 
+target_compile_definitions(capability_validator_test PRIVATE SGPROCMGR_TEST_FRIEND)
+
 target_include_directories(capability_validator_test PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
@@ -16,8 +18,7 @@ target_include_directories(capability_validator_test PRIVATE
 target_link_libraries(capability_validator_test
     PRIVATE
     SGCapability
-    GTest::GTest
-    GTest::Main
+    GTest::gtest_main
     sgprocmanagerlogger
     sgprocmanagersha
     sgprocmanagertypes

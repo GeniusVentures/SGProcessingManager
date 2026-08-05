@@ -257,8 +257,11 @@ namespace sgns::sgprocessing
                                                      const sgns::IoDeclaration         &proc,
                                                      std::vector<char>                 &signalData,
                                                      std::vector<char>                 &modelFile,
-                                                     const std::vector<sgns::Parameter> *parameters )
+                                                     const std::vector<sgns::Parameter> *parameters,
+                                                     const ExecutionContext            &execCtx )
     {
+        (void)parameters;
+        const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFileBytes;
         modelFileBytes.assign( modelFile.begin(), modelFile.end() );
 
@@ -334,8 +337,25 @@ namespace sgns::sgprocessing
         std::vector<float> stitchedOutput;
         std::vector<float> stitchedWeights;
 
+        // LOAD_MODEL stage — fire progress and check cancel
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::LOAD_MODEL, 25.0f ) );
+        }
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Texture1D pass cancelled" } };
+        }
+
         for ( int start : starts )
         {
+            if ( execCtx.cancelToken.IsCancelled() )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Texture1D pass cancelled" } };
+            }
+
             std::vector<float> patch;
             patch.resize( static_cast<size_t>( patchLength ), 0.0f );
             for ( int i = 0; i < patchLength; ++i )
@@ -411,7 +431,28 @@ namespace sgns::sgprocessing
             }
         }
 
+        // RUN + READ_OUTPUT stages — fire progress
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::RUN, 75.0f ) );
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::READ_OUTPUT, 100.0f ) );
+        }
+
         m_progress = 100.0f;
+
+        // Output budget check (EXEC-03)
+        if ( !stitchedOutput.empty() && execCtx.maxOutputArtifactBytes > 0 )
+        {
+            size_t outputSize = stitchedOutput.size() * sizeof( float );
+            if ( outputSize > execCtx.maxOutputArtifactBytes )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {},
+                    ProcessingError{ ProcessingErrorStage::BUDGET_EXCEEDED,
+                        "Output artifact size " + std::to_string( outputSize ) + " exceeds budget " +
+                            std::to_string( execCtx.maxOutputArtifactBytes ) } };
+            }
+        }
 
         ProcessingResult result;
         result.hash = subTaskResultHash;
@@ -428,6 +469,9 @@ namespace sgns::sgprocessing
         }
 
         m_logger->info( "Texture1D processing complete" );
+
+        // Tear down all MNN sessions accumulated during processing
+        RunTeardown();
 
         return result;
     }

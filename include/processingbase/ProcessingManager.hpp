@@ -23,6 +23,7 @@
 #include <processors/processing_processor_mnn_int.hpp>
 #include <processors/processing_processor_render.hpp>
 #include <capability/capability_validator.hpp>
+#include <execution/execution_context.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 #include <Generators.hpp>
@@ -31,6 +32,13 @@ namespace sgns::sgprocessing
 {
     // Move enum to namespace level
     using ProcessingProcessor = sgns::sgprocessing::ProcessingProcessor;
+
+    /// Executor registry entry wrapping a processor factory and checkpoint support flag (D-20).
+    struct ExecutorRegistryEntry
+    {
+        std::function<std::unique_ptr<ProcessingProcessor>()> factory;
+        bool supports_checkpointing = false;
+    };
 
     class ProcessingManager
     {
@@ -81,11 +89,13 @@ namespace sgns::sgprocessing
         /** Register an available processor keyed by PassType
          * @param type - PassType enum
          * @param factoryFunction - Pointer to processor
+         * @param supportsCheckpointing - Whether this executor supports checkpoint/resume (D-20)
          */
         void RegisterPassProcessorFactory( PassType                                          type,
-                                           std::function<std::unique_ptr<ProcessingProcessor>()> factoryFunction )
+                                           std::function<std::unique_ptr<ProcessingProcessor>()> factoryFunction,
+                                           bool                                              supportsCheckpointing = false )
         {
-            m_passFactories[type] = std::move( factoryFunction );
+            m_passFactories[type] = { std::move( factoryFunction ), supportsCheckpointing };
         }
 
         /** Get Processing Data item which can be used to access any processing data, inputs, or params.
@@ -155,7 +165,7 @@ namespace sgns::sgprocessing
             auto factoryFunction = m_passFactories.find( type );
             if ( factoryFunction != m_passFactories.end() )
             {
-                m_processor = factoryFunction->second();
+                m_processor = factoryFunction->second.factory();
                 return true;
             }
             std::cerr << "Unknown pass type: " << static_cast<int>( type ) << std::endl;
@@ -166,7 +176,7 @@ namespace sgns::sgprocessing
         sgns::SgnsProcessing                 processing_;
         std::unique_ptr<ProcessingProcessor> m_processor;
         std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>>                    m_processorFactories;
-        std::unordered_map<PassType, std::function<std::unique_ptr<ProcessingProcessor>()>, PassTypeHash> m_passFactories;
+        std::unordered_map<PassType, ExecutorRegistryEntry, PassTypeHash>                                m_passFactories;
         std::unordered_map<std::string, size_t>                                                           m_inputMap;
         std::unique_ptr<CapabilityValidator>                                                              m_capabilityValidator;
     };

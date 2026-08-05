@@ -227,6 +227,24 @@
           "items": {
             "$ref": "#/definitions/pass_io_binding"
           }
+        },
+        "estimated_gpu_memory_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Estimated GPU memory needed for this pass in bytes. 0 means no estimate provided."
+        },
+        "max_output_artifact_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Maximum output artifact size in bytes before the pass is considered budget-exceeded. 0 means no budget."
+        },
+        "per_pass_deadline_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Per-pass wall-clock deadline in milliseconds. 0 means no deadline."
         }
       },
       "allOf": [

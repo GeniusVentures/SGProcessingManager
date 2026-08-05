@@ -21,9 +21,11 @@ namespace sgns::sgprocessing
                                                  const sgns::IoDeclaration         &proc,
                                                  std::vector<char>                 &imageData,
                                                  std::vector<char>                 &modelFile,
-                                                 const std::vector<sgns::Parameter> *parameters )
+                                                 const std::vector<sgns::Parameter> *parameters,
+                                                 const ExecutionContext            &execCtx )
     {
         (void)parameters;
+        const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
 
@@ -62,12 +64,28 @@ namespace sgns::sgprocessing
             
             auto totalChunks = proc.get_dimensions().value().get_chunk_count().value();
             m_progress = 0.0f; // Reset progress at start
+
+            // LOAD_MODEL stage — fire progress and check cancel
+            if ( execCtx.progressCallback )
+            {
+                execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::LOAD_MODEL, 25.0f ) );
+            }
+            if ( execCtx.cancelToken.IsCancelled() )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Image pass cancelled" } };
+            }
             
             for ( int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx )
             {
                 m_logger->info( "Chunk IDX {} Total {}",
                                 chunkIdx,
                                 totalChunks );
+                if ( execCtx.cancelToken.IsCancelled() )
+                {
+                    RunTeardown();
+                    return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Image pass cancelled" } };
+                }
                 std::vector<uint8_t> shahash( SHA256_DIGEST_LENGTH );
 
                 // Chunk result hash should be calculated
@@ -96,8 +114,22 @@ namespace sgns::sgprocessing
                 
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
+
+            // RUN + READ_OUTPUT stages — fire progress
+            if ( execCtx.progressCallback )
+            {
+                execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::RUN, 75.0f ) );
+                execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::READ_OUTPUT, 100.0f ) );
+            }
+
+            m_progress = 100.0f;
+
             ProcessingResult result;
             result.hash = subTaskResultHash;
+
+            // Tear down all MNN sessions accumulated during processing
+            RunTeardown();
+
             return result;
         //}
         //return subTaskResultHash;

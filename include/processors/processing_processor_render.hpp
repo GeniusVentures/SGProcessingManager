@@ -26,7 +26,8 @@ namespace sgns::sgprocessing
                            const sgns::IoDeclaration         &proc,
                            std::vector<char>                 &imageData,
                            std::vector<char>                 &modelFile,
-                           const std::vector<sgns::Parameter> *parameters ) override;
+                           const std::vector<sgns::Parameter> *parameters,
+                           const ExecutionContext            &execCtx ) override;
 
         /// Device-type filter (DISCRETE_GPU/INTEGRATED_GPU only). Public so
         /// vulkan_gpu_probe.cpp's HasUsableVulkanDevice() can reuse the exact
@@ -109,15 +110,6 @@ namespace sgns::sgprocessing
         /// ResolveUniforms() can call it directly, alongside the non-static
         /// CheckFormatSupport()/CreateBufferDedicated()/CreateImageDedicated().
         static ProcessingResult MakeError( sgns::sgprocessing::ProcessingErrorStage stage, const std::string &message );
-
-        /// Appends a teardown action to the ordered teardown stack (D-22/D-24).
-        void PushTeardown( std::function<void()> fn );
-
-        /// Invokes every entry in m_teardown in reverse order (rbegin()/rend()),
-        /// then clears the stack. The single, reused-by-every-later-plan
-        /// mechanism satisfying D-22/D-24's "always destroy whatever was
-        /// already created" rule.
-        void RunTeardown();
 
         /// Queries vkGetPhysicalDeviceFormatProperties and checks that
         /// requiredFeature is present in optimalTilingFeatures (RESEARCH.md
@@ -243,11 +235,6 @@ namespace sgns::sgprocessing
         /// queue-family selection.
         uint32_t m_queueFamilyIndex{0};
         bool m_contextInitialized{false};
-
-        /// Ordered teardown stack (D-22/D-24) -- every per-job Vulkan object
-        /// this plan (and every later plan in this phase) allocates pushes its
-        /// own destroy lambda here; RunTeardown() unwinds in reverse order.
-        std::vector<std::function<void()>> m_teardown;
 
         /// render_target width/height, set by BuildRenderPass() after its bounds
         /// check succeeds -- consumed by Task 2's BuildPipeline() for its fixed

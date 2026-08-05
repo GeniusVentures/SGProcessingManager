@@ -161,20 +161,6 @@ namespace sgns::sgprocessing
         return result;
     }
 
-    void RenderProcessor::PushTeardown( std::function<void()> fn )
-    {
-        m_teardown.push_back( std::move( fn ) );
-    }
-
-    void RenderProcessor::RunTeardown()
-    {
-        for ( auto it = m_teardown.rbegin(); it != m_teardown.rend(); ++it )
-        {
-            ( *it )();
-        }
-        m_teardown.clear();
-    }
-
     namespace
     {
         /// Bounds-checked little-endian primitive readers over a raw byte
@@ -1999,10 +1985,14 @@ namespace sgns::sgprocessing
         const sgns::IoDeclaration         &proc,
         std::vector<char>                 &imageData,
         std::vector<char>                 &modelFile,
-        const std::vector<sgns::Parameter> *parameters )
+        const std::vector<sgns::Parameter> *parameters,
+        const ExecutionContext            &execCtx )
     {
         (void)proc;
         (void)chunkhashes;
+
+        // Extract pass_id for progress events
+        const std::string passId = proc.get_name();
 
         if ( !InitializeContext() )
         {
@@ -2018,6 +2008,17 @@ namespace sgns::sgprocessing
         {
             RunTeardown();
             return errorOut;
+        }
+
+        // COMPILE stage complete — fire progress and check cancel
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForRender( passId, RenderStage::COMPILE, 25.0f ) );
+        }
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return MakeError( ProcessingErrorStage::CANCELLED, "Render pass cancelled" );
         }
 
         // (2) ParseRenderPassConfig() is the ONLY source of RenderTarget/
@@ -2068,6 +2069,17 @@ namespace sgns::sgprocessing
             return errorOut;
         }
 
+        // BUILD_PIPELINE stage complete — fire progress and check cancel
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForRender( passId, RenderStage::BUILD_PIPELINE, 50.0f ) );
+        }
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return MakeError( ProcessingErrorStage::CANCELLED, "Render pass cancelled" );
+        }
+
         // (7) Upload vertex/index/uniform buffers -- stride computed identically to
         // BuildPipeline()'s own vertex-input stride (sum of VertexFormatByteSize()
         // over vertexLayout), computed once and passed to both.
@@ -2084,11 +2096,6 @@ namespace sgns::sgprocessing
         }
 
         // (8) RENDER-07: no data_transform executor exists anywhere in this codebase
-        // (RESEARCH.md Pitfall 9) -- absent/empty data_transforms is a no-op
-        // (readback bytes flow through unmodified); any non-empty data_transforms
-        // fails cleanly with a structured, named error instead of silently ignoring
-        // the job's declared transform. Every object built in steps 4-7 must still
-        // be destroyed even though the job is rejected here.
         if ( dataTransformCount > 0 )
         {
             RunTeardown();
@@ -2105,11 +2112,40 @@ namespace sgns::sgprocessing
             return errorOut;
         }
 
+        // DRAW stage complete — fire progress and check cancel
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForRender( passId, RenderStage::DRAW, 75.0f ) );
+        }
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return MakeError( ProcessingErrorStage::CANCELLED, "Render pass cancelled" );
+        }
+
         std::vector<uint8_t> readbackBytes;
         if ( !Readback( renderTarget, readbackBytes, errorOut ) )
         {
             RunTeardown();
             return errorOut;
+        }
+
+        // READBACK stage complete — fire progress
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForRender( passId, RenderStage::READBACK, 100.0f ) );
+        }
+
+        // Output budget check (EXEC-03, D-03/D-08)
+        if ( execCtx.maxOutputArtifactBytes > 0 )
+        {
+            size_t outputSize = readbackBytes.size();
+            if ( outputSize > execCtx.maxOutputArtifactBytes )
+            {
+                RunTeardown();
+                return MakeError( ProcessingErrorStage::BUDGET_EXCEEDED,
+                    "Output artifact size " + std::to_string( outputSize ) + " exceeds budget " + std::to_string( execCtx.maxOutputArtifactBytes ) );
+            }
         }
 
         // (11) Success: tear down every per-job Vulkan object (D-22/D-23) before

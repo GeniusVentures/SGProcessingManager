@@ -7,6 +7,9 @@
 
 #define SGPROCMGR_TEST_FRIEND
 #include <capability/capability_validator.hpp>
+#include <ColorFormat.hpp>
+#include <DepthFormat.hpp>
+#include <ModelFormat.hpp>
 #include <gtest/gtest.h>
 
 namespace sgns::sgprocessing
@@ -62,7 +65,7 @@ namespace sgns::sgprocessing
             rt.set_width( width );
             rt.set_height( height );
             rt.set_color_format( sgns::ColorFormat::RGBA8 );
-            rt.set_depth_format( sgns::DepthFormat::D32 );
+            rt.set_depth_format( sgns::DepthFormat::D32_SFLOAT );
             pass.set_render_target( rt );
 
             return pass;

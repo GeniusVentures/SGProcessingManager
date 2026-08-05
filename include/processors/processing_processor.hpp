@@ -14,6 +14,7 @@
 #include <vector>
 #include <SGNSProcMain.hpp>
 #include <util/sgprocmgr-logger.hpp>
+#include <execution/execution_context.hpp>
 
 namespace sgns::sgprocessing
 {
@@ -34,7 +35,10 @@ namespace sgns::sgprocessing
         RENDER_PASS_CREATION,
         DRAW_SUBMISSION,
         READBACK,
-        DATA_TRANSFORM_UNSUPPORTED
+        DATA_TRANSFORM_UNSUPPORTED,
+        CANCELLED       = 12,  ///< Processor cancelled via CancellationToken (D-05: distinct error code)
+        TIMED_OUT       = 13,  ///< Per-pass deadline expired (D-02, D-05)
+        BUDGET_EXCEEDED = 14   ///< Output artifact size exceeded max_output_artifact_bytes (EXEC-03)
     };
 
     /// Structured, per-stage processor failure detail (D-25/D-26). Carries the
@@ -60,16 +64,21 @@ namespace sgns::sgprocessing
     public:
         virtual ~ProcessingProcessor() = default;
 
-        /** Start processing data
-        * @param result - Reference to result item to set hashes to
-        * @param task - Reference to task to get image split data
-        * @param subTask - Reference to subtask to get chunk data from
-        */
+        /** Start processing data with ExecutionContext (D-19, D-21).
+         * Pure virtual — all processors must implement this 6-argument overload.
+         * @param chunkhashes - Hashes of input chunks
+         * @param proc - Input/output declaration
+         * @param imageData - Image data buffer
+         * @param modelFile - Model file buffer
+         * @param parameters - Processing parameters
+         * @param execCtx - Execution context (cancel token, progress, budgets, deadline)
+         */
         virtual ProcessingResult StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                                const sgns::IoDeclaration         &proc,
                                std::vector<char>                 &imageData,
                                std::vector<char>                 &modelFile,
-                               const std::vector<sgns::Parameter> *parameters ) = 0;
+                               const std::vector<sgns::Parameter> *parameters,
+                               const ExecutionContext            &execCtx ) = 0;
 
         /** Set data for processor
         * @param buffers - Data containing file name and data pair lists.
@@ -81,9 +90,41 @@ namespace sgns::sgprocessing
         */
         virtual float GetProgress() const { return m_progress; }
 
+        /// Invokes every entry in m_teardownFns in reverse order (LIFO),
+        /// wrapping each in try/catch to guarantee noexcept-safe execution (D-17).
+        /// Public so ProcessingManager can call it in catch blocks (D-17).
+        void RunTeardown()
+        {
+            for ( auto it = m_teardownFns.rbegin(); it != m_teardownFns.rend(); ++it )
+            {
+                try
+                {
+                    ( *it )();
+                }
+                catch ( ... )
+                {
+                    // D-17: Teardown functions must be noexcept-safe since
+                    // stack unwinding may leave Vulkan objects in unknown
+                    // state. Log failure and continue.
+                }
+            }
+            m_teardownFns.clear();
+        }
+
     protected:
+        /// Appends a teardown action to the LIFO teardown stack (D-14).
+        /// MNN processors register session cleanup; RenderProcessor registers
+        /// Vulkan object destruction. Protected — only subclasses push to stack.
+        void PushTeardown( std::function<void()> fn )
+        {
+            m_teardownFns.push_back( std::move( fn ) );
+        }
+
         std::atomic<float> m_progress{0.0f}; // Progress percentage
         sgns::sgprocmanager::Logger m_logger = sgns::sgprocmanager::createLogger( "SGProcessor" );
+
+    private:
+        std::vector<std::function<void()>> m_teardownFns; ///< LIFO teardown stack (D-14)
     };
 }
 

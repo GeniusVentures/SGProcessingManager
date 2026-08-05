@@ -8,6 +8,8 @@ add_library(SGCapability STATIC
     ../../include/capability/capability_types.hpp
 )
 
+target_compile_definitions(SGCapability PUBLIC SGPROCMGR_TEST_FRIEND)
+
 target_include_directories(SGCapability PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
