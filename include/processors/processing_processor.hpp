@@ -57,6 +57,11 @@ namespace sgns::sgprocessing
         std::vector<std::string> output_locations;
         /// Structured per-stage failure detail (D-25/D-26). Empty/unset on success.
         std::optional<ProcessingError> error;
+
+        /// Migration adapter: convert new ProcessOutput to legacy ProcessingResult (D-10).
+        /// This is a TEMPORARY adapter — removed before Phase 08 ships per D-10/D-12.
+        /// Forward-declared to avoid circular dependency with ProcessingManager.hpp.
+        static ProcessingResult FromProcessOutput( const struct ProcessOutput &output );
     };
 
     class ProcessingProcessor

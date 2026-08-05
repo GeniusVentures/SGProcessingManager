@@ -25,6 +25,7 @@ target_link_libraries(
 		DataSplitter
 		SGShaderCompiler
 		SGCapability
+		SGArtifacts
 )
 
 sgnus_install(ProcessingBase)

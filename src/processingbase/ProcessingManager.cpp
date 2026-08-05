@@ -7,8 +7,10 @@
 
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <chrono>
 #include <cstring>
 #include <map>
+#include "artifacts/artifact_serializer.hpp"
 
 OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
 {
@@ -1103,7 +1105,7 @@ namespace sgns::sgprocessing
         return block_total_len;
     }
 
-    outcome::result<std::vector<uint8_t>> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc,
+    outcome::result<ProcessOutput> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc,
                                                                       std::vector<std::vector<uint8_t>> &chunkhashes,
                                                                       sgns::ModelNode                   &model,
                                                                       std::vector<std::string>          &output_locations )
@@ -1180,6 +1182,21 @@ namespace sgns::sgprocessing
                 deadlineTimer.cancel();
             } );
 
+            // Capture start time before StartProcessing (D-13)
+            auto startTimeUsec = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now().time_since_epoch() ).count();
+
+            // Extract executor identity from CapabilityValidator (Phase 06 D-08)
+            uint8_t executorId[SHA256_HASH_SIZE] = {};
+            if ( m_capabilityValidator )
+            {
+                auto *snap = m_capabilityValidator->GetSnapshot();
+                if ( snap && snap->identityHash.size() >= SHA256_HASH_SIZE )
+                {
+                    std::memcpy( executorId, snap->identityHash.data(), SHA256_HASH_SIZE );
+                }
+            }
+
             // Call new 6-arg StartProcessing() overload (D-18)
             auto processResult = m_processor->StartProcessing( chunkhashes,
                                                                processing_.get_inputs()[index.value()],
@@ -1190,6 +1207,23 @@ namespace sgns::sgprocessing
 
             // Cancel deadline timer after StartProcessing returns (whether success or failure)
             deadlineTimer.cancel();
+
+            // Capture end time after StartProcessing returns (D-13)
+            auto endTimeUsec = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now().time_since_epoch() ).count();
+
+            // Map terminal error to TerminalState for manifest (D-15)
+            TerminalState terminalState = TerminalState::Success;
+            if ( processResult.error )
+            {
+                switch ( processResult.error->stage )
+                {
+                    case ProcessingErrorStage::CANCELLED:       terminalState = TerminalState::Cancelled;      break;
+                    case ProcessingErrorStage::TIMED_OUT:       terminalState = TerminalState::Timeout;        break;
+                    case ProcessingErrorStage::BUDGET_EXCEEDED: terminalState = TerminalState::BudgetExceeded; break;
+                    default:                                    terminalState = TerminalState::Error;          break;
+                }
+            }
 
             // Check terminal conditions before saving (D-15)
             if ( processResult.error )
@@ -1220,7 +1254,148 @@ namespace sgns::sgprocessing
                 return outcome::failure( Error::PROCESSING_FAILED );
             }
 
-            const auto &outputs = processing_.get_outputs();
+            // ── Build ProcessOutput: artifact records + execution manifest (Phase 08) ──
+            ProcessOutput output;
+            const auto   &procInput = processing_.get_inputs()[index.value()];
+            const auto   &outputs   = processing_.get_outputs();
+
+            if ( processResult.output_buffers && !outputs.empty() )
+            {
+                const auto &bufferNames = processResult.output_buffers->first;
+                const auto &bufferData  = processResult.output_buffers->second;
+
+                // Build one Artifact per output buffer
+                for ( size_t outIdx = 0; outIdx < outputs.size() && outIdx < bufferData.size(); ++outIdx )
+                {
+                    Artifact art{};
+
+                    // Identity (ARTF-01)
+                    std::strncpy( art.resourceName, outputs[outIdx].get_name().c_str(), MAX_RESOURCE_NAME - 1 );
+                    std::strncpy( art.passId, pass.get_name().c_str(), MAX_RESOURCE_NAME - 1 );
+                    {
+                        std::string binding = "output:" + outputs[outIdx].get_name();
+                        std::strncpy( art.outputBinding, binding.c_str(), MAX_RESOURCE_NAME - 1 );
+                    }
+
+                    // Format metadata (ARTF-02)
+                    {
+                        // Map DataType enum to string
+                        static const char *dataTypeNames[] = {
+                            "BOOL", "BUFFER", "FLOAT", "INT", "MAT2", "MAT3", "MAT4",
+                            "STRING", "TENSOR", "TEXTURE1_D", "TEXTURE2_D", "TEXTURE3_D",
+                            "TEXTURE_CUBE", "VEC2", "VEC3", "VEC4"
+                        };
+                        int dtIdx = static_cast<int>( procInput.get_type() );
+                        if ( dtIdx >= 0 && dtIdx < static_cast<int>( sizeof( dataTypeNames ) / sizeof( dataTypeNames[0] ) ) )
+                        {
+                            std::strncpy( art.dataType, dataTypeNames[dtIdx], 63 );
+                        }
+                    }
+                    {
+                        // Map InputFormat enum to string
+                        static const char *formatNames[] = {
+                            "FLOAT16", "FLOAT32", "FP4_ULTRA", "INT16", "INT32", "INT8", "RGB8", "RGBA8"
+                        };
+                        int fmtIdx = static_cast<int>( procInput.get_format().value() );
+                        if ( fmtIdx >= 0 && fmtIdx < static_cast<int>( sizeof( formatNames ) / sizeof( formatNames[0] ) ) )
+                        {
+                            std::strncpy( art.format, formatNames[fmtIdx], 63 );
+                        }
+                    }
+                    if ( procInput.get_dimensions() )
+                    {
+                        auto dims = procInput.get_dimensions().value();
+                        if ( dims.get_block_len() )
+                            art.width  = static_cast<uint32_t>( dims.get_block_len().value() );
+                        if ( dims.get_block_line_stride() )
+                            art.height = static_cast<uint32_t>( dims.get_block_line_stride().value() );
+                        art.depth = 1; // 2D texture convention
+                    }
+                    art.byteSize = bufferData[outIdx].size();
+                    std::strncpy( art.mediaType, "application/octet-stream", MAX_MEDIA_TYPE - 1 );
+
+                    // Content hash (ARTF-03, D-01)
+                    ComputeArtifactIdentity( art,
+                                             reinterpret_cast<const uint8_t *>( bufferData[outIdx].data() ),
+                                             bufferData[outIdx].size() );
+
+                    // Chunk hashes from processor output (D-08)
+                    for ( const auto &ch : chunkhashes )
+                    {
+                        if ( ch.size() >= SHA256_HASH_SIZE )
+                        {
+                            AddChunkHash( art, ch.data() );
+                        }
+                    }
+
+                    output.artifacts.push_back( art );
+                }
+
+                // ── Assemble ExecutionManifest (ARTF-04, D-13) ──
+                ExecutionManifest &manifest = output.manifest;
+
+                // Identifiers — use schema name as executionId; attempt/task/subtask
+                // IDs are not tracked in v2.0 schema (left as empty strings per D-14 sentinel convention)
+                std::strncpy( manifest.executionId, processing_.get_name().c_str(), MAX_IDENTIFIER - 1 );
+                // attemptId, taskId, subtaskId default to empty (zero-initialized)
+                std::strncpy( manifest.passId, pass.get_name().c_str(), MAX_RESOURCE_NAME - 1 );
+
+                // Executor identity
+                std::memcpy( manifest.executorIdentity, executorId, SHA256_HASH_SIZE );
+
+                // Model identity: SHA-256 of model bytes if model used (D-14)
+                if ( pass.get_model() )
+                {
+                    const auto &modelBytes = *buffers->first; // model file bytes
+                    if ( !modelBytes.empty() )
+                    {
+                        auto modelHash = sgns::sgprocmanagersha::sha256(
+                            modelBytes.data(), modelBytes.size() );
+                        std::memcpy( manifest.modelIdentity, modelHash.data(), SHA256_HASH_SIZE );
+                    }
+                }
+
+                // Shader identity: SHA-256 of SPIR-V bytes if RENDER pass (D-14)
+                if ( pass.get_type() == PassType::RENDER && pass.get_render_target() )
+                {
+                    // The SPIR-V was compiled earlier in GetCidForProc — we compute
+                    // the model identity from the shader bytes stored in buffers->second
+                    // (second is image data, first is model/shader data for render passes)
+                    // For now: shaderIdentity stays zero — SPIR-V bytes not tracked separately.
+                    // Future: populate from compiled SPIR-V cache.
+                }
+
+                // Output artifact hashes
+                manifest.outputArtifactCount = static_cast<uint32_t>(
+                    std::min( output.artifacts.size(), static_cast<size_t>( MAX_ARTIFACT_REFS ) ) );
+                for ( size_t i = 0; i < manifest.outputArtifactCount; ++i )
+                {
+                    std::memcpy( manifest.outputArtifactHashes[i],
+                                 output.artifacts[i].artifactId, SHA256_HASH_SIZE );
+                }
+
+                // Timing
+                manifest.startTimeUsec = startTimeUsec;
+                manifest.endTimeUsec   = endTimeUsec;
+                manifest.wallClockUsec = endTimeUsec - startTimeUsec;
+
+                // Terminal state
+                manifest.terminalState = terminalState;
+
+                // Resource summary
+                manifest.outputBytesProduced = 0;
+                for ( const auto &art : output.artifacts )
+                {
+                    manifest.outputBytesProduced += art.byteSize;
+                }
+
+                // Compute manifest self-hash (D-04)
+                auto mHash = ComputeManifestHash( manifest );
+                std::memcpy( manifest.manifestHash, mHash.data(), SHA256_HASH_SIZE );
+                output.combinedHash = mHash;
+            }
+
+            // ── Existing FileManager save loop (unchanged) ──
             if ( processResult.output_buffers && !outputs.empty() )
             {
                 const auto &bufferNames = processResult.output_buffers->first;
@@ -1345,7 +1520,7 @@ namespace sgns::sgprocessing
                 }
             }
 
-            return processResult.hash;
+            return output;
         }
         catch ( const std::exception &e )
         {
@@ -1356,6 +1531,31 @@ namespace sgns::sgprocessing
             }
             return outcome::failure( Error::PROCESSING_FAILED );
         }
+    }
+
+    // ── ProcessingResult Migration Adapter (D-10) ──────────────────────────
+    // Temporary: maps new ProcessOutput back to legacy ProcessingResult shape.
+    // Removed before Phase 08 ships per D-10/D-12.
+
+    ProcessingResult ProcessingResult::FromProcessOutput( const ProcessOutput &output )
+    {
+        ProcessingResult result;
+        result.hash = output.combinedHash;
+
+        if ( !output.artifacts.empty() )
+        {
+            auto buffers = std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
+            for ( const auto &art : output.artifacts )
+            {
+                buffers->first.push_back( std::string( art.resourceName ) );
+                // Raw bytes not stored in Artifact struct (only hash).
+                // Callers needing raw bytes must use ProcessOutput directly.
+                buffers->second.push_back( {} );
+            }
+            result.output_buffers = buffers;
+        }
+
+        return result;
     }
 
     outcome::result<std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>

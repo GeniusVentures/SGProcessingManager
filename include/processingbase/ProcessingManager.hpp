@@ -24,6 +24,8 @@
 #include <processors/processing_processor_render.hpp>
 #include <capability/capability_validator.hpp>
 #include <execution/execution_context.hpp>
+#include <artifacts/artifact_types.hpp>
+#include <artifacts/execution_manifest.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 #include <Generators.hpp>
@@ -38,6 +40,23 @@ namespace sgns::sgprocessing
     {
         std::function<std::unique_ptr<ProcessingProcessor>()> factory;
         bool supports_checkpointing = false;
+    };
+
+    /// Structured output from Process() — typed artifact records + execution manifest (Phase 08, ARTF-01/02/04).
+    struct ProcessOutput
+    {
+        std::vector<Artifact> artifacts;       ///< One Artifact per output buffer (ARTF-01, ARTF-02)
+        ExecutionManifest    manifest;         ///< Full execution manifest (ARTF-04)
+        std::vector<uint8_t> combinedHash;     ///< SHA-256 of serialized manifest (for backward compat)
+
+        // Backward-compatible accessors — delegate to combinedHash so existing callers
+        // that treat the Process() return as std::vector<uint8_t> continue to compile (D-10).
+        size_t size()  const { return combinedHash.size(); }
+        bool   empty() const { return combinedHash.empty(); }
+        auto   begin() const { return combinedHash.begin(); }
+        auto   end()   const { return combinedHash.end(); }
+        auto   begin()       { return combinedHash.begin(); }
+        auto   end()         { return combinedHash.end(); }
     };
 
     class ProcessingManager
@@ -60,10 +79,10 @@ namespace sgns::sgprocessing
 
         outcome::result<uint64_t>             ParseBlockSize();
         outcome::result<void>                 CheckProcessValidity();
-        outcome::result<std::vector<uint8_t>> Process( std::shared_ptr<boost::asio::io_context> ioc,
-                                                       std::vector<std::vector<uint8_t>>       &chunkhashes,
-                                                       sgns::ModelNode                         &model,
-                                                       std::vector<std::string>                &output_locations );
+        outcome::result<ProcessOutput> Process( std::shared_ptr<boost::asio::io_context> ioc,
+                                                std::vector<std::vector<uint8_t>>       &chunkhashes,
+                                                sgns::ModelNode                         &model,
+                                                std::vector<std::string>                &output_locations );
 
         /** Pre-execution capability gate (D-02, D-19).
          * Validates whether this node can execute the given pass — checks PassType
