@@ -1316,7 +1316,7 @@ namespace sgns::sgprocessing
             }
 
             // ── Build ProcessOutput: artifact records + execution manifest (Phase 08) ──
-            ProcessOutput output;
+            ProcessOutput output{};
             const auto   &procInput = processing_.get_inputs()[index.value()];
             const auto   &outputs   = processing_.get_outputs();
 
@@ -1451,7 +1451,14 @@ namespace sgns::sgprocessing
                 }
 
                 // Compute manifest self-hash (D-04)
-                auto mHash = ComputeManifestHash( manifest );
+                // Hash a timing-zeroed copy so combinedHash/manifestHash are deterministic
+                // across separate Process() calls; the live manifest returned to the caller
+                // keeps its real startTimeUsec/endTimeUsec/wallClockUsec for provenance (ARTF-04).
+                ExecutionManifest hashInput  = manifest;
+                hashInput.startTimeUsec      = 0;
+                hashInput.endTimeUsec        = 0;
+                hashInput.wallClockUsec      = 0;
+                auto mHash                   = ComputeManifestHash( hashInput );
                 std::memcpy( manifest.manifestHash, mHash.data(), SHA256_HASH_SIZE );
                 output.combinedHash = mHash;
             }
