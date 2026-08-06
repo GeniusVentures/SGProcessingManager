@@ -74,6 +74,10 @@ namespace sgns::sgprocessing
             SHADER_COMPILE_FAILED    = 7,
             SPIRV_VALIDATION_FAILED  = 8,
             PROCESSING_FAILED        = 9,
+            MODEL_MISSING            = 10,
+            MODEL_FORMAT_UNSUPPORTED = 11,
+            RENDER_SHADER_MISSING    = 12,
+            UNKNOWN_PASS_TYPE        = 13,
         };
         static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 

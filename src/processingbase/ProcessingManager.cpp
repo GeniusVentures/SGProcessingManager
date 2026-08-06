@@ -34,6 +34,14 @@ OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
             return "SPIR-V failed validation";
         case sgns::sgprocessing::ProcessingManager::Error::PROCESSING_FAILED:
             return "Processor failed to produce a valid result";
+        case sgns::sgprocessing::ProcessingManager::Error::MODEL_MISSING:
+            return "Inference or retrain pass is missing required model configuration";
+        case sgns::sgprocessing::ProcessingManager::Error::MODEL_FORMAT_UNSUPPORTED:
+            return "Model format is not supported for execution (only MNN format is executable)";
+        case sgns::sgprocessing::ProcessingManager::Error::RENDER_SHADER_MISSING:
+            return "Render pass is missing required shader configuration";
+        case sgns::sgprocessing::ProcessingManager::Error::UNKNOWN_PASS_TYPE:
+            return "Job definition references an unrecognized or unregistered pass type";
     }
     return "Unknown error";
 }
