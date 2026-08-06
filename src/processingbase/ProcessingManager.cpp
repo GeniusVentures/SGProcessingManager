@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstring>
 #include <map>
+#include <set>
 #include "artifacts/artifact_serializer.hpp"
 
 OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
@@ -451,6 +452,52 @@ namespace sgns::sgprocessing
         try
         {
             auto data = nlohmann::json::parse( jsondata );
+
+            // Pre-parse validation: intercept unrecognized passes[].type and
+            // passes[].model.format raw strings *before* sgns::from_json() runs.
+            // The quicktype-generated from_json(PassType&)/from_json(ModelFormat&)
+            // throw a plain std::runtime_error with no field context when a job
+            // submits an unrecognized enum string, which the generic catch below
+            // would otherwise collapse into a context-free Error::INVALID_JSON.
+            // Recognized-but-unsupported formats (e.g. ONNX) are intentionally left
+            // alone here -- they parse successfully and are rejected afterward by
+            // CheckProcessValidity()'s explicit MNN-executability check instead.
+            if ( data.contains( "passes" ) && data[ "passes" ].is_array() )
+            {
+                static const std::set<std::string> kRecognizedPassTypes    = { "compute", "data_transform",
+                                                                                "inference", "render", "retrain" };
+                static const std::set<std::string> kRecognizedModelFormats = { "MNN", "ONNX", "PyTorch",
+                                                                                "TensorFlow" };
+                for ( const auto &passEntry : data[ "passes" ] )
+                {
+                    if ( !passEntry.is_object() || !passEntry.contains( "type" ) || !passEntry[ "type" ].is_string() )
+                    {
+                        continue;
+                    }
+                    const std::string passType = passEntry[ "type" ].get<std::string>();
+                    if ( kRecognizedPassTypes.find( passType ) == kRecognizedPassTypes.end() )
+                    {
+                        m_logger->error( "Job definition references an unrecognized pass type: " + passType );
+                        return outcome::failure( Error::UNKNOWN_PASS_TYPE );
+                    }
+                    if ( ( passType == "inference" || passType == "retrain" ) && passEntry.contains( "model" ) &&
+                         passEntry[ "model" ].is_object() )
+                    {
+                        const auto &modelEntry = passEntry[ "model" ];
+                        if ( modelEntry.contains( "format" ) && modelEntry[ "format" ].is_string() )
+                        {
+                            const std::string modelFormat = modelEntry[ "format" ].get<std::string>();
+                            if ( kRecognizedModelFormats.find( modelFormat ) == kRecognizedModelFormats.end() )
+                            {
+                                m_logger->error( "Job definition references an unsupported model format: " +
+                                                 modelFormat );
+                                return outcome::failure( Error::MODEL_FORMAT_UNSUPPORTED );
+                            }
+                        }
+                    }
+                }
+            }
+
             sgns::from_json( data, processing_ );
         }
         catch ( const nlohmann::json::exception &e )
@@ -493,7 +540,13 @@ namespace sgns::sgprocessing
                     if ( !pass.get_model() )
                     {
                         m_logger->error( "Inference json has no model" );
-                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        return outcome::failure( Error::MODEL_MISSING );
+                    }
+                    if ( pass.get_model().value().get_format() != ModelFormat::MNN )
+                    {
+                        m_logger->error( "Inference pass model format is not executable (only MNN is supported), pass: " +
+                                         pass.get_name() );
+                        return outcome::failure( Error::MODEL_FORMAT_UNSUPPORTED );
                     }
                     break;
                 }
@@ -506,7 +559,7 @@ namespace sgns::sgprocessing
                     if ( !pass.get_render_shader() )
                     {
                         m_logger->error( "Render pass has no render_shader config" );
-                        return outcome::failure( Error::PROCESS_INFO_MISSING );
+                        return outcome::failure( Error::RENDER_SHADER_MISSING );
                     }
                     if ( !pass.get_render_target() )
                     {
