@@ -204,11 +204,17 @@ namespace sgns::sgprocessing
         CapabilitySnapshot snapshot;
 
         // Vulkan device query (D-10, D-14)
+        // NOTE: ensureVulkanDevice() internally calls RenderProcessor::InitializeContext(),
+        // which acquires VulkanInitMutex() itself via a double-check locking pattern.
+        // Holding the mutex here while calling ensureVulkanDevice() would cause a
+        // self-deadlock on the same thread. Only lock around the vkGetPhysicalDevice*
+        // queries — the device is kept alive by the static RenderProcessor inside the
+        // lambda, so it's safe to read its properties without the mutex.
         {
-            std::lock_guard<std::mutex> lock( VulkanInitMutex() );
             VkPhysicalDevice device = ensureVulkanDevice();
             if ( device != VK_NULL_HANDLE )
             {
+                std::lock_guard<std::mutex> lock( VulkanInitMutex() );
                 vkGetPhysicalDeviceProperties( device, &snapshot.vulkanProps );
                 vkGetPhysicalDeviceMemoryProperties( device, &snapshot.memProps );
             }
