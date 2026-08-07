@@ -1353,11 +1353,16 @@ namespace sgns::sgprocessing
                         }
                     }
                     {
-                        // Map InputFormat enum to string
+                        // Map InputFormat enum to string. procInput.get_format() is optional --
+                        // e.g. BUFFER-type inputs (such as a render pass's vertex_buffer source)
+                        // may omit "format" entirely, defaulting to INT8 per the same convention
+                        // already applied above in CheckProcessValidity()'s BUFFER case (see the
+                        // "Buffer input missing format; defaulting to INT8" warning).
                         static const char *formatNames[] = {
                             "FLOAT16", "FLOAT32", "FP4_ULTRA", "INT16", "INT32", "INT8", "RGB8", "RGBA8"
                         };
-                        int fmtIdx = static_cast<int>( procInput.get_format().value() );
+                        sgns::InputFormat fmt    = procInput.get_format().value_or( sgns::InputFormat::INT8 );
+                        int               fmtIdx = static_cast<int>( fmt );
                         if ( fmtIdx >= 0 && fmtIdx < static_cast<int>( sizeof( formatNames ) / sizeof( formatNames[0] ) ) )
                         {
                             std::strncpy( art.format, formatNames[fmtIdx], 63 );
