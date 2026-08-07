@@ -72,11 +72,25 @@ namespace sgns::sgprocessing
             return tmp;
         }
 
+        std::string PassTypeToString( PassType pt )
+        {
+            switch ( pt )
+            {
+                case PassType::COMPUTE:        return "COMPUTE";
+                case PassType::DATA_TRANSFORM: return "DATA_TRANSFORM";
+                case PassType::INFERENCE:      return "INFERENCE";
+                case PassType::RENDER:         return "RENDER";
+                case PassType::RETRAIN:        return "RETRAIN";
+            }
+            return std::to_string( static_cast<int>( pt ) );
+        }
+
         std::string ListAvailablePassTypes( const std::vector<ExecutorCapability> &caps )
         {
             std::vector<std::string> names;
             for ( const auto &cap : caps )
-                names.push_back( std::to_string( static_cast<int>( cap.passType ) ) );
+                names.push_back( PassTypeToString( cap.passType ) + " ("
+                                  + std::to_string( static_cast<int>( cap.passType ) ) + ")" );
             if ( names.empty() ) return "";
             return JoinStrings( names, ", " );
         }
@@ -307,7 +321,8 @@ namespace sgns::sgprocessing
             unmet.push_back(
                 { UnmetRequirementCategory::PASS_TYPE,
                   "No executor registered for PassType "
-                      + std::to_string( static_cast<int>( passType ) )
+                      + PassTypeToString( passType ) + " ("
+                      + std::to_string( static_cast<int>( passType ) ) + ")"
                       + ". Available: ["
                       + ListAvailablePassTypes( snapshot.executorCaps ) + "]" } );
             result.executable = false;

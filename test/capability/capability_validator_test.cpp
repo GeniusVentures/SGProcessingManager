@@ -123,8 +123,7 @@ namespace sgns::sgprocessing
         EXPECT_FALSE( result.executable );
         ASSERT_EQ( result.unmet.size(), 1u );
         EXPECT_EQ( result.unmet[0].category, UnmetRequirementCategory::PASS_TYPE );
-        EXPECT_TRUE( result.unmet[0].detail.find( "INFERENCE" ) != std::string::npos
-                     || result.unmet[0].detail.find( "1" ) != std::string::npos );
+        EXPECT_TRUE( result.unmet[0].detail.find( "INFERENCE" ) != std::string::npos );
         EXPECT_TRUE( result.unmet[0].detail.find( "Available" ) != std::string::npos );
         EXPECT_TRUE( result.executorId.empty() );
     }
