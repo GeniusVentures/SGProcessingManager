@@ -88,6 +88,26 @@ namespace sgns::sgprocessing
                                                 sgns::ModelNode                         &model,
                                                 std::vector<std::string>                &output_locations );
 
+        /** Process() overload accepting a caller-owned ExecutionContext (Gap 2 / TEST-07).
+         * Lets a caller cancel mid-execution via `externalExecCtx.cancelToken.Cancel()`
+         * from another thread, or pre-set `deadlineMs`/`gpuMemoryBudget`/
+         * `maxOutputArtifactBytes` before calling. Per-pass schema-derived budgets are
+         * still applied as defaults, but only when the corresponding field is still `0`
+         * (unset) on entry — an explicit caller-supplied nonzero value is never
+         * overwritten. Delegates to the same ProcessInternal() implementation as the
+         * legacy 4-arg overload above, so behavior is otherwise identical.
+         * @param ioc               — Boost.Asio io_context used for IPFS/file IO
+         * @param chunkhashes       — chunk hashes for the input data
+         * @param model             — model node describing the input source
+         * @param output_locations  — populated with save locations for produced outputs
+         * @param externalExecCtx   — caller-owned ExecutionContext; not copied or reset
+         */
+        outcome::result<ProcessOutput> Process( std::shared_ptr<boost::asio::io_context> ioc,
+                                                std::vector<std::vector<uint8_t>>       &chunkhashes,
+                                                sgns::ModelNode                         &model,
+                                                std::vector<std::string>                &output_locations,
+                                                ExecutionContext                        &externalExecCtx );
+
         /** Pre-execution capability gate (D-02, D-19).
          * Validates whether this node can execute the given pass — checks PassType
          * registration, Vulkan limits, MNN model compatibility, GPU memory, and disk
@@ -170,6 +190,16 @@ namespace sgns::sgprocessing
         void GetSubCidForProc( std::shared_ptr<boost::asio::io_context> ioc,
                                std::string                              url,
                                std::shared_ptr<std::vector<char>>       results );
+
+        /** Shared implementation for both public Process() overloads (Gap 2 / TEST-07).
+         * @param execCtx — either a freshly-constructed local context (from the 4-arg
+         *                  overload) or a caller-owned one (from the 5-arg overload).
+         */
+        outcome::result<ProcessOutput> ProcessInternal( std::shared_ptr<boost::asio::io_context> ioc,
+                                                        std::vector<std::vector<uint8_t>>       &chunkhashes,
+                                                        sgns::ModelNode                         &model,
+                                                        std::vector<std::string>                &output_locations,
+                                                        ExecutionContext                        &execCtx );
 
         bool SetProcessorByName( const int &name )
         {

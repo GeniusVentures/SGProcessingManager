@@ -1171,6 +1171,29 @@ namespace sgns::sgprocessing
                                                                       sgns::ModelNode                   &model,
                                                                       std::vector<std::string>          &output_locations )
     {
+        // Legacy 4-arg overload: construct a fresh, internally-owned ExecutionContext
+        // (unchanged behavior for every existing caller) and delegate to ProcessInternal.
+        ExecutionContext execCtx;
+        return ProcessInternal( ioc, chunkhashes, model, output_locations, execCtx );
+    }
+
+    outcome::result<ProcessOutput> ProcessingManager::Process( std::shared_ptr<boost::asio::io_context> ioc,
+                                                                      std::vector<std::vector<uint8_t>> &chunkhashes,
+                                                                      sgns::ModelNode                   &model,
+                                                                      std::vector<std::string>          &output_locations,
+                                                                      ExecutionContext                  &externalExecCtx )
+    {
+        // New 5-arg overload: caller owns the ExecutionContext, so cancellation,
+        // deadline, and budget fields may be pre-set/cancelled from another thread.
+        return ProcessInternal( ioc, chunkhashes, model, output_locations, externalExecCtx );
+    }
+
+    outcome::result<ProcessOutput> ProcessingManager::ProcessInternal( std::shared_ptr<boost::asio::io_context> ioc,
+                                                                      std::vector<std::vector<uint8_t>> &chunkhashes,
+                                                                      sgns::ModelNode                   &model,
+                                                                      std::vector<std::string>          &output_locations,
+                                                                      ExecutionContext                  &execCtx )
+    {
         //Get input index
         auto modelname = model.get_source().value();
         auto index     = GetInputIndex( modelname );
@@ -1210,17 +1233,36 @@ namespace sgns::sgprocessing
 
         try
         {
-            // Construct ExecutionContext per-job (D-02)
-            ExecutionContext execCtx;
-            execCtx.gpuMemoryBudget       = gpuMemoryBudget;
-            execCtx.maxOutputArtifactBytes = outputArtifactBudget;
-            execCtx.deadlineMs            = deadlineMs;
-
-            // Progress callback logs events at stage boundaries (D-10)
-            execCtx.progressCallback = [this]( const ProgressEvent &ev )
+            // Apply schema-derived budgets (D-06, D-07, D-08) only when the incoming
+            // execCtx still has the field at its "unset" sentinel (0). A caller of the
+            // 5-arg Process() overload may have pre-set any of these fields explicitly;
+            // that caller-supplied value is never overwritten. For the legacy 4-arg
+            // overload's freshly-constructed ExecutionContext, every field starts at 0,
+            // so this is behavior-neutral — the schema default always applies.
+            if ( execCtx.gpuMemoryBudget == 0 )
             {
-                m_logger->info( "Progress: pass={} percent={:.1f}", ev.pass_id, ev.percent );
-            };
+                execCtx.gpuMemoryBudget = gpuMemoryBudget;
+            }
+            if ( execCtx.maxOutputArtifactBytes == 0 )
+            {
+                execCtx.maxOutputArtifactBytes = outputArtifactBudget;
+            }
+            if ( execCtx.deadlineMs == 0 )
+            {
+                execCtx.deadlineMs = deadlineMs;
+            }
+
+            // Progress callback logs events at stage boundaries (D-10). Only install the
+            // default logging callback when the caller did not already supply their own
+            // via the 5-arg Process() overload — otherwise a caller-supplied callback
+            // (e.g. one capturing ProgressEvents for a test) would be silently discarded.
+            if ( !execCtx.progressCallback )
+            {
+                execCtx.progressCallback = [this]( const ProgressEvent &ev )
+                {
+                    m_logger->info( "Progress: pass={} percent={:.1f}", ev.pass_id, ev.percent );
+                };
+            }
 
             // Wire deadline timer (D-05, D-09)
             boost::asio::deadline_timer deadlineTimer( *ioc );
