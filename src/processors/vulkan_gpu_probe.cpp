@@ -13,8 +13,16 @@ namespace sgns::sgprocessing
         {
             std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
 
+            // On macOS MoltenVK is statically linked (libMoltenVK.a), so there is
+            // no libvulkan.dylib for vk-bootstrap's default dlopen path to find.
+            // Pass the statically-available vkGetInstanceProcAddr directly to
+            // bypass dynamic loading entirely.
+#if defined(__APPLE__)
+            vkb::InstanceBuilder instance_builder( vkGetInstanceProcAddr );
+#else
             vkb::InstanceBuilder instance_builder;
-            auto                 inst_ret = instance_builder.set_app_name( "SGProcessingManager GPU Probe" )
+#endif
+            auto inst_ret = instance_builder.set_app_name( "SGProcessingManager GPU Probe" )
                                   .set_app_version( 1, 0, 0 )
                                   .request_validation_layers( false )
                                   .build();

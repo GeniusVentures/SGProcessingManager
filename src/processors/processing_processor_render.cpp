@@ -45,7 +45,14 @@ namespace sgns::sgprocessing
         if ( m_contextInitialized )
             return true;
 
+        // On macOS MoltenVK is statically linked (libMoltenVK.a), so there is no
+        // libvulkan.dylib for vk-bootstrap's default dlopen path to find.
+        // Pass the statically-available vkGetInstanceProcAddr directly.
+#if defined(__APPLE__)
+        vkb::InstanceBuilder instance_builder( vkGetInstanceProcAddr );
+#else
         vkb::InstanceBuilder instance_builder;
+#endif
         auto inst_ret = instance_builder
                             .set_app_name( "SGProcessingManager RenderProcessor" )
                             .set_app_version( 1, 0, 0 )

@@ -35,25 +35,55 @@ find_package(OpenSSL REQUIRED CONFIG)
 # VulkanHeaders
 set(VulkanHeaders_DIR "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/share/cmake/VulkanHeaders" CACHE PATH "Path to Vulkan-Headers install folder")
 find_package(VulkanHeaders CONFIG REQUIRED)
-# Vulkan
-find_package(Vulkan)
 
-if(NOT TARGET Vulkan::Vulkan)
-    set(Vulkan_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include")
-    if(NOT DEFINED ENV{VULKAN_SDK})
-        set(ENV{VULKAN_SDK} "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader")
+# Vulkan
+#
+# On macOS, create the Vulkan::Vulkan target manually pointing at the MoltenVK
+# dylib nested inside the thirdparty-built MoltenVK.xcframework.  MoltenVK is a
+# complete Vulkan implementation that exports the full loader API — it can be
+# used directly without any ICD plumbing, exactly as MNN's Vulkan backend does.
+#
+# On other platforms, use the vendored Khronos Vulkan-Loader found via the
+# standard find_package(Vulkan) / VULKAN_SDK mechanism.
+if(APPLE)
+    if(NOT TARGET Vulkan::Vulkan)
+        set(_MVK_LIB "${_THIRDPARTY_BUILD_DIR}/MoltenVK/build/lib/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a")
+        add_library(Vulkan::Vulkan STATIC IMPORTED GLOBAL)
+        set_target_properties(Vulkan::Vulkan PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
+            IMPORTED_LOCATION "${_MVK_LIB}"
+        )
+        # Frameworks MoltenVK links against; inherited by every consumer of Vulkan::Vulkan.
+        target_link_libraries(Vulkan::Vulkan INTERFACE
+            "-framework Metal"
+            "-framework IOSurface"
+            "-framework QuartzCore"
+            "-framework Foundation"
+            "-framework CoreFoundation"
+            "-framework CoreGraphics"
+            "-framework IOKit"
+        )
+    endif()
+else()
+    find_package(Vulkan)
+
+    if(NOT TARGET Vulkan::Vulkan)
+        set(Vulkan_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include")
+        if(NOT DEFINED ENV{VULKAN_SDK})
+            set(ENV{VULKAN_SDK} "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader")
+        endif()
+
+        find_package(Vulkan REQUIRED)
     endif()
 
-    find_package(Vulkan REQUIRED)
+    # Override Vulkan::Vulkan to use our vendored Vulkan-Headers on all non-Apple
+    # platforms.  vk-bootstrap was built against our headers (v1.4); mixing with
+    # system/NDK headers (v1.3 or other versions) causes unknown-type errors in
+    # VkBootstrapDispatch.h and VkBootstrapFeatureChain.h.
+    set_target_properties(Vulkan::Vulkan PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
+    )
 endif()
-
-# Override Vulkan::Vulkan to use our vendored Vulkan-Headers on all platforms.
-# vk-bootstrap was built against our headers (v1.4); mixing with system/NDK
-# headers (v1.3 or other versions) causes unknown-type errors in
-# VkBootstrapDispatch.h and VkBootstrapFeatureChain.h.
-set_target_properties(Vulkan::Vulkan PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
-)
 
 # vk-bootstrap
 set(vk-bootstrap_DIR "${_THIRDPARTY_BUILD_DIR}/vk-bootstrap/lib/cmake/vk-bootstrap")
