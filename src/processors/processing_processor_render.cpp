@@ -1,6 +1,7 @@
 #include "processors/processing_processor_render.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
 #include "util/sha256.hpp"
+#include "util/quantization.hpp"
 #include <VkBootstrap.h>
 #include <algorithm>
 #include <cstring>
@@ -2158,6 +2159,21 @@ namespace sgns::sgprocessing
         // (11) Success: tear down every per-job Vulkan object (D-22/D-23) before
         // populating the final ProcessingResult from the raw readback bytes.
         RunTeardown();
+
+        // Phase 10 CAPT-02: quantize (no-op stub) then offer the pre-/post-quantize
+        // bytes to the opt-in capture callback before the single combined-hash call.
+        // readbackBytes is locally-owned (not foreign MNN tensor memory), so it is
+        // safe to mutate in place -- no copy-before-mutate constraint applies here.
+        std::vector<uint8_t> preQuantizeSnapshot;
+        if ( execCtx.rawOutputCapture )
+        {
+            preQuantizeSnapshot = readbackBytes;
+        }
+        sgns::sgprocmanagerquant::QuantizeByteBuffer( readbackBytes.data(), readbackBytes.size() );
+        if ( execCtx.rawOutputCapture )
+        {
+            execCtx.rawOutputCapture( readbackBytes, preQuantizeSnapshot );
+        }
 
         ProcessingResult result;
         result.hash = sgns::sgprocmanagersha::sha256( readbackBytes.data(), readbackBytes.size() );
