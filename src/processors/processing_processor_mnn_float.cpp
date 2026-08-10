@@ -8,6 +8,7 @@
 #include <mutex>
 #include <openssl/sha.h>
 #include "util/sha256.hpp"
+#include "util/quantization.hpp"
 
 namespace sgns::sgprocessing
 {
@@ -304,7 +305,19 @@ namespace sgns::sgprocessing
                 }
             }
 
-            auto hash = sgprocmanagersha::sha256( data, dataSize );
+            // Phase 10 CAPT-02: quantize-then-capture-then-hash at the per-chunk site.
+            // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+            std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+            sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size() );
+            if ( execCtx.rawOutputCapture )
+            {
+                const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+                const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+                execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                           std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+            }
+
+            auto hash = sgprocmanagersha::sha256( localCopy.data(), dataSize );
             chunkhashes.emplace_back( hash.begin(), hash.end() );
         }
 
@@ -323,6 +336,23 @@ namespace sgns::sgprocessing
             {
                 stitchedOutput[idx] /= weight;
             }
+        }
+
+        // Phase 10 CAPT-02: quantize-then-capture-then-hash at the stitched-combined site.
+        // stitchedOutput is locally-owned, so quantizing it in place is safe.
+        std::vector<uint8_t> preQuantizeSnapshot;
+        if ( execCtx.rawOutputCapture )
+        {
+            const auto *preBytes = reinterpret_cast<const uint8_t *>( stitchedOutput.data() );
+            preQuantizeSnapshot.assign( preBytes, preBytes + stitchedOutput.size() * sizeof( float ) );
+        }
+        sgprocmanagerquant::QuantizeFloatBuffer( stitchedOutput.data(), stitchedOutput.size() );
+        if ( execCtx.rawOutputCapture )
+        {
+            const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( stitchedOutput.data() );
+            execCtx.rawOutputCapture(
+                std::vector<uint8_t>( quantizedBytes, quantizedBytes + stitchedOutput.size() * sizeof( float ) ),
+                preQuantizeSnapshot );
         }
 
         std::string stitchedStr( reinterpret_cast<const char *>( stitchedOutput.data() ),
