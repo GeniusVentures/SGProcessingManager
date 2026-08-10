@@ -41,15 +41,29 @@ TEST( CaptureSmokeTest, HarnessProducesWellFormedFile )
 
     const std::string kLabel = "smoke-mnn-float";
 
+    std::filesystem::path outputDir( OUTPUT_DIR_PATH );
+    std::string           prefix = kLabel + "_";
+
+    // Capture filenames are timestamped (D-02) so capture_harness never overwrites a
+    // prior run's file -- but that means repeated local/CI runs of this test against
+    // the same OUTPUT_DIR accumulate stale *.cap files from earlier runs, and the
+    // "exactly one" assertion below would then match all of them, not just this run's.
+    // Remove any pre-existing matches first so this test is idempotent across reruns.
+    for ( const auto &entry : std::filesystem::directory_iterator( outputDir ) )
+    {
+        std::string name = entry.path().filename().string();
+        if ( name.rfind( prefix, 0 ) == 0 && name.size() >= 4 && name.substr( name.size() - 4 ) == ".cap" )
+        {
+            std::filesystem::remove( entry.path() );
+        }
+    }
+
     std::string command = std::string( CAPTURE_HARNESS_PATH ) + " --fixture-root \"" + FIXTURE_ROOT_PATH +
                           "\" --fixture processing_datatypes/float-processing-definition.json --label " +
                           kLabel + " --repeat 2 --output-dir \"" + OUTPUT_DIR_PATH + "\"";
 
     int rc = std::system( command.c_str() );
     ASSERT_EQ( rc, 0 ) << "capture_harness exited non-zero";
-
-    std::filesystem::path outputDir( OUTPUT_DIR_PATH );
-    std::string           prefix = kLabel + "_";
 
     std::vector<std::filesystem::path> matches;
     for ( const auto &entry : std::filesystem::directory_iterator( outputDir ) )
