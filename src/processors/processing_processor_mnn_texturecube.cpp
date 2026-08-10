@@ -11,6 +11,7 @@
 #include "datasplitter/ImageSplitter.hpp"
 #include "util/InputTypes.hpp"
 #include "util/sha256.hpp"
+#include "util/quantization.hpp"
 
 namespace sgns::sgprocessing
 {
@@ -473,7 +474,19 @@ namespace sgns::sgprocessing
                     const float *data = outputUserTensor->host<float>();
                     const size_t dataSize = outputUserTensor->elementSize() * sizeof( float );
 
-                    auto hash = sgprocmanagersha::sha256( data, dataSize );
+                    // Phase 10 CAPT-02: quantize-then-capture-then-hash at this branch's chunk-hash site.
+                    // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+                    std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+                    sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size() );
+                    if ( execCtx.rawOutputCapture )
+                    {
+                        const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+                        const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+                        execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                                   std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+                    }
+
+                    auto hash = sgprocmanagersha::sha256( localCopy.data(), dataSize );
                     chunkhashes.emplace_back( hash.begin(), hash.end() );
                     std::string combinedHash = std::string( subTaskResultHash.begin(), subTaskResultHash.end() ) +
                         std::string( hash.begin(), hash.end() );
@@ -507,7 +520,19 @@ namespace sgns::sgprocessing
                 const float *data = outputTensor->host<float>();
                 const size_t dataSize = outputTensor->elementSize() * sizeof( float );
 
-                auto hash = sgprocmanagersha::sha256( data, dataSize );
+                // Phase 10 CAPT-02: quantize-then-capture-then-hash at this branch's chunk-hash site.
+                // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+                std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+                sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size() );
+                if ( execCtx.rawOutputCapture )
+                {
+                    const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+                    const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+                    execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                               std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+                }
+
+                auto hash = sgprocmanagersha::sha256( localCopy.data(), dataSize );
                 chunkhashes.emplace_back( hash.begin(), hash.end() );
                 std::string combinedHash = std::string( subTaskResultHash.begin(), subTaskResultHash.end() ) +
                     std::string( hash.begin(), hash.end() );
