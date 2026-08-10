@@ -33,3 +33,13 @@ target_link_libraries(capture_harness
     sgproccapture
     nlohmann_json::nlohmann_json
 )
+
+add_executable(capture_diff
+    capture_diff.cpp
+)
+
+target_link_libraries(capture_diff
+    PRIVATE
+    sgproccapture
+    nlohmann_json::nlohmann_json
+)
