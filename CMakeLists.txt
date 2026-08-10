@@ -14,6 +14,9 @@ set(libp2p_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/libp2p/include")
 
 #add_subdirectory(generated)
 add_subdirectory(src)
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()
 add_subdirectory(tools)
 
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")
