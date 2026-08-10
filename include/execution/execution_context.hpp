@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace sgns::sgprocessing
 {
@@ -129,6 +130,15 @@ namespace sgns::sgprocessing
 
         CancellationToken                     cancelToken;           ///< Per-job cancellation token (D-02)
         std::function<void( ProgressEvent )>   progressCallback;     ///< Processor calls at stage boundaries (D-10)
+
+        /// Capture-only hook: fires with (quantized bytes, pre-quantize bytes) at each
+        /// processor's existing hash call site. Stays unset (nullptr) in production job
+        /// execution; only tools/capture/capture_harness.cpp (Wave 3) ever sets this.
+        /// Mirrors progressCallback's opt-in injection pattern via ExecutionContext,
+        /// not a new StartProcessing() parameter.
+        std::function<void( const std::vector<uint8_t> &quantizedBytes,
+                             const std::vector<uint8_t> &preQuantizeBytes )> rawOutputCapture;
+
         uint64_t                              deadlineMs            = 0;  ///< Per-pass wall-clock deadline in ms; 0 = no deadline (D-08)
         uint64_t                              gpuMemoryBudget       = 0;  ///< Estimated GPU memory in bytes; 0 = no budget (D-08)
         uint64_t                              maxOutputArtifactBytes = 0; ///< Max output artifact size in bytes; 0 = no budget (D-08)
@@ -141,6 +151,9 @@ namespace sgns::sgprocessing
             auto ctx = std::make_unique<ExecutionContext>();
             ctx->cancelToken.SetCallback( []() {} );
             ctx->progressCallback = []( const ProgressEvent & ) {};
+            // Deliberately left unset (nullptr), unlike progressCallback: rawOutputCapture
+            // is opt-in only, so production and test callers that never set it explicitly
+            // pay zero capture-path cost. Do not "fix" this to match progressCallback.
             return ctx;
         }
     };
