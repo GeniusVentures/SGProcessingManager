@@ -25,6 +25,15 @@ target_link_libraries(sgprocmanagersha
 )
 sgnus_install(sgprocmanagersha)
 
+add_library(sgprocmanagerquant
+    quantization.cpp
+	../../include/util/quantization.hpp
+)
+target_include_directories(sgprocmanagerquant PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
+)
+sgnus_install(sgprocmanagerquant)
+
 add_library(sgprocmanagertypes
 	InputTypes.cpp
 	../../include/util/InputTypes.hpp

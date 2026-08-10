@@ -74,6 +74,7 @@ target_link_libraries(
 		vk-bootstrap::vk-bootstrap
 		OpenSSL::Crypto
 		sgprocmanagersha
+		sgprocmanagerquant
 )
 
 if(APPLE)
