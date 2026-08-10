@@ -10,6 +10,7 @@
 #include <thread>
 #include <openssl/sha.h>
 #include "util/sha256.hpp"
+#include "util/quantization.hpp"
 
 namespace sgns::sgprocessing
 {
@@ -404,7 +405,19 @@ namespace sgns::sgprocessing
                 }
             }
 
-            std::vector<uint8_t> shahash = sgprocmanagersha::sha256( data, dataSize );
+            // Phase 10 CAPT-02: quantize-then-capture-then-hash at the per-chunk site.
+            // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+            std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+            sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size() );
+            if ( execCtx.rawOutputCapture )
+            {
+                const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+                const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+                execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                           std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+            }
+
+            std::vector<uint8_t> shahash = sgprocmanagersha::sha256( localCopy.data(), dataSize );
             std::string hashString( shahash.begin(), shahash.end() );
             chunkhashes.push_back( shahash );
 
