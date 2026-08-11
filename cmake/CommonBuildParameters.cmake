@@ -7,7 +7,14 @@ set(BOOST_PATCH_VERSION "0" CACHE STRING "Boost Patch Version")
 set(BOOST_VERSION "${BOOST_MAJOR_VERSION}.${BOOST_MINOR_VERSION}.${BOOST_PATCH_VERSION}")
 set(BOOST_VERSION_2U "${BOOST_MAJOR_VERSION}_${BOOST_MINOR_VERSION}")
 
-set(CMAKE_CXX_STANDARD 20)
+# Default to C++20 only when the including project has not already chosen a
+# standard.  The standalone build (build/CommonCompilerOptions.cmake) sets
+# C++17 before including this file, matching SuperGenius and all other
+# projects; forcing 20 here breaks fmt/spdlog consteval format-string checks
+# on newer clang (e.g. SPDLOG_LOGGER_CATCH in spdlog/logger.h).
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -62,6 +69,7 @@ if(APPLE)
             "-framework CoreFoundation"
             "-framework CoreGraphics"
             "-framework IOKit"
+            "-framework AppKit"
         )
     endif()
 else()
