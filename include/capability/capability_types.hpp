@@ -58,8 +58,8 @@ namespace sgns::sgprocessing
     /// Cached for all subsequent CanExecute calls (D-12).
     struct CapabilitySnapshot
     {
-        VkPhysicalDeviceProperties           vulkanProps;       ///< From vkGetPhysicalDeviceProperties() (D-14)
-        VkPhysicalDeviceMemoryProperties     memProps;         ///< From vkGetPhysicalDeviceMemoryProperties() (D-15)
+        VkPhysicalDeviceProperties           vulkanProps{};     ///< From vkGetPhysicalDeviceProperties() (D-14); zero-initialized so deviceName is a valid empty C-string when no device was found
+        VkPhysicalDeviceMemoryProperties     memProps{};       ///< From vkGetPhysicalDeviceMemoryProperties() (D-15)
         std::vector<ExecutorCapability>      executorCaps;     ///< From registry query (D-11)
         uint64_t                             availableDiskBytes = 0; ///< From platform syscall (D-16); 0 = query failed (degraded)
         std::vector<uint8_t>                 identityHash;     ///< SHA-256 of serialized snapshot (D-08)
