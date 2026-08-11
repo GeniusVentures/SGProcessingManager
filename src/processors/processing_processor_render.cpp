@@ -23,6 +23,24 @@ namespace sgns::sgprocessing
             || type == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
     }
 
+    namespace
+    {
+        /// Human-readable VkPhysicalDeviceType name for diagnostic logging --
+        /// vk-bootstrap/Vulkan only give the caller the raw enum.
+        const char *VkPhysicalDeviceTypeName( VkPhysicalDeviceType type )
+        {
+            switch ( type )
+            {
+                case VK_PHYSICAL_DEVICE_TYPE_OTHER:          return "OTHER";
+                case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "INTEGRATED_GPU";
+                case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:   return "DISCRETE_GPU";
+                case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:    return "VIRTUAL_GPU";
+                case VK_PHYSICAL_DEVICE_TYPE_CPU:            return "CPU";
+                default:                                     return "UNKNOWN";
+            }
+        }
+    } // namespace
+
     VkDeviceSize RenderProcessor::LargestDeviceLocalHeap( VkPhysicalDevice device )
     {
         VkPhysicalDeviceMemoryProperties memProps;
@@ -87,6 +105,23 @@ namespace sgns::sgprocessing
         }
 
         auto devices = devices_ret.value();
+
+        // Diagnostic (D-32 follow-up): log every enumerated device's name/type/vendor
+        // BEFORE the acceptability filter runs, so environments like WSL (whose Vulkan
+        // device reports an unexpected type) are debuggable from a plain run, not just
+        // via a debugger.
+        for ( const auto &d : devices )
+        {
+            m_logger->info( "RenderProcessor: enumerated device \"{}\" type={} vendorID=0x{:04x} "
+                             "deviceID=0x{:04x} apiVersion={}.{}.{}",
+                             d.properties.deviceName,
+                             VkPhysicalDeviceTypeName( d.properties.deviceType ),
+                             d.properties.vendorID,
+                             d.properties.deviceID,
+                             VK_API_VERSION_MAJOR( d.properties.apiVersion ),
+                             VK_API_VERSION_MINOR( d.properties.apiVersion ),
+                             VK_API_VERSION_PATCH( d.properties.apiVersion ) );
+        }
 
         devices.erase(
             std::remove_if( devices.begin(), devices.end(),
