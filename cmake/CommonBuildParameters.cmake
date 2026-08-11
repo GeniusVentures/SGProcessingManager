@@ -246,6 +246,10 @@ find_package(libp2p CONFIG REQUIRED)
 set(ipfs-lite-cpp_DIR "${_THIRDPARTY_BUILD_DIR}/ipfs-lite-cpp/lib/cmake/ipfs-lite-cpp")
 find_package(ipfs-lite-cpp CONFIG REQUIRED)
 
+# ipfs-bitswap-cpp
+set(ipfs-bitswap-cpp_DIR "${_THIRDPARTY_BUILD_DIR}/ipfs-bitswap-cpp/lib/cmake/ipfs-bitswap-cpp")
+find_package(ipfs-bitswap-cpp CONFIG REQUIRED)
+
 # MNN
 set(MNN_DIR "${_THIRDPARTY_BUILD_DIR}/MNN/lib/cmake/MNN")
 find_package(MNN CONFIG REQUIRED)
@@ -296,6 +300,7 @@ include_directories(
 )
 
 add_subdirectory(${PROJECT_ROOT}/src ${CMAKE_BINARY_DIR}/src)
+add_subdirectory(${PROJECT_ROOT}/tools ${CMAKE_BINARY_DIR}/tools)
 add_subdirectory(${PROJECT_ROOT}/test ${CMAKE_BINARY_DIR}/test)
 
 # Install Headers

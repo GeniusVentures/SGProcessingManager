@@ -32,6 +32,7 @@ target_link_libraries(capture_harness
     ProcessingBase
     sgproccapture
     nlohmann_json::nlohmann_json
+    ipfs-bitswap-cpp
 )
 
 add_executable(capture_diff
