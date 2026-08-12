@@ -86,8 +86,8 @@ namespace sgns::sgprocmanagerquant
 
     TEST_F( QuantizationTest, QuantizeFloatBufferRoundsToFixedGrid )
     {
-        // Ordinary finite value, not on the 2^-20 grid.
-        constexpr float kScale = 1048576.0f; // 2^20, matches D-05
+        // Ordinary finite value, not on the 2^-15 grid.
+        constexpr float kScale = 32768.0f; // 2^15, matches Phase 13 Plan 13-04 gap-closure widening
         float           data[1] = { 0.1f };
         QuantizeFloatBuffer( data, 1 );
 

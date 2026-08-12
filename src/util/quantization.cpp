@@ -9,10 +9,32 @@ namespace sgns::sgprocmanagerquant
 {
     void QuantizeFloatBuffer( float *data, size_t count )
     {
-        // D-05: fixed power-of-two scale factor, 2^20 -- ~10x margin over
-        // Phase 11's measured maxAbsDelta ≈ 1.043081283569336e-07 (see header
-        // doc comment for the full citation).
-        constexpr float kScale = 1048576.0f; // 2^20
+        // Phase 13 Plan 13-04 gap-closure widening (supersedes Phase 12 D-05's
+        // 2^20 value): the original S=2^20 grid step (9.5367431640625e-07)
+        // gave only a ~9.14x margin over Phase 11's measured cross-machine
+        // maxAbsDelta (1.043081283569336e-07); Phase 13's own fresh
+        // re-validation (13-SCOPE-BOUNDARY.md) measured a post-quantization
+        // maxAbsDelta of exactly 9.5367431640625e-07 (one full old-grid step)
+        // with 12 of 15 MNN chunk hashes still diverging cross-hardware --
+        // direct evidence the ~9x margin was insufficient.
+        //
+        // A local binary search over power-of-two S values (13-04-PLAN.md
+        // Task 1, revised approach) against processing_conformance_security_
+        // test's Secv01CounterTest.MnnCorruptedModelStillDiverges found:
+        //   S=2^20 (9.5367431640625e-07 grid step) -- SECV-01 passes (baseline)
+        //   S=2^17 (7.62939453125e-06 grid step)   -- SECV-01 passes
+        //   S=2^16 (1.52587890625e-05 grid step)   -- SECV-01 passes
+        //   S=2^15 (3.0517578125e-05 grid step)    -- SECV-01 passes
+        //   S=2^14 (6.103515625e-05 grid step)     -- SECV-01 FAILS (the
+        //     deliberately corrupted MNN model's artifactId collides
+        //     bit-for-bit with the correct model's, memcmp equal, 0 vs 0 --
+        //     confirmed deterministic, not flaky, by re-running twice)
+        // S=2^15 is chosen: the widest power-of-two grid step confirmed safe,
+        // one full power-of-two step of margin above the confirmed S=2^14
+        // failure boundary (not the exact edge), giving 32x the old S=2^20
+        // grid step (~292x Phase 11's original maxAbsDelta) while still
+        // leaving SECV-01's corrupted-model divergence fully intact.
+        constexpr float kScale = 32768.0f; // 2^15 (Phase 13 Plan 13-04 gap-closure widening)
 
         for ( size_t i = 0; i < count; ++i )
         {
