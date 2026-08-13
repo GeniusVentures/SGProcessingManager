@@ -411,10 +411,13 @@ namespace sgns::sgprocessing
             return nullptr;
         }
 
+        MNN::BackendConfig backendConfig;
+        backendConfig.precision = MNN::BackendConfig::Precision_High;
+
         MNN::ScheduleConfig config;
         config.type = MNN_FORWARD_VULKAN;
         config.numThread = 4;
-        config.backendConfig = nullptr;
+        config.backendConfig = &backendConfig;
 
         MNN::Session *session = nullptr;
         {
