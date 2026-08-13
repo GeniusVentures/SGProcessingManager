@@ -9,6 +9,14 @@
  * Not CTest-gated (Pattern 5) -- a meaningful cross-machine pass/fail needs
  * Phase 11's physical machines.
  *
+ * Update (Phase 13 gap-closure, Plan 13-06): the per-element numeric-diff pass
+ * described above originally examined only the trailing combined-hash capture
+ * record. It now ADDITIONALLY numeric-diffs each individual per-chunk raw
+ * capture record (rawRecordsPerArtifact[0][j] for j < chunkHashCount) via the
+ * new `chunkDiffs` JSON output array (index-aligned with `chunkHashesMatch`),
+ * closing the blind spot where a `chunkHashesMatch[j]: false` result carried
+ * no magnitude information. The original trailing-record pass is unchanged.
+ *
  * Usage:
  *   capture_diff --a <path> --b <path> --element-type <float32|uint8>
  *                [--json-output <path>]
@@ -294,6 +302,10 @@ int main( int argc, char **argv )
 
     // DIFF-01/02: per-element numeric divergence over the LAST CaptureRecord's
     // quantizedBytes -- the same bytes that fed each run's contentHash.
+    // Update (Phase 13 gap-closure, Plan 13-06): capture_diff now ALSO
+    // numeric-diffs each individual per-chunk raw record below (see
+    // `chunkStats`/`chunkDiffs`) -- this trailing-record-only pass is
+    // preserved unchanged as its own distinct stat.
     ElementDiffStats stats;
     bool             haveRecords = !captureA.rawRecordsPerArtifact.empty() && !captureB.rawRecordsPerArtifact.empty() &&
                         !captureA.rawRecordsPerArtifact[0].empty() && !captureB.rawRecordsPerArtifact[0].empty();
@@ -326,6 +338,42 @@ int main( int argc, char **argv )
         }
     }
 
+    // DIFF-01/02 extension (Phase 13 gap-closure, Plan 13-06): per-chunk numeric
+    // divergence over each individual rawRecordsPerArtifact[0][j] record
+    // (j < chunkHashCount), closing the blind spot where chunkHashesMatch[j]
+    // could report a divergence without ever reporting its magnitude. Reuses
+    // ComputeFloat32Diff/ComputeUint8Diff unmodified -- only the caller loop
+    // and its per-chunk inputs are new.
+    std::vector<ElementDiffStats> chunkStats;
+    chunkStats.reserve( chunkHashesMatch.size() );
+    bool haveArtifactZeroRecords = !captureA.rawRecordsPerArtifact.empty() && !captureB.rawRecordsPerArtifact.empty();
+    for ( size_t j = 0; j < chunkHashesMatch.size(); ++j )
+    {
+        bool haveChunkRecords = haveArtifactZeroRecords && captureA.rawRecordsPerArtifact[0].size() > j &&
+                                 captureB.rawRecordsPerArtifact[0].size() > j;
+        if ( !haveChunkRecords )
+        {
+            std::cerr << "capture_diff: chunk " << j
+                       << " has no raw capture record in one or both files -- skipping its per-chunk numeric pass\n";
+            ElementDiffStats missing;
+            missing.sizeMismatch = true;
+            chunkStats.push_back( missing );
+            continue;
+        }
+
+        const auto &chunkRecordA = captureA.rawRecordsPerArtifact[0][j];
+        const auto &chunkRecordB = captureB.rawRecordsPerArtifact[0][j];
+
+        if ( args.elementType == "float32" )
+        {
+            chunkStats.push_back( ComputeFloat32Diff( chunkRecordA.quantizedBytes, chunkRecordB.quantizedBytes ) );
+        }
+        else
+        {
+            chunkStats.push_back( ComputeUint8Diff( chunkRecordA.quantizedBytes, chunkRecordB.quantizedBytes ) );
+        }
+    }
+
     // Console output.
     std::cout << "capture_diff: comparing " << args.pathA << " vs " << args.pathB << " (element-type "
               << args.elementType << ")\n";
@@ -341,6 +389,19 @@ int main( int argc, char **argv )
         }
     }
     std::cout << "]\n";
+    for ( size_t j = 0; j < chunkStats.size(); ++j )
+    {
+        std::cout << "  chunk[" << j << "] match=" << ( chunkHashesMatch[j] ? "true" : "false" );
+        if ( chunkStats[j].sizeMismatch )
+        {
+            std::cout << " sizeMismatch=true (per-chunk numeric pass skipped)\n";
+        }
+        else
+        {
+            std::cout << " maxAbsDelta=" << chunkStats[j].maxAbsDelta << " maxRelDelta=" << chunkStats[j].maxRelDelta
+                       << " maxUlpDistance=" << chunkStats[j].maxUlpDistance << "\n";
+        }
+    }
     if ( stats.sizeMismatch )
     {
         std::cout << "  sizeMismatch:       true (per-element numeric pass skipped)\n";
@@ -366,6 +427,20 @@ int main( int argc, char **argv )
     report["contentHashMatch"]          = contentHashMatch;
     report["combinedHashMatch"]         = combinedHashMatch;
     report["chunkHashesMatch"]          = chunkHashesMatch;
+
+    report["chunkDiffs"] = nlohmann::json::array();
+    for ( size_t j = 0; j < chunkStats.size(); ++j )
+    {
+        nlohmann::json chunkEntry;
+        chunkEntry["chunkIndex"]                = j;
+        chunkEntry["elementCount"]              = chunkStats[j].elementCount;
+        chunkEntry["maxAbsDelta"]               = chunkStats[j].maxAbsDelta;
+        chunkEntry["maxRelDelta"]               = chunkStats[j].maxRelDelta;
+        chunkEntry["maxUlpDistance"]            = chunkStats[j].maxUlpDistance;
+        chunkEntry["percentExceedingThreshold"] = chunkStats[j].percentExceedingThreshold;
+        chunkEntry["sizeMismatch"]              = chunkStats[j].sizeMismatch;
+        report["chunkDiffs"].push_back( chunkEntry );
+    }
 
     std::ofstream jsonStream( args.jsonOutput );
     if ( !jsonStream.is_open() )
