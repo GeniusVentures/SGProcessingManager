@@ -411,13 +411,17 @@ namespace sgns::sgprocessing
             return nullptr;
         }
 
-        MNN::BackendConfig backendConfig;
-        backendConfig.precision = MNN::BackendConfig::Precision_High;
+        //MNN::BackendConfig backendConfig;
+        //backendConfig.precision = MNN::BackendConfig::Precision_High;
+        // Tested 2026-08-13 (Phase 13 gap-closure follow-up): forcing Precision_High produced
+        // a bit-for-bit IDENTICAL chunk-10 divergence vs. default Precision_Normal (maxAbsDelta,
+        // maxRelDelta, maxUlpDistance all unchanged) -- rules out FP16 backend opportunism as the
+        // source of this fixture's cross-hardware divergence. See STATE.md Blockers/Concerns.
 
         MNN::ScheduleConfig config;
         config.type = MNN_FORWARD_VULKAN;
         config.numThread = 4;
-        config.backendConfig = &backendConfig;
+        config.backendConfig = nullptr;
 
         MNN::Session *session = nullptr;
         {
