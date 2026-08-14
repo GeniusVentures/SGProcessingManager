@@ -7,7 +7,83 @@
 
 namespace sgns::sgprocmanagerquant
 {
-    void QuantizeFloatBuffer( float *data, size_t count )
+    namespace
+    {
+        // Phase 14 D-05/Pitfall 2: never use std::log2/std::pow here -- a
+        // transcendental-function-based check's last-bit behavior is
+        // platform-dependent, which would reintroduce exactly the
+        // cross-hardware nondeterminism this milestone exists to eliminate.
+        // The integer bit-trick below is deterministic on every platform.
+        bool IsPositivePowerOfTwo( double value )
+        {
+            if ( !( value > 0.0 ) )
+            {
+                return false;
+            }
+            if ( std::floor( value ) != value )
+            {
+                return false;
+            }
+            const auto asInt = static_cast<uint64_t>( value );
+            return asInt != 0u && ( asInt & ( asInt - 1u ) ) == 0u;
+        }
+    } // namespace
+
+    float ResolveQuantScale( const std::vector<sgns::Parameter> *parameters )
+    {
+        constexpr float kFallbackScale = 32768.0f; // 2^15, exact v2.1 constant (D-04)
+
+        if ( parameters )
+        {
+            for ( const auto &param : *parameters )
+            {
+                if ( param.get_name() == "quantScale" && param.get_type() == sgns::ParameterType::FLOAT )
+                {
+                    const auto &def = param.get_parameter_default();
+                    if ( def.is_number() )
+                    {
+                        const double declared = def.get<double>();
+                        if ( IsPositivePowerOfTwo( declared ) )
+                        {
+                            return static_cast<float>( declared );
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        return kFallbackScale;
+    }
+
+    int ResolveByteQuantMode( const std::vector<sgns::Parameter> *parameters )
+    {
+        constexpr int kFallbackMaskBits = 0; // Identity no-op, exact v2.1 behavior (D-08)
+
+        if ( parameters )
+        {
+            for ( const auto &param : *parameters )
+            {
+                if ( param.get_name() == "byteQuantMode" && param.get_type() == sgns::ParameterType::INT )
+                {
+                    const auto &def = param.get_parameter_default();
+                    if ( def.is_number_integer() )
+                    {
+                        const int declared = def.get<int>();
+                        if ( declared >= 0 && declared <= 8 )
+                        {
+                            return declared;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        return kFallbackMaskBits;
+    }
+
+    void QuantizeFloatBuffer( float *data, size_t count, float scale )
     {
         // Phase 13 Plan 13-04 gap-closure widening (supersedes Phase 12 D-05's
         // 2^20 value): the original S=2^20 grid step (9.5367431640625e-07)
@@ -34,7 +110,10 @@ namespace sgns::sgprocmanagerquant
         // failure boundary (not the exact edge), giving 32x the old S=2^20
         // grid step (~292x Phase 11's original maxAbsDelta) while still
         // leaving SECV-01's corrupted-model divergence fully intact.
-        constexpr float kScale = 32768.0f; // 2^15 (Phase 13 Plan 13-04 gap-closure widening)
+        //
+        // Phase 14 (QUANT-CFG-01/02): this constant is no longer hardcoded
+        // here -- callers resolve it via ResolveQuantScale() (D-04/D-05
+        // fallback to this exact 32768.0f value) and pass it as `scale`.
 
         for ( size_t i = 0; i < count; ++i )
         {
@@ -90,19 +169,30 @@ namespace sgns::sgprocmanagerquant
             // 5. Ordinary finite value: fixed-point scale-round-cast (D-03).
             else
             {
-                data[i] = std::round( x * kScale ) / kScale;
+                data[i] = std::round( x * scale ) / scale;
             }
         }
     }
 
-    void QuantizeByteBuffer( uint8_t *data, size_t count )
+    void QuantizeByteBuffer( uint8_t *data, size_t count, int maskBits )
     {
-        // D-01/QUANT-04: deliberate byte-identity pass-through for the render
-        // uint8 path -- see header doc comment for the Phase 11 empirical
-        // justification (contentHashMatch: true, all deltas 0.0). This is a
-        // considered decision for this phase, not an unmodified carry-over
-        // from Phase 10's placeholder stub.
-        (void)data;
-        (void)count;
+        // D-01/QUANT-04: byte-identity no-op when nothing (valid) is
+        // schema-declared -- see header doc comment for the Phase 11
+        // empirical justification (contentHashMatch: true, all deltas 0.0).
+        // Phase 14 D-07: maskBits<=0 (absent/N=0) is exactly this v2.1
+        // identity behavior, unchanged.
+        if ( maskBits <= 0 )
+        {
+            return;
+        }
+
+        // D-06: clear the low `maskBits` bits of every byte. maskBits is
+        // resolver-validated to [0, 8] (ResolveByteQuantMode), so the shift
+        // below never exceeds the width of an unsigned int.
+        const uint8_t mask = static_cast<uint8_t>( ~( ( 1u << maskBits ) - 1u ) );
+        for ( size_t i = 0; i < count; ++i )
+        {
+            data[i] &= mask;
+        }
     }
 } // namespace sgns::sgprocmanagerquant

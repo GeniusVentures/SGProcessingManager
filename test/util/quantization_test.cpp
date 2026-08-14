@@ -5,6 +5,10 @@
 // base needed. Bit patterns are compared via memcpy-extracted uint32_t and
 // ASSERT_EQ, never via approximate float comparison, since D-09/D-06/D-08
 // require exact canonical output.
+//
+// Phase 14, Plan 14-01 Task 1: every pre-existing QuantizeFloatBuffer/
+// QuantizeByteBuffer call updated to the new required 3-arg signature
+// (scale/maskBits are no longer compile-time constants).
 
 #include <gtest/gtest.h>
 
@@ -41,19 +45,19 @@ namespace sgns::sgprocmanagerquant
     {
         // NaN with nonzero payload -> exact canonical quiet-NaN bit pattern.
         float data1[1] = { FloatFromBits( 0x7FC00123u ) };
-        QuantizeFloatBuffer( data1, 1 );
+        QuantizeFloatBuffer( data1, 1, 32768.0f );
         ASSERT_EQ( BitsOf( data1[0] ), 0x7FC00000u );
 
         // Negative NaN -> sign discarded, same hardcoded canonical pattern (D-09).
         float data2[1] = { FloatFromBits( 0xFFC00000u ) };
-        QuantizeFloatBuffer( data2, 1 );
+        QuantizeFloatBuffer( data2, 1, 32768.0f );
         ASSERT_EQ( BitsOf( data2[0] ), 0x7FC00000u );
     }
 
     TEST_F( QuantizationTest, QuantizeFloatBufferCanonicalizesPositiveInfinity )
     {
         float data[1] = { FloatFromBits( 0x7F800000u ) };
-        QuantizeFloatBuffer( data, 1 );
+        QuantizeFloatBuffer( data, 1, 32768.0f );
         ASSERT_EQ( BitsOf( data[0] ), 0x7F800000u );
     }
 
@@ -61,7 +65,7 @@ namespace sgns::sgprocmanagerquant
     {
         // -Inf stays distinct from +Inf (D-06), never collapsed.
         float data[1] = { FloatFromBits( 0xFF800000u ) };
-        QuantizeFloatBuffer( data, 1 );
+        QuantizeFloatBuffer( data, 1, 32768.0f );
         ASSERT_EQ( BitsOf( data[0] ), 0xFF800000u );
     }
 
@@ -70,7 +74,7 @@ namespace sgns::sgprocmanagerquant
         // Smallest positive denormal, smallest negative denormal -> both flush
         // to canonical +0.0.
         float data[2] = { FloatFromBits( 0x00000001u ), FloatFromBits( 0x80000001u ) };
-        QuantizeFloatBuffer( data, 2 );
+        QuantizeFloatBuffer( data, 2, 32768.0f );
         ASSERT_EQ( BitsOf( data[0] ), 0x00000000u );
         ASSERT_EQ( BitsOf( data[1] ), 0x00000000u );
     }
@@ -79,7 +83,7 @@ namespace sgns::sgprocmanagerquant
     {
         // -0.0 and +0.0 both collapse to the single canonical zero bit pattern.
         float data[2] = { FloatFromBits( 0x80000000u ), FloatFromBits( 0x00000000u ) };
-        QuantizeFloatBuffer( data, 2 );
+        QuantizeFloatBuffer( data, 2, 32768.0f );
         ASSERT_EQ( BitsOf( data[0] ), 0x00000000u );
         ASSERT_EQ( BitsOf( data[1] ), 0x00000000u );
     }
@@ -89,7 +93,7 @@ namespace sgns::sgprocmanagerquant
         // Ordinary finite value, not on the 2^-15 grid.
         constexpr float kScale = 32768.0f; // 2^15, matches Phase 13 Plan 13-04 gap-closure widening
         float           data[1] = { 0.1f };
-        QuantizeFloatBuffer( data, 1 );
+        QuantizeFloatBuffer( data, 1, kScale );
 
         const float expected = std::round( 0.1f * kScale ) / kScale;
         ASSERT_EQ( BitsOf( data[0] ), BitsOf( expected ) );
@@ -104,7 +108,7 @@ namespace sgns::sgprocmanagerquant
     {
         uint8_t data[5] = { 0, 1, 127, 128, 255 };
         const uint8_t expected[5] = { 0, 1, 127, 128, 255 };
-        QuantizeByteBuffer( data, 5 );
+        QuantizeByteBuffer( data, 5, 0 );
         ASSERT_EQ( std::memcmp( data, expected, sizeof( data ) ), 0 );
     }
 

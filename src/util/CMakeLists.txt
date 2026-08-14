@@ -31,6 +31,12 @@ add_library(sgprocmanagerquant
 )
 target_include_directories(sgprocmanagerquant PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/generated>
+)
+target_link_libraries(sgprocmanagerquant
+    PUBLIC
+    nlohmann_json::nlohmann_json
 )
 sgnus_install(sgprocmanagerquant)
 

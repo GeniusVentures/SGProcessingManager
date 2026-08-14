@@ -3,9 +3,48 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
+
+#include "Parameter.hpp"
+#include "ParameterType.hpp"
 
 namespace sgns::sgprocmanagerquant
 {
+    /// Phase 14 (QUANT-CFG-01/02, D-01/D-02/D-04/D-05): resolves a job
+    /// schema-declared "quantScale" entry from the generic `parameters` array,
+    /// mirroring the existing find-by-name-in-parameters convention
+    /// (ParseLayout / ResolveUniforms).
+    ///
+    /// Falls back to the exact v2.1 constant 32768.0f (2^15) -- no warning
+    /// logged, no job rejection -- when `parameters` is null, no entry named
+    /// "quantScale" of type FLOAT exists, its declared default value is not a
+    /// JSON number, or the numeric value is not a strictly positive power of
+    /// two (D-05's mandatory validation, guaranteeing the exact float
+    /// round-trip property D-03's round(x*S)/S formula relies on can never be
+    /// silently violated by a bad schema value).
+    ///
+    /// @param parameters Job schema's generic parameters array, or nullptr.
+    /// @return The validated, schema-declared scale, or 32768.0f on any
+    ///         invalid/missing declaration.
+    float ResolveQuantScale( const std::vector<sgns::Parameter> *parameters );
+
+    /// Phase 14 (QUANT-CFG-01/02, D-02/D-07/D-08): resolves a job
+    /// schema-declared "byteQuantMode" entry from the generic `parameters`
+    /// array, same lookup convention as ResolveQuantScale.
+    ///
+    /// Falls back to 0 (the exact v2.1 byte-identity no-op) -- no warning, no
+    /// job rejection -- when `parameters` is null, no entry named
+    /// "byteQuantMode" of type INT exists, its declared default value is not
+    /// a JSON integer, or the integer value falls outside the inclusive range
+    /// [0, 8]. N=8 (masking all 8 bits) is a valid, non-fallback boundary
+    /// value by design (D-07/D-08); N=9 and above fall back to 0.
+    ///
+    /// @param parameters Job schema's generic parameters array, or nullptr.
+    /// @return The validated, schema-declared mask-bit count in [0, 8], or 0
+    ///         on any invalid/missing declaration.
+    int ResolveByteQuantMode( const std::vector<sgns::Parameter> *parameters );
+
+
     /// Phase 12 real implementation (D-03 through D-09): IEEE-754 special-value
     /// canonicalization followed by fixed-precision scale-round-cast quantization.
     ///
@@ -71,9 +110,19 @@ namespace sgns::sgprocmanagerquant
     /// for the fresh empirical cross-machine outcome this constant change is
     /// validated against.
     ///
+    /// Phase 14 (QUANT-CFG-01/02): `S` is now schema-configurable via the
+    /// caller-resolved `scale` argument, produced by calling
+    /// ResolveQuantScale() once per StartProcessing() invocation. 32768.0f
+    /// remains the exact fallback when nothing valid is schema-declared, and
+    /// the D-03 round(x*S)/S formula plus the D-06..D-09 canonicalization
+    /// branch order above are entirely unchanged by this addition -- this
+    /// paragraph documents schema-configurability, it does not revise or
+    /// contradict the S=2^15 derivation history above it.
+    ///
     /// @param data  Pointer to a float buffer to quantize in place.
     /// @param count Number of float elements in the buffer.
-    void QuantizeFloatBuffer( float *data, size_t count );
+    /// @param scale The resolved scale S to use (see ResolveQuantScale()).
+    void QuantizeFloatBuffer( float *data, size_t count, float scale );
 
     /// Phase 12 deliberate identity pass-through for the render uint8 path.
     ///
@@ -87,9 +136,18 @@ namespace sgns::sgprocmanagerquant
     /// enlarge the space of results indistinguishable from a correct one, so
     /// this stays byte-identity until new fixture data shows otherwise.
     ///
-    /// @param data  Pointer to a byte buffer to quantize in place.
-    /// @param count Number of bytes in the buffer.
-    void QuantizeByteBuffer( uint8_t *data, size_t count );
+    /// Phase 14 (QUANT-CFG-01/02, D-06/D-07): the mask is now schema-
+    /// configurable via the caller-resolved `maskBits` argument, produced by
+    /// calling ResolveByteQuantMode() once per StartProcessing() invocation.
+    /// `maskBits <= 0` (D-07's N=0/absent case) remains the exact v2.1
+    /// byte-identity no-op; otherwise the low `maskBits` bits of every byte
+    /// are cleared (D-06's bit-masking technique, `value &= ~((1<<N)-1)`).
+    ///
+    /// @param data     Pointer to a byte buffer to quantize in place.
+    /// @param count    Number of bytes in the buffer.
+    /// @param maskBits Number of low bits to clear per byte, in [0, 8] (see
+    ///                 ResolveByteQuantMode()); <= 0 is the identity no-op.
+    void QuantizeByteBuffer( uint8_t *data, size_t count, int maskBits );
 }
 
 #endif
