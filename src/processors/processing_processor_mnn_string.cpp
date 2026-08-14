@@ -71,6 +71,7 @@ namespace sgns::sgprocessing
         // model, 16 for the tiny single-input embedding model) -- a single hardcoded literal
         // cannot serve both, since resizing a fixed-shape model's input to any length other
         // than the one baked in at export time breaks its downstream fully-connected layer.
+        const float scale = sgprocmanagerquant::ResolveQuantScale( parameters );
         int maxLength = 128;
         if ( parameters )
         {
@@ -144,7 +145,7 @@ namespace sgns::sgprocessing
         // Phase 10 CAPT-02: quantize-then-capture-then-hash at the per-chunk site.
         // Never mutate MNN-owned `data` (const float*) in place -- copy first.
         std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
-        sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size() );
+        sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size(), scale );
         if ( execCtx.rawOutputCapture )
         {
             const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
