@@ -6,15 +6,18 @@
 // ASSERT_EQ, never via approximate float comparison, since D-09/D-06/D-08
 // require exact canonical output.
 //
-// Phase 14, Plan 14-01 Task 1: every pre-existing QuantizeFloatBuffer/
-// QuantizeByteBuffer call updated to the new required 3-arg signature
-// (scale/maskBits are no longer compile-time constants).
+// Phase 14, Plan 14-01: extended with ResolveQuantScale/ResolveByteQuantMode
+// fallback/boundary coverage (D-04/D-05/D-07/D-08), and every pre-existing
+// QuantizeFloatBuffer/QuantizeByteBuffer call updated to the new required
+// 3-arg signature (scale/maskBits are no longer compile-time constants).
 
 #include <gtest/gtest.h>
 
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <string>
+#include <vector>
 
 #include "util/quantization.hpp"
 
@@ -110,6 +113,89 @@ namespace sgns::sgprocmanagerquant
         const uint8_t expected[5] = { 0, 1, 127, 128, 255 };
         QuantizeByteBuffer( data, 5, 0 );
         ASSERT_EQ( std::memcmp( data, expected, sizeof( data ) ), 0 );
+    }
+
+    namespace
+    {
+        // Phase 14, Task 2: builds a one-element parameters vector for a
+        // Resolve* test case, using Parameter's public setters.
+        std::vector<sgns::Parameter> MakeParameters( const std::string       &name,
+                                                      sgns::ParameterType      type,
+                                                      const nlohmann::json    &defaultValue )
+        {
+            sgns::Parameter param;
+            param.set_name( name );
+            param.set_type( type );
+            param.set_parameter_default( defaultValue );
+            return { param };
+        }
+    } // namespace
+
+    TEST_F( QuantizationTest, ResolveQuantScaleFallsBackOnNullParameters )
+    {
+        ASSERT_EQ( BitsOf( ResolveQuantScale( nullptr ) ), BitsOf( 32768.0f ) );
+    }
+
+    TEST_F( QuantizationTest, ResolveQuantScaleFallsBackOnMissingEntry )
+    {
+        const std::vector<sgns::Parameter> parameters;
+        ASSERT_EQ( BitsOf( ResolveQuantScale( &parameters ) ), BitsOf( 32768.0f ) );
+    }
+
+    TEST_F( QuantizationTest, ResolveQuantScaleUsesValidPowerOfTwo )
+    {
+        const auto parameters = MakeParameters( "quantScale", sgns::ParameterType::FLOAT, 16384.0 );
+        ASSERT_EQ( BitsOf( ResolveQuantScale( &parameters ) ), BitsOf( 16384.0f ) );
+    }
+
+    TEST_F( QuantizationTest, ResolveQuantScaleFallsBackOnNonPowerOfTwo )
+    {
+        const auto parameters = MakeParameters( "quantScale", sgns::ParameterType::FLOAT, 100.0 );
+        ASSERT_EQ( BitsOf( ResolveQuantScale( &parameters ) ), BitsOf( 32768.0f ) );
+    }
+
+    TEST_F( QuantizationTest, ResolveQuantScaleFallsBackOnNonPositive )
+    {
+        const auto zeroParameters = MakeParameters( "quantScale", sgns::ParameterType::FLOAT, 0.0 );
+        ASSERT_EQ( BitsOf( ResolveQuantScale( &zeroParameters ) ), BitsOf( 32768.0f ) );
+
+        const auto negativeParameters = MakeParameters( "quantScale", sgns::ParameterType::FLOAT, -8.0 );
+        ASSERT_EQ( BitsOf( ResolveQuantScale( &negativeParameters ) ), BitsOf( 32768.0f ) );
+    }
+
+    TEST_F( QuantizationTest, ResolveQuantScaleFallsBackOnNonNumeric )
+    {
+        const auto parameters = MakeParameters( "quantScale", sgns::ParameterType::FLOAT, std::string( "16384" ) );
+        ASSERT_EQ( BitsOf( ResolveQuantScale( &parameters ) ), BitsOf( 32768.0f ) );
+    }
+
+    TEST_F( QuantizationTest, ResolveByteQuantModeFallsBackOnNullParameters )
+    {
+        ASSERT_EQ( ResolveByteQuantMode( nullptr ), 0 );
+    }
+
+    TEST_F( QuantizationTest, ResolveByteQuantModeUsesValidValue )
+    {
+        const auto parameters = MakeParameters( "byteQuantMode", sgns::ParameterType::INT, 3 );
+        ASSERT_EQ( ResolveByteQuantMode( &parameters ), 3 );
+    }
+
+    TEST_F( QuantizationTest, ResolveByteQuantModeAcceptsBoundaryEight )
+    {
+        const auto parameters = MakeParameters( "byteQuantMode", sgns::ParameterType::INT, 8 );
+        ASSERT_EQ( ResolveByteQuantMode( &parameters ), 8 );
+    }
+
+    TEST_F( QuantizationTest, ResolveByteQuantModeFallsBackJustAboveBoundary )
+    {
+        const auto parameters = MakeParameters( "byteQuantMode", sgns::ParameterType::INT, 9 );
+        ASSERT_EQ( ResolveByteQuantMode( &parameters ), 0 );
+    }
+
+    TEST_F( QuantizationTest, ResolveByteQuantModeFallsBackOnNegative )
+    {
+        const auto parameters = MakeParameters( "byteQuantMode", sgns::ParameterType::INT, -1 );
+        ASSERT_EQ( ResolveByteQuantMode( &parameters ), 0 );
     }
 
 } // namespace sgns::sgprocmanagerquant
