@@ -2093,6 +2093,8 @@ namespace sgns::sgprocessing
             return errorOut;
         }
 
+        const int maskBits = sgns::sgprocmanagerquant::ResolveByteQuantMode( parameters );
+
         // (4)-(6): build the offscreen render pass/framebuffer/pipeline (plan 03-04).
         if ( !BuildRenderPass( renderTarget, errorOut ) )
         {
@@ -2204,7 +2206,7 @@ namespace sgns::sgprocessing
         {
             preQuantizeSnapshot = readbackBytes;
         }
-        sgns::sgprocmanagerquant::QuantizeByteBuffer( readbackBytes.data(), readbackBytes.size() );
+        sgns::sgprocmanagerquant::QuantizeByteBuffer( readbackBytes.data(), readbackBytes.size(), maskBits );
         if ( execCtx.rawOutputCapture )
         {
             execCtx.rawOutputCapture( readbackBytes, preQuantizeSnapshot );

@@ -213,7 +213,7 @@ namespace sgns::sgprocessing
                                                    const std::vector<sgns::Parameter> *parameters,
                                                    const ExecutionContext            &execCtx )
     {
-        (void)parameters;
+        const float scale = sgprocmanagerquant::ResolveQuantScale( parameters );
         const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
@@ -518,7 +518,7 @@ namespace sgns::sgprocessing
                     // Phase 10 CAPT-02: quantize-then-capture-then-hash at the per-chunk site.
                     // Never mutate MNN-owned `data` (const float*) in place -- copy first.
                     std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
-                    sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size() );
+                    sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size(), scale );
                     if ( execCtx.rawOutputCapture )
                     {
                         const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
