@@ -115,6 +115,25 @@ namespace sgns::sgprocmanagerquant
         ASSERT_EQ( std::memcmp( data, expected, sizeof( data ) ), 0 );
     }
 
+    TEST_F( QuantizationTest, QuantizeByteBufferClearsLowBits )
+    {
+        // D-06: maskBits=3 clears exactly the low 3 bits of every byte.
+        uint8_t data[3] = { 0xFF, 0x07, 0xAA };
+        const uint8_t expected[3] = { 0xF8, 0x00, 0xA8 };
+        QuantizeByteBuffer( data, 3, 3 );
+        ASSERT_EQ( std::memcmp( data, expected, sizeof( data ) ), 0 );
+    }
+
+    TEST_F( QuantizationTest, QuantizeByteBufferMasksAllBitsAtBoundaryEight )
+    {
+        // D-07/D-08 disclosed boundary: maskBits=8 is valid (not a fallback
+        // trigger) and collapses every byte to 0x00.
+        uint8_t data[3] = { 0xFF, 0x01, 0x80 };
+        const uint8_t expected[3] = { 0x00, 0x00, 0x00 };
+        QuantizeByteBuffer( data, 3, 8 );
+        ASSERT_EQ( std::memcmp( data, expected, sizeof( data ) ), 0 );
+    }
+
     namespace
     {
         // Phase 14, Task 2: builds a one-element parameters vector for a
