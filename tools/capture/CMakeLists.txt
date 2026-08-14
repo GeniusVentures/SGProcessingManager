@@ -42,5 +42,6 @@ add_executable(capture_diff
 target_link_libraries(capture_diff
     PRIVATE
     sgproccapture
+    sgprocmanagerdiff
     nlohmann_json::nlohmann_json
 )

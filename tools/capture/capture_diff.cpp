@@ -36,22 +36,10 @@
 #include <nlohmann/json.hpp>
 
 #include "capture_file_format.hpp"
+#include "util/diff_utils.hpp"
 
 namespace
 {
-    /// Relative-delta denominator floor -- avoids divide-by-zero near zero-valued
-    /// float elements (per plan discretion note).
-    constexpr float kRelativeDeltaEpsilonFloor = 1e-6f;
-
-    /// Fixed default float relative-delta threshold for DIFF-02's
-    /// percentage-of-elements-exceeding-threshold stat (D-07 -- not CLI-configurable
-    /// this phase; quantization is a no-op stub, so this exists only to exercise the
-    /// reporting mechanism, not to make a real cross-hardware precision claim).
-    constexpr double kDefaultFloatRelativeThreshold = 1e-4;
-
-    /// Fixed default byte absolute-delta threshold for the uint8 element type.
-    constexpr int kDefaultByteAbsoluteThreshold = 1;
-
     struct CliArgs
     {
         std::string pathA;
@@ -122,113 +110,6 @@ namespace
         }
         out.assign( std::istreambuf_iterator<char>( stream ), std::istreambuf_iterator<char>() );
         return true;
-    }
-
-    /// Standard ordered-integer bit-reinterpretation technique for float ULP distance.
-    int64_t OrderedFloatBits( float f )
-    {
-        int32_t bits;
-        std::memcpy( &bits, &f, sizeof( bits ) );
-        int64_t wide = static_cast<int64_t>( bits );
-        if ( bits < 0 )
-        {
-            wide = static_cast<int64_t>( 0x80000000LL ) - wide;
-        }
-        return wide;
-    }
-
-    int64_t UlpDistanceFloat( float a, float b )
-    {
-        return std::llabs( OrderedFloatBits( a ) - OrderedFloatBits( b ) );
-    }
-
-    /// Whole-buffer per-element divergence summary (DIFF-01/DIFF-02).
-    struct ElementDiffStats
-    {
-        size_t  elementCount              = 0;
-        double  maxAbsDelta                = 0.0;
-        double  maxRelDelta                = 0.0;
-        int64_t maxUlpDistance             = 0;
-        double  percentExceedingThreshold  = 0.0;
-        bool    sizeMismatch               = false;
-    };
-
-    ElementDiffStats ComputeFloat32Diff( const std::vector<uint8_t> &a, const std::vector<uint8_t> &b )
-    {
-        ElementDiffStats stats;
-        if ( a.size() != b.size() )
-        {
-            stats.sizeMismatch = true;
-            return stats;
-        }
-
-        stats.elementCount = a.size() / sizeof( float );
-        size_t exceedingCount = 0;
-
-        for ( size_t idx = 0; idx < stats.elementCount; ++idx )
-        {
-            float valA;
-            float valB;
-            std::memcpy( &valA, a.data() + idx * sizeof( float ), sizeof( float ) );
-            std::memcpy( &valB, b.data() + idx * sizeof( float ), sizeof( float ) );
-
-            float absDelta = std::fabs( valA - valB );
-            float denom    = std::max( { std::fabs( valA ), std::fabs( valB ), kRelativeDeltaEpsilonFloor } );
-            float relDelta = absDelta / denom;
-            int64_t ulp    = UlpDistanceFloat( valA, valB );
-
-            if ( relDelta > kDefaultFloatRelativeThreshold )
-            {
-                ++exceedingCount;
-            }
-
-            stats.maxAbsDelta    = std::max( stats.maxAbsDelta, static_cast<double>( absDelta ) );
-            stats.maxRelDelta    = std::max( stats.maxRelDelta, static_cast<double>( relDelta ) );
-            stats.maxUlpDistance = std::max( stats.maxUlpDistance, ulp );
-        }
-
-        stats.percentExceedingThreshold =
-            stats.elementCount == 0 ? 0.0 : 100.0 * static_cast<double>( exceedingCount ) / static_cast<double>( stats.elementCount );
-
-        return stats;
-    }
-
-    ElementDiffStats ComputeUint8Diff( const std::vector<uint8_t> &a, const std::vector<uint8_t> &b )
-    {
-        ElementDiffStats stats;
-        if ( a.size() != b.size() )
-        {
-            stats.sizeMismatch = true;
-            return stats;
-        }
-
-        stats.elementCount = a.size();
-        size_t exceedingCount = 0;
-
-        for ( size_t idx = 0; idx < stats.elementCount; ++idx )
-        {
-            int valA = static_cast<int>( a[idx] );
-            int valB = static_cast<int>( b[idx] );
-
-            int    absDelta = std::abs( valA - valB );
-            double denom    = static_cast<double>( std::max( { valA, valB, 1 } ) );
-            double relDelta = static_cast<double>( absDelta ) / denom;
-            int64_t ulp     = absDelta;
-
-            if ( absDelta > kDefaultByteAbsoluteThreshold )
-            {
-                ++exceedingCount;
-            }
-
-            stats.maxAbsDelta    = std::max( stats.maxAbsDelta, static_cast<double>( absDelta ) );
-            stats.maxRelDelta    = std::max( stats.maxRelDelta, relDelta );
-            stats.maxUlpDistance = std::max( stats.maxUlpDistance, ulp );
-        }
-
-        stats.percentExceedingThreshold =
-            stats.elementCount == 0 ? 0.0 : 100.0 * static_cast<double>( exceedingCount ) / static_cast<double>( stats.elementCount );
-
-        return stats;
     }
 
 } // namespace
@@ -306,7 +187,7 @@ int main( int argc, char **argv )
     // numeric-diffs each individual per-chunk raw record below (see
     // `chunkStats`/`chunkDiffs`) -- this trailing-record-only pass is
     // preserved unchanged as its own distinct stat.
-    ElementDiffStats stats;
+    sgns::sgprocmanagerdiff::ElementDiffStats stats;
     bool             haveRecords = !captureA.rawRecordsPerArtifact.empty() && !captureB.rawRecordsPerArtifact.empty() &&
                         !captureA.rawRecordsPerArtifact[0].empty() && !captureB.rawRecordsPerArtifact[0].empty();
 
@@ -323,11 +204,11 @@ int main( int argc, char **argv )
 
         if ( args.elementType == "float32" )
         {
-            stats = ComputeFloat32Diff( lastRecordA.quantizedBytes, lastRecordB.quantizedBytes );
+            stats = sgns::sgprocmanagerdiff::ComputeFloat32Diff( lastRecordA.quantizedBytes, lastRecordB.quantizedBytes );
         }
         else
         {
-            stats = ComputeUint8Diff( lastRecordA.quantizedBytes, lastRecordB.quantizedBytes );
+            stats = sgns::sgprocmanagerdiff::ComputeUint8Diff( lastRecordA.quantizedBytes, lastRecordB.quantizedBytes );
         }
 
         if ( stats.sizeMismatch )
@@ -344,7 +225,7 @@ int main( int argc, char **argv )
     // could report a divergence without ever reporting its magnitude. Reuses
     // ComputeFloat32Diff/ComputeUint8Diff unmodified -- only the caller loop
     // and its per-chunk inputs are new.
-    std::vector<ElementDiffStats> chunkStats;
+    std::vector<sgns::sgprocmanagerdiff::ElementDiffStats> chunkStats;
     chunkStats.reserve( chunkHashesMatch.size() );
     bool haveArtifactZeroRecords = !captureA.rawRecordsPerArtifact.empty() && !captureB.rawRecordsPerArtifact.empty();
     for ( size_t j = 0; j < chunkHashesMatch.size(); ++j )
@@ -355,7 +236,7 @@ int main( int argc, char **argv )
         {
             std::cerr << "capture_diff: chunk " << j
                        << " has no raw capture record in one or both files -- skipping its per-chunk numeric pass\n";
-            ElementDiffStats missing;
+            sgns::sgprocmanagerdiff::ElementDiffStats missing;
             missing.sizeMismatch = true;
             chunkStats.push_back( missing );
             continue;
@@ -366,11 +247,11 @@ int main( int argc, char **argv )
 
         if ( args.elementType == "float32" )
         {
-            chunkStats.push_back( ComputeFloat32Diff( chunkRecordA.quantizedBytes, chunkRecordB.quantizedBytes ) );
+            chunkStats.push_back( sgns::sgprocmanagerdiff::ComputeFloat32Diff( chunkRecordA.quantizedBytes, chunkRecordB.quantizedBytes ) );
         }
         else
         {
-            chunkStats.push_back( ComputeUint8Diff( chunkRecordA.quantizedBytes, chunkRecordB.quantizedBytes ) );
+            chunkStats.push_back( sgns::sgprocmanagerdiff::ComputeUint8Diff( chunkRecordA.quantizedBytes, chunkRecordB.quantizedBytes ) );
         }
     }
 

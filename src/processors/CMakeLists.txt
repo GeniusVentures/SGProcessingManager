@@ -75,6 +75,7 @@ target_link_libraries(
 		OpenSSL::Crypto
 		sgprocmanagersha
 		sgprocmanagerquant
+		sgprocmanagerdiff
 )
 
 if(APPLE)
