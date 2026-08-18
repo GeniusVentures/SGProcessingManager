@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include "processors/processing_processor_mnn_tensor.hpp"
+#include "Generators.hpp" // from_json/to_json(DataType) -- for DataTypeLlmJsonRoundTrip below
 
 namespace
 {
@@ -120,4 +121,21 @@ TEST( MnnTensorFp4Test, UnrecognizedFormatStillUsesPreExistingRejection )
     EXPECT_TRUE( callResult.result.hash.empty() );
     EXPECT_EQ( callResult.result.output_buffers, nullptr );
     EXPECT_LT( callResult.elapsedMs, 1000.0 );
+}
+
+// Task 1 (Phase 04-sgprocessing-integration, Plan 04-03, PROC-01): DataType::LLM's
+// json round-trip. Lives here (builds unconditionally in every checkout) rather than
+// in mnn_llm_test.cpp (which only builds when the vendored MNN was built with
+// MNN_BUILD_LLM=ON) since the enum/json mapping itself has no dependency on MNN's LLM
+// engine being compiled in at all.
+TEST( MnnTensorFp4Test, DataTypeLlmJsonRoundTrip )
+{
+    nlohmann::json j = "llm";
+    sgns::DataType x;
+    sgns::from_json( j, x );
+    EXPECT_EQ( x, sgns::DataType::LLM );
+
+    nlohmann::json j2;
+    sgns::to_json( j2, x );
+    EXPECT_EQ( j2, "llm" );
 }

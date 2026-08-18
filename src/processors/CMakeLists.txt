@@ -21,15 +21,20 @@ option(ENABLE_VULKAN_VALIDATION "Enable Vulkan validation layers for RenderProce
 # SGProcessingManager link block) rather than letting the whole SGProcessors
 # target -- and every consumer of this shared submodule branch -- fail to
 # build/link the moment this file is added.
+#
+# CACHE INTERNAL (not a plain directory-scoped set()) so test/processors/CMakeLists.txt
+# -- a sibling subdirectory added separately from SGProcessingManager/CMakeLists.txt,
+# outside this variable's normal directory-scope inheritance chain -- can read the same
+# detection result without duplicating the EXISTS check.
 if(EXISTS "${MNN_INCLUDE_DIR}/MNN/llm/llm.hpp")
     message(STATUS "MNN LLM engine headers found (${MNN_INCLUDE_DIR}/MNN/llm) -- building MNN_Llm processor (PROC-01)")
-    set(SGPROC_HAS_MNN_LLM TRUE)
+    set(SGPROC_HAS_MNN_LLM TRUE CACHE INTERNAL "MNN vendored build has MNN_BUILD_LLM support (PROC-01)")
 else()
     message(STATUS "MNN LLM engine headers NOT found under MNN_INCLUDE_DIR -- MNN_Llm processor (PROC-01) source is "
                     "excluded from this build. The vendored MNN was built with MNN_BUILD_LLM=OFF in this checkout; "
                     "DataType::LLM falls back to ProcessingManager's existing NO_PROCESSOR error path until a "
                     "future phase rebuilds MNN with LLM support.")
-    set(SGPROC_HAS_MNN_LLM FALSE)
+    set(SGPROC_HAS_MNN_LLM FALSE CACHE INTERNAL "MNN vendored build has MNN_BUILD_LLM support (PROC-01)")
 endif()
 
 set(_SGPROC_LLM_SOURCES "")

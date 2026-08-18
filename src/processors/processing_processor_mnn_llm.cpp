@@ -135,6 +135,17 @@ namespace sgns::sgprocessing
         const std::string    passId = proc.get_name();
         std::vector<uint8_t> modelFileBytes( modelFile.begin(), modelFile.end() );
 
+        // Check cancellation before doing any work at all -- including before the
+        // (potentially expensive) model materialization/load attempt below -- so a
+        // job cancelled prior to dispatch never pays that cost. Re-checked again
+        // after a successful load (T-04-07) since PushTeardown() only has anything
+        // to unwind from that point on.
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            return ProcessingResult{ {}, nullptr, {},
+                ProcessingError{ ProcessingErrorStage::CANCELLED, "LLM pass cancelled" } };
+        }
+
         if ( modelFileBytes.empty() )
         {
             m_logger->error( "MNN LLM: no model file provided" );
