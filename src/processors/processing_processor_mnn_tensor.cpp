@@ -212,6 +212,40 @@ namespace sgns::sgprocessing
         }
 
         const auto format = proc.get_format().value_or( sgns::InputFormat::FLOAT32 );
+
+        if ( format == sgns::InputFormat::FP4_ULTRA )
+        {
+            // FP4_ULTRA is a recognized TENSOR format (D-08) -- it is not rejected as an
+            // unsupported format -- but MNN's own E2M1 dequant kernel (MNN_Ultra branch)
+            // is not yet merged into this build (D-04/D-09). Validate the declared buffer
+            // size against declared dimensions before returning (T-04-03, mirroring
+            // TEXTURE2_D's block_len divisibility check): FP4 packs two 4-bit elements
+            // per byte, so a buffer smaller than ceil(length / 2) bytes cannot possibly
+            // hold `length` FP4_ULTRA elements. This is pure size arithmetic on the
+            // declared bit-width, not FP4 dequant math -- D-09 (no dequant math in
+            // SGProcessingManager) is unaffected; no decode is attempted here.
+            const size_t expectedFp4Bytes = ( static_cast<size_t>( length ) + 1 ) / 2;
+            if ( tensorData.size() < expectedFp4Bytes )
+            {
+                m_logger->error(
+                    "FP4_ULTRA tensor input size {} bytes is smaller than expected {} bytes for {} elements",
+                    tensorData.size(),
+                    expectedFp4Bytes,
+                    length );
+                return ProcessingResult{ {}, nullptr, {},
+                    ProcessingError{ ProcessingErrorStage::FORMAT_UNSUPPORTED,
+                        "FP4_ULTRA buffer size " + std::to_string( tensorData.size() ) +
+                            " bytes is smaller than the " + std::to_string( expectedFp4Bytes ) +
+                            " bytes required for " + std::to_string( length ) + " declared elements" } };
+            }
+
+            m_logger->warn( "FP4_ULTRA tensor input recognized but decode is unavailable in this build" );
+            return ProcessingResult{ {}, nullptr, {},
+                ProcessingError{ ProcessingErrorStage::FORMAT_UNSUPPORTED,
+                    "FP4_ULTRA decode requires MNN_Ultra's E2M1 dequant kernel, not yet merged into "
+                    "this build (see D-04/D-09)" } };
+        }
+
         if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 &&
              format != sgns::InputFormat::INT32 && format != sgns::InputFormat::INT16 &&
              format != sgns::InputFormat::INT8 )
