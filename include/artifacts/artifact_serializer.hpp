@@ -34,6 +34,12 @@ namespace sgns::sgprocessing
     /// + outputBytesProduced[8] + wallClockUsec[8] + manifestHash[32]
     static constexpr size_t MANIFEST_SERIALIZED_SIZE = 5649;
 
+    /// Trailer appended after the unchanged MANIFEST_SERIALIZED_SIZE base region
+    /// (ARTF-10, schema evolution): schemaVersion[4] + errorMessage[256].
+    /// Expressed as an arithmetic expression (not a hardcoded literal) so it
+    /// stays correct if MANIFEST_SERIALIZED_SIZE or MAX_IDENTIFIER ever change.
+    static constexpr size_t MANIFEST_V2_SERIALIZED_SIZE = MANIFEST_SERIALIZED_SIZE + sizeof( uint32_t ) + MAX_IDENTIFIER;
+
     /// Serialize an Artifact to a fixed-size binary blob (ARTF-05).
     /// @return Vector of exactly ARTIFACT_SERIALIZED_SIZE bytes.
     std::vector<uint8_t> SerializeArtifact( const Artifact &artifact );
@@ -47,11 +53,14 @@ namespace sgns::sgprocessing
     /// CRITICAL (D-04): The manifestHash field is zeroed before serialization
     /// and restored afterward so it does NOT participate in its own hash computation.
     ///
-    /// @return Vector of exactly MANIFEST_SERIALIZED_SIZE bytes.
+    /// @return Vector of exactly MANIFEST_V2_SERIALIZED_SIZE bytes (unchanged base
+    /// region + schemaVersion+errorMessage trailer, ARTF-10).
     std::vector<uint8_t> SerializeManifest( const ExecutionManifest &manifest );
 
     /// Deserialize a binary blob back into an ExecutionManifest struct.
-    /// @return true on success; false if input size != MANIFEST_SERIALIZED_SIZE.
+    /// @return false if input size < MANIFEST_SERIALIZED_SIZE (base region);
+    /// trailer fields (schemaVersion, errorMessage) are read only when present
+    /// and within bounds, defaulting to absent/empty otherwise.
     bool DeserializeManifest( const std::vector<uint8_t> &bytes, ExecutionManifest &out );
 
     /// Compute the manifest self-hash: SHA-256 of serialized manifest bytes
