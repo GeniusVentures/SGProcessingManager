@@ -218,7 +218,7 @@ namespace sgns::sgprocessing
             auto m = MakeTestManifest();
 
             auto bytes = SerializeManifest( m );
-            ASSERT_EQ( bytes.size(), MANIFEST_SERIALIZED_SIZE );
+            ASSERT_EQ( bytes.size(), MANIFEST_V2_SERIALIZED_SIZE );
 
             ExecutionManifest restored{};
             ASSERT_TRUE( DeserializeManifest( bytes, restored ) );
@@ -262,7 +262,7 @@ namespace sgns::sgprocessing
             // All identity hashes default to zero
 
             auto bytes = SerializeManifest( m );
-            ASSERT_EQ( bytes.size(), MANIFEST_SERIALIZED_SIZE );
+            ASSERT_EQ( bytes.size(), MANIFEST_V2_SERIALIZED_SIZE );
 
             // tokenizerIdentity at offset 1344: first byte should be 0
             EXPECT_EQ( bytes[1344], 0 );
@@ -321,6 +321,177 @@ namespace sgns::sgprocessing
 
             // Verify manifestHash was restored after serialization
             EXPECT_EQ( m.manifestHash[0], 0xFF );
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        //  ARTF-09 / ARTF-10: errorMessage round-trip + schema evolution
+        // ────────────────────────────────────────────────────────────────
+
+        TEST( ManifestErrorMessage, RoundTripsAndTruncates )
+        {
+            // Short message round-trips exactly.
+            auto m = MakeTestManifest();
+            std::strncpy( m.errorMessage, "GPU device lost: VK_ERROR_DEVICE_LOST", MAX_IDENTIFIER - 1 );
+            m.errorMessage[MAX_IDENTIFIER - 1] = '\0';
+
+            auto bytes = SerializeManifest( m );
+            ExecutionManifest restored{};
+            ASSERT_TRUE( DeserializeManifest( bytes, restored ) );
+            EXPECT_STREQ( restored.errorMessage, "GPU device lost: VK_ERROR_DEVICE_LOST" );
+
+            // A 300-character message is truncated (silently, no marker) at
+            // MAX_IDENTIFIER - 1 bytes before serialization, matching D-10's
+            // convention -- this mirrors exactly what Plan 16-03's
+            // ProcessingManager.cpp change will do when copying an unbounded
+            // std::string into this fixed array.
+            std::string longMessage( 300, 'x' );
+            auto        m2 = MakeTestManifest();
+            std::strncpy( m2.errorMessage, longMessage.c_str(), MAX_IDENTIFIER - 1 );
+            m2.errorMessage[MAX_IDENTIFIER - 1] = '\0';
+
+            auto bytes2 = SerializeManifest( m2 );
+            ExecutionManifest restored2{};
+            ASSERT_TRUE( DeserializeManifest( bytes2, restored2 ) );
+            EXPECT_EQ( std::strlen( restored2.errorMessage ), static_cast<size_t>( MAX_IDENTIFIER - 1 ) );
+            // No truncation marker anywhere in the string -- every character is 'x'.
+            for ( size_t i = 0; i < std::strlen( restored2.errorMessage ); ++i )
+            {
+                ASSERT_EQ( restored2.errorMessage[i], 'x' );
+            }
+        }
+
+        TEST( ManifestSchemaEvolution, OldWriterBytesNewReader )
+        {
+            // Direction 2 (SC4): old-shape bytes (no trailer) read by the new
+            // reader. Simulates a genuine pre-ARTF-10, 5649-byte blob by
+            // truncating a real serialized manifest down to the base region.
+            auto m     = MakeTestManifest();
+            auto bytes = SerializeManifest( m );
+            bytes.resize( MANIFEST_SERIALIZED_SIZE );
+
+            ExecutionManifest restored{};
+            ASSERT_TRUE( DeserializeManifest( bytes, restored ) );
+
+            EXPECT_STREQ( restored.errorMessage, "" );
+            // Spot-check base fields still match.
+            EXPECT_STREQ( restored.executionId, "exec_001" );
+            EXPECT_EQ( restored.terminalState, TerminalState::Success );
+            EXPECT_EQ( restored.outputArtifactCount, 2u );
+        }
+
+        // Direction 1 (SC4) helper: duplicates ONLY the unchanged base-region
+        // offset constants and memcpy/strncpy calls from DeserializeManifest,
+        // using the relaxed `>=` size check instead of the pre-ARTF-10 `!=`
+        // check, and never reads anything at or past offset
+        // MANIFEST_SERIALIZED_SIZE (5649) -- no trailer access at all.
+        //
+        // What this proves: the relaxed-size-check-plus-never-read-past-what-
+        // you-understand mechanism is sufficient for forward-tolerance -- a
+        // reader that only knows about the base region can still correctly
+        // read a new-writer's larger output.
+        //
+        // What this does NOT prove: that a binary literally compiled before
+        // this phase existed would already contain this relaxation. No such
+        // pre-Phase-16 persisted manifest binary exists anywhere in this
+        // repository (RESEARCH.md Assumption A3, confirmed by a grep sweep of
+        // all SerializeManifest/DeserializeManifest call sites) -- this is a
+        // same-mechanism proxy, not a literal historical-binary test.
+        static bool DeserializeManifestBaseFieldsOnly( const std::vector<uint8_t> &bytes, ExecutionManifest &out )
+        {
+            if ( bytes.size() < MANIFEST_SERIALIZED_SIZE )
+            {
+                return false;
+            }
+
+            static constexpr size_t OFF_executionId          = 0;
+            static constexpr size_t OFF_attemptId            = 256;
+            static constexpr size_t OFF_taskId               = 512;
+            static constexpr size_t OFF_subtaskId            = 768;
+            static constexpr size_t OFF_passId               = 1024;
+            static constexpr size_t OFF_executorIdentity     = 1280;
+            static constexpr size_t OFF_modelIdentity        = 1312;
+            static constexpr size_t OFF_tokenizerIdentity    = 1344;
+            static constexpr size_t OFF_adapterIdentity      = 1376;
+            static constexpr size_t OFF_shaderIdentity       = 1408;
+            static constexpr size_t OFF_quantizationIdentity = 1440;
+            static constexpr size_t OFF_inputArtifactCount   = 1472;
+            static constexpr size_t OFF_inputArtifactHashes  = 1476;
+            static constexpr size_t OFF_outputArtifactCount  = 3524;
+            static constexpr size_t OFF_outputArtifactHashes = 3528;
+            static constexpr size_t OFF_startTimeUsec        = 5576;
+            static constexpr size_t OFF_endTimeUsec          = 5584;
+            static constexpr size_t OFF_terminalState        = 5592;
+            static constexpr size_t OFF_gpuMemoryUsedBytes   = 5593;
+            static constexpr size_t OFF_outputBytesProduced  = 5601;
+            static constexpr size_t OFF_wallClockUsec        = 5609;
+            static constexpr size_t OFF_manifestHash         = 5617;
+
+            out = ExecutionManifest{};
+
+            std::memcpy( out.executionId, bytes.data() + OFF_executionId, MAX_IDENTIFIER );
+            out.executionId[MAX_IDENTIFIER - 1] = '\0';
+            std::memcpy( out.attemptId, bytes.data() + OFF_attemptId, MAX_IDENTIFIER );
+            out.attemptId[MAX_IDENTIFIER - 1] = '\0';
+            std::memcpy( out.taskId, bytes.data() + OFF_taskId, MAX_IDENTIFIER );
+            out.taskId[MAX_IDENTIFIER - 1] = '\0';
+            std::memcpy( out.subtaskId, bytes.data() + OFF_subtaskId, MAX_IDENTIFIER );
+            out.subtaskId[MAX_IDENTIFIER - 1] = '\0';
+            std::memcpy( out.passId, bytes.data() + OFF_passId, MAX_RESOURCE_NAME );
+            out.passId[MAX_RESOURCE_NAME - 1] = '\0';
+
+            std::memcpy( out.executorIdentity, bytes.data() + OFF_executorIdentity, SHA256_HASH_SIZE );
+            std::memcpy( out.modelIdentity, bytes.data() + OFF_modelIdentity, SHA256_HASH_SIZE );
+            std::memcpy( out.tokenizerIdentity, bytes.data() + OFF_tokenizerIdentity, SHA256_HASH_SIZE );
+            std::memcpy( out.adapterIdentity, bytes.data() + OFF_adapterIdentity, SHA256_HASH_SIZE );
+            std::memcpy( out.shaderIdentity, bytes.data() + OFF_shaderIdentity, SHA256_HASH_SIZE );
+            std::memcpy( out.quantizationIdentity, bytes.data() + OFF_quantizationIdentity, SHA256_HASH_SIZE );
+
+            std::memcpy( &out.inputArtifactCount, bytes.data() + OFF_inputArtifactCount, sizeof( uint32_t ) );
+            if ( out.inputArtifactCount > MAX_ARTIFACT_REFS )
+                out.inputArtifactCount = static_cast<uint32_t>( MAX_ARTIFACT_REFS );
+            std::memcpy( out.inputArtifactHashes, bytes.data() + OFF_inputArtifactHashes,
+                         out.inputArtifactCount * SHA256_HASH_SIZE );
+
+            std::memcpy( &out.outputArtifactCount, bytes.data() + OFF_outputArtifactCount, sizeof( uint32_t ) );
+            if ( out.outputArtifactCount > MAX_ARTIFACT_REFS )
+                out.outputArtifactCount = static_cast<uint32_t>( MAX_ARTIFACT_REFS );
+            std::memcpy( out.outputArtifactHashes, bytes.data() + OFF_outputArtifactHashes,
+                         out.outputArtifactCount * SHA256_HASH_SIZE );
+
+            std::memcpy( &out.startTimeUsec, bytes.data() + OFF_startTimeUsec, sizeof( int64_t ) );
+            std::memcpy( &out.endTimeUsec, bytes.data() + OFF_endTimeUsec, sizeof( int64_t ) );
+
+            out.terminalState = static_cast<TerminalState>( bytes[OFF_terminalState] );
+
+            std::memcpy( &out.gpuMemoryUsedBytes, bytes.data() + OFF_gpuMemoryUsedBytes, sizeof( uint64_t ) );
+            std::memcpy( &out.outputBytesProduced, bytes.data() + OFF_outputBytesProduced, sizeof( uint64_t ) );
+            std::memcpy( &out.wallClockUsec, bytes.data() + OFF_wallClockUsec, sizeof( uint64_t ) );
+
+            std::memcpy( out.manifestHash, bytes.data() + OFF_manifestHash, SHA256_HASH_SIZE );
+
+            // Deliberately no trailer access -- this helper never reads at or
+            // past offset MANIFEST_SERIALIZED_SIZE (5649).
+            return true;
+        }
+
+        TEST( ManifestSchemaEvolution, NewWriterBytesOldReaderProxy )
+        {
+            // Direction 1 (SC4): a genuine new-writer 5909-byte blob, still
+            // correctly readable by a base-region-only proxy reader.
+            auto m = MakeTestManifest();
+            std::strncpy( m.errorMessage, "shouldn't be read by the proxy", MAX_IDENTIFIER - 1 );
+            m.errorMessage[MAX_IDENTIFIER - 1] = '\0';
+
+            auto bytes = SerializeManifest( m );
+            ASSERT_EQ( bytes.size(), MANIFEST_V2_SERIALIZED_SIZE );
+
+            ExecutionManifest restored{};
+            ASSERT_TRUE( DeserializeManifestBaseFieldsOnly( bytes, restored ) );
+
+            EXPECT_STREQ( restored.executionId, "exec_001" );
+            EXPECT_STREQ( restored.taskId, "task_42" );
+            EXPECT_EQ( restored.terminalState, TerminalState::Success );
+            EXPECT_EQ( restored.outputArtifactCount, 2u );
         }
 
     }  // namespace
