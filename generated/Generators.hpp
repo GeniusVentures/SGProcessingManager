@@ -601,6 +601,7 @@ namespace sgns {
             {"buffer", DataType::BUFFER},
             {"float", DataType::FLOAT},
             {"int", DataType::INT},
+            {"llm", DataType::LLM},
             {"mat2", DataType::MAT2},
             {"mat3", DataType::MAT3},
             {"mat4", DataType::MAT4},
@@ -626,6 +627,7 @@ namespace sgns {
             case DataType::BUFFER: j = "buffer"; break;
             case DataType::FLOAT: j = "float"; break;
             case DataType::INT: j = "int"; break;
+            case DataType::LLM: j = "llm"; break;
             case DataType::MAT2: j = "mat2"; break;
             case DataType::MAT3: j = "mat3"; break;
             case DataType::MAT4: j = "mat4"; break;
