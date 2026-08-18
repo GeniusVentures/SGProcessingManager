@@ -161,6 +161,18 @@ namespace sgns::sgprocessing
             return 0.0f;
         }
 
+        /** Get the manifest produced by the most recent Process() call (ARTF-09).
+         * Populated on every terminal state — success or failure (CANCELLED,
+         * TIMED_OUT, BUDGET_EXCEEDED, generic error) — so a caller holding only a
+         * ProcessingManager instance can retrieve a human-readable errorMessage
+         * without access to the original ProcessingError or processor internals.
+         * @return Reference to the most recently produced ExecutionManifest.
+         */
+        const ExecutionManifest &GetLastManifest() const
+        {
+            return m_lastManifest;
+        }
+
         /**
          * @brief       Checks whether a processing json is valid by attempting to create a ProcessingManager instance with it
          * @param[in]   jsondata JSON string containing the processing data to validate.
@@ -228,6 +240,7 @@ namespace sgns::sgprocessing
         sgns::sgprocmanager::Logger          m_logger = sgns::sgprocmanager::createLogger( "SGProcessingManager" );
         sgns::SgnsProcessing                 processing_;
         std::unique_ptr<ProcessingProcessor> m_processor;
+        ExecutionManifest                    m_lastManifest{};
         std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>>                    m_processorFactories;
         std::unordered_map<PassType, ExecutorRegistryEntry, PassTypeHash>                                m_passFactories;
         std::unordered_map<std::string, size_t>                                                           m_inputMap;
