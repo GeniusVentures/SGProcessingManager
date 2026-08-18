@@ -9,6 +9,8 @@
 #include <sstream>
 #include <string>
 
+#include "util/sha256.hpp"
+
 #include <MNN/llm/llm.hpp>
 
 namespace sgns::sgprocessing
@@ -93,6 +95,36 @@ namespace sgns::sgprocessing
         return llm;
     }
 
+    namespace
+    {
+        // Reads the schema-declared "maxNewTokens" INT parameter, mirroring MNN_String's
+        // "maxLength" find-by-name idiom (processing_processor_mnn_string.cpp). Defaults
+        // to 512 (matching MNNInferenceEngine::Config::kDefaultMaxTokens) when absent or
+        // invalid -- T-04-05 (DoS via unbounded generation length) mitigation: this bound
+        // is always applied, never an unbounded loop.
+        int ResolveMaxNewTokens( const std::vector<sgns::Parameter> *parameters )
+        {
+            constexpr int kDefaultMaxNewTokens = 512;
+            int           maxNewTokens         = kDefaultMaxNewTokens;
+            if ( parameters )
+            {
+                for ( const auto &param : *parameters )
+                {
+                    if ( param.get_name() == "maxNewTokens" && param.get_type() == sgns::ParameterType::INT )
+                    {
+                        const auto &def = param.get_parameter_default();
+                        if ( def.is_number_integer() && def.get<int>() > 0 )
+                        {
+                            maxNewTokens = def.get<int>();
+                        }
+                        break;
+                    }
+                }
+            }
+            return maxNewTokens;
+        }
+    } // namespace
+
     ProcessingResult MNN_Llm::StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                                                 const sgns::IoDeclaration         &proc,
                                                 std::vector<char>                 &promptData,
@@ -100,6 +132,7 @@ namespace sgns::sgprocessing
                                                 const std::vector<sgns::Parameter> *parameters,
                                                 const ExecutionContext            &execCtx )
     {
+        const std::string    passId = proc.get_name();
         std::vector<uint8_t> modelFileBytes( modelFile.begin(), modelFile.end() );
 
         if ( modelFileBytes.empty() )
@@ -110,6 +143,11 @@ namespace sgns::sgprocessing
                     "MNN LLM model failed to load: empty model buffer" } };
         }
 
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::LOAD_MODEL, 10.0f ) );
+        }
+
         MNN::Transformer::Llm *llm = LoadModel( modelFileBytes );
         if ( !llm )
         {
@@ -118,20 +156,86 @@ namespace sgns::sgprocessing
                 ProcessingError{ ProcessingErrorStage::RESOURCE_RESOLUTION, "MNN LLM model failed to load" } };
         }
 
-        m_logger->info( "MNN LLM: model loaded successfully from materialized directory" );
+        // D-14/T-04-07: register teardown immediately after a successful load so a
+        // cancelled/timed-out job cannot leak this long-lived MNN LLM session --
+        // every return path below this point goes through RunTeardown().
+        PushTeardown( [llm]() { MNN::Transformer::Llm::destroy( llm ); } );
 
-        // Task 3 (this plan) extends this function past a successful load with the
-        // full generation path: PushTeardown() registration, cancellation checks,
-        // maxNewTokens-bounded response(), progress events, and hashing/output
-        // population. Until then, intentionally return immediately after load,
-        // per this task's own scope (skeleton + fail-closed load path only).
-        (void) proc;
-        (void) promptData;
-        (void) parameters;
-        (void) execCtx;
-        (void) chunkhashes;
-        MNN::Transformer::Llm::destroy( llm );
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return ProcessingResult{ {}, nullptr, {},
+                ProcessingError{ ProcessingErrorStage::CANCELLED, "LLM pass cancelled" } };
+        }
 
-        return ProcessingResult{};
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::CREATE_SESSION, 25.0f ) );
+        }
+
+        const int   maxNewTokens = ResolveMaxNewTokens( parameters );
+        std::string promptText( promptData.begin(), promptData.end() );
+
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::RUN, 50.0f ) );
+        }
+
+        // Port MNN's own native autoregressive API -- the exact call NEO-SWARM's
+        // InferViaMnnLlm() already makes correctly -- NOT a hand-rolled sampling loop.
+        // MNN::Transformer::Llm::response() handles tokenization, KV-cache, sampling,
+        // and stopping criteria internally.
+        std::ostringstream oss;
+        llm->response( promptText, &oss, nullptr, maxNewTokens );
+
+        // MNN::Transformer::Llm::response() is a single blocking call with no
+        // cancellation hook exposed by its public API, so true mid-generation
+        // cancellation cannot be implemented without deeper MNN API support (see
+        // SUMMARY.md deviations). Re-checking here at minimum ensures a cancellation
+        // that raced with generation is still surfaced as a structured CANCELLED
+        // result rather than a false-success return.
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return ProcessingResult{ {}, nullptr, {},
+                ProcessingError{ ProcessingErrorStage::CANCELLED, "LLM pass cancelled" } };
+        }
+
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::READ_OUTPUT, 90.0f ) );
+        }
+
+        const std::string outputText = oss.str();
+        const auto        subTaskResultHash =
+            sgprocmanagersha::sha256( outputText.c_str(), outputText.size() );
+        chunkhashes.push_back( subTaskResultHash );
+
+        // Output budget check (EXEC-03), mirroring MNN_Tensor's existing pattern.
+        if ( execCtx.maxOutputArtifactBytes > 0 && outputText.size() > execCtx.maxOutputArtifactBytes )
+        {
+            RunTeardown();
+            return ProcessingResult{ {}, nullptr, {},
+                ProcessingError{ ProcessingErrorStage::BUDGET_EXCEEDED,
+                    "Output artifact size " + std::to_string( outputText.size() ) + " exceeds budget " +
+                        std::to_string( execCtx.maxOutputArtifactBytes ) } };
+        }
+
+        ProcessingResult result;
+        result.hash            = subTaskResultHash;
+        result.output_buffers  = std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
+        result.output_buffers->first.push_back( "" );
+        result.output_buffers->second.push_back( std::vector<char>( outputText.begin(), outputText.end() ) );
+
+        m_progress = 100.0f;
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::READ_OUTPUT, 100.0f ) );
+        }
+
+        m_logger->info( "MNN LLM generation complete: {} output byte(s)", outputText.size() );
+
+        RunTeardown();
+        return result;
     }
 }
