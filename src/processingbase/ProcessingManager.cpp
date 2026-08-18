@@ -1328,22 +1328,47 @@ namespace sgns::sgprocessing
                 }
             }
 
+            // Build a minimal ExecutionManifest on every terminal path (ARTF-09) so
+            // GetLastManifest() is reachable even when Process() returns failure
+            // before the full manifest-assembly block below ever runs. Mirrors the
+            // success-path assembly's identity/timing/executor-identity population.
+            auto buildFailureManifest = [&]()
+            {
+                ExecutionManifest fm{};
+                std::strncpy( fm.executionId, processing_.get_name().c_str(), MAX_IDENTIFIER - 1 );
+                std::strncpy( fm.passId, pass.get_name().c_str(), MAX_RESOURCE_NAME - 1 );
+                std::memcpy( fm.executorIdentity, executorId, SHA256_HASH_SIZE );
+                fm.startTimeUsec = startTimeUsec;
+                fm.endTimeUsec   = endTimeUsec;
+                fm.wallClockUsec = endTimeUsec - startTimeUsec;
+                fm.terminalState = terminalState;
+                std::strncpy( fm.errorMessage,
+                              processResult.error
+                                  ? processResult.error->message.c_str()
+                                  : "processor returned an empty hash with no result (legacy failure sentinel)",
+                              MAX_IDENTIFIER - 1 );
+                m_lastManifest = fm;
+            };
+
             // Check terminal conditions before saving (D-15)
             if ( processResult.error )
             {
                 if ( processResult.error->stage == ProcessingErrorStage::CANCELLED )
                 {
                     m_logger->error( "Processing cancelled" );
+                    buildFailureManifest();
                     return outcome::failure( Error::PROCESSING_FAILED );
                 }
                 if ( processResult.error->stage == ProcessingErrorStage::TIMED_OUT )
                 {
                     m_logger->error( "Processing deadline exceeded" );
+                    buildFailureManifest();
                     return outcome::failure( Error::PROCESSING_FAILED );
                 }
                 if ( processResult.error->stage == ProcessingErrorStage::BUDGET_EXCEEDED )
                 {
                     m_logger->error( "Processing output budget exceeded" );
+                    buildFailureManifest();
                     return outcome::failure( Error::PROCESSING_FAILED );
                 }
             }
@@ -1354,6 +1379,7 @@ namespace sgns::sgprocessing
                                  processResult.error
                                      ? processResult.error->message
                                      : std::string( "processor returned an empty hash with no result (legacy failure sentinel)" ) );
+                buildFailureManifest();
                 return outcome::failure( Error::PROCESSING_FAILED );
             }
 
@@ -1635,6 +1661,7 @@ namespace sgns::sgprocessing
                 }
             }
 
+            m_lastManifest = output.manifest;
             return output;
         }
         catch ( const std::exception &e )
