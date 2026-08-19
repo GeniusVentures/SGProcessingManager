@@ -45,7 +45,7 @@ namespace sgns::sgprocessing
         };
         static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 
-        outcome::result<uint64_t>             ParseBlockSize();
+        outcome::result<uint64_t>             ParseBlockSize() const;
         outcome::result<void>                 CheckProcessValidity();
         outcome::result<std::vector<uint8_t>> Process( std::shared_ptr<boost::asio::io_context> ioc,
                                                        std::vector<std::vector<uint8_t>>       &chunkhashes,
@@ -68,7 +68,7 @@ namespace sgns::sgprocessing
 
         /** Get input map Index
         */
-        outcome::result<size_t> GetInputIndex( const std::string &input );
+        outcome::result<size_t> GetInputIndex( const std::string &input ) const;
 
         /** Get current processing progress
         * @return Progress percentage (0.0 to 100.0)
