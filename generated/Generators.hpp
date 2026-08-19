@@ -19,6 +19,8 @@
 #include "VertexLayoutFormat.hpp"
 #include "VertexBuffer.hpp"
 #include "PassType.hpp"
+#include "TextureBuffer.hpp"
+#include "TextureFilter.hpp"
 #include "ShaderConfig.hpp"
 #include "ShaderUniform.hpp"
 #include "RenderTarget.hpp"
@@ -110,6 +112,9 @@ namespace sgns {
     void from_json(const json & j, ShaderConfig & x);
     void to_json(json & j, const ShaderConfig & x);
 
+    void from_json(const json & j, TextureBuffer & x);
+    void to_json(json & j, const TextureBuffer & x);
+
     void from_json(const json & j, VertexBuffer & x);
     void to_json(json & j, const VertexBuffer & x);
 
@@ -172,6 +177,9 @@ namespace sgns {
 
     void from_json(const json & j, DepthFormat & x);
     void to_json(json & j, const DepthFormat & x);
+
+    void from_json(const json & j, TextureFilter & x);
+    void to_json(json & j, const TextureFilter & x);
 
     void from_json(const json & j, PassType & x);
     void to_json(json & j, const PassType & x);
@@ -491,6 +499,21 @@ namespace sgns {
         j["uniforms"] = x.get_uniforms();
     }
 
+    inline void from_json(const json & j, TextureBuffer& x) {
+        x.set_filter(get_stack_optional<TextureFilter>(j, "filter"));
+        x.set_height(j.at("height").get<int64_t>());
+        x.set_source(j.at("source").get<std::string>());
+        x.set_width(j.at("width").get<int64_t>());
+    }
+
+    inline void to_json(json & j, const TextureBuffer & x) {
+        j = json::object();
+        j["filter"] = x.get_filter();
+        j["height"] = x.get_height();
+        j["source"] = x.get_source();
+        j["width"] = x.get_width();
+    }
+
     inline void from_json(const json & j, VertexBuffer& x) {
         x.set_source(j.at("source").get<std::string>());
     }
@@ -529,6 +552,7 @@ namespace sgns {
         x.set_render_shader(get_stack_optional<RenderShaderConfig>(j, "render_shader"));
         x.set_render_target(get_stack_optional<RenderTarget>(j, "render_target"));
         x.set_shader(get_stack_optional<ShaderConfig>(j, "shader"));
+        x.set_texture_buffer(get_stack_optional<TextureBuffer>(j, "texture_buffer"));
         x.set_type(j.at("type").get<PassType>());
         x.set_vertex_buffer(get_stack_optional<VertexBuffer>(j, "vertex_buffer"));
         x.set_vertex_layout(get_stack_optional<std::vector<VertexLayoutEntry>>(j, "vertex_layout"));
@@ -551,6 +575,7 @@ namespace sgns {
         j["render_shader"] = x.get_render_shader();
         j["render_target"] = x.get_render_target();
         j["shader"] = x.get_shader();
+        j["texture_buffer"] = x.get_texture_buffer();
         j["type"] = x.get_type();
         j["vertex_buffer"] = x.get_vertex_buffer();
         j["vertex_layout"] = x.get_vertex_layout();
@@ -925,6 +950,20 @@ namespace sgns {
             case DepthFormat::D24_UNORM_S8_UINT: j = "D24_UNORM_S8_UINT"; break;
             case DepthFormat::D32_SFLOAT: j = "D32_SFLOAT"; break;
             default: throw std::runtime_error("Unexpected value in enumeration \"DepthFormat\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, TextureFilter & x) {
+        if (j == "linear") x = TextureFilter::LINEAR;
+        else if (j == "nearest") x = TextureFilter::NEAREST;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const TextureFilter & x) {
+        switch (x) {
+            case TextureFilter::LINEAR: j = "linear"; break;
+            case TextureFilter::NEAREST: j = "nearest"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"TextureFilter\": " + std::to_string(static_cast<int>(x)));
         }
     }
 

@@ -203,6 +203,10 @@
           "$ref": "#/definitions/index_buffer",
           "description": "Index buffer binding + index type for render passes"
         },
+        "texture_buffer": {
+          "$ref": "#/definitions/texture_buffer",
+          "description": "Buffer binding supplying a sampled texture image for render passes (Phase 17 D-05)"
+        },
         "pipeline_state": {
           "$ref": "#/definitions/pipeline_state",
           "description": "Fixed-function pipeline state for render passes"
@@ -543,6 +547,37 @@
           "type": "string",
           "description": "Data source using prefix notation",
           "pattern": "^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"
+        }
+      }
+    },
+    "texture_filter": {
+      "type": "string",
+      "description": "Sampler filter mode for a render pass's sampled texture input",
+      "enum": ["nearest", "linear"],
+      "default": "nearest"
+    },
+    "texture_buffer": {
+      "type": "object",
+      "description": "Raw RGBA8 image bytes for a render pass's sampled texture input (Phase 17 D-05), using the same input:-prefix convention as vertex_buffer -- structurally unrelated to DataType::TEXTURE2_D's MNN-chunking shape (block_len/chunk_stride), which is purpose-built for CPU-side tensor processing, not a single flat sampled image.",
+      "required": ["source", "width", "height"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Data source using prefix notation",
+          "pattern": "^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "filter": {
+          "$ref": "#/definitions/texture_filter"
         }
       }
     },

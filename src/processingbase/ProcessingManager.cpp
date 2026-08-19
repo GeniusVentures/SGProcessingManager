@@ -657,6 +657,18 @@ namespace sgns::sgprocessing
                         }
                     }
 
+                    // texture_buffer is optional (Phase 17 D-05, texturing scope); if present,
+                    // it must be input:-resolvable, mirroring vertex_buffer/index_buffer's gate.
+                    if ( pass.get_texture_buffer() )
+                    {
+                        const auto        textureBufferCfg = pass.get_texture_buffer().value();
+                        const std::string textureSource    = textureBufferCfg.get_source();
+                        if ( textureSource.rfind( "input:", 0 ) != 0 )
+                        {
+                            return rejectUnsupportedBufferSourcePrefix( "texture_buffer", textureSource );
+                        }
+                    }
+
                     {
                         const auto renderShaderCfg = pass.get_render_shader().value();
                         if ( renderShaderCfg.get_uniforms() )

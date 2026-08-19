@@ -21,6 +21,7 @@
 #include "RenderShaderConfig.hpp"
 #include "RenderTarget.hpp"
 #include "ShaderConfig.hpp"
+#include "TextureBuffer.hpp"
 #include "VertexBuffer.hpp"
 #include "VertexLayoutEntry.hpp"
 
@@ -61,6 +62,7 @@ namespace sgns {
         boost::optional<RenderShaderConfig> render_shader;
         boost::optional<RenderTarget> render_target;
         boost::optional<ShaderConfig> shader;
+        boost::optional<TextureBuffer> texture_buffer;
         PassType type;
         boost::optional<VertexBuffer> vertex_buffer;
         boost::optional<std::vector<VertexLayoutEntry>> vertex_layout;
@@ -154,6 +156,12 @@ namespace sgns {
          */
         boost::optional<ShaderConfig> get_shader() const { return shader; }
         void set_shader(boost::optional<ShaderConfig> value) { this->shader = value; }
+
+        /**
+         * Buffer binding supplying a sampled texture image for render passes (Phase 17 D-05)
+         */
+        boost::optional<TextureBuffer> get_texture_buffer() const { return texture_buffer; }
+        void set_texture_buffer(boost::optional<TextureBuffer> value) { this->texture_buffer = value; }
 
         /**
          * Type of processing pass

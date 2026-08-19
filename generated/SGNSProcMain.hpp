@@ -48,6 +48,8 @@
 #include "RenderTarget.hpp"
 #include "ShaderUniform.hpp"
 #include "ShaderConfig.hpp"
+#include "TextureFilter.hpp"
+#include "TextureBuffer.hpp"
 #include "PassType.hpp"
 #include "VertexBuffer.hpp"
 #include "VertexLayoutFormat.hpp"
