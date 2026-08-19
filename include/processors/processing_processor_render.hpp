@@ -219,6 +219,7 @@ namespace sgns::sgprocessing
         static VkCullModeFlags ToVkCullMode( sgns::CullMode c );
         static VkFrontFace ToVkFrontFace( sgns::FrontFace f );
         static VkBool32 ToVkBool( sgns::DepthTest d );
+        static VkBlendFactor ToVkBlendFactor( sgns::BlendFactor f );
 
         /// Byte size of a single scalar vertex-attribute component (this plan's
         /// documented scalar-component reading of vertex_layout -- see

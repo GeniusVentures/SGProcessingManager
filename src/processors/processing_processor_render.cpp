@@ -12,6 +12,7 @@
 #include <CullMode.hpp>
 #include <FrontFace.hpp>
 #include <DepthTest.hpp>
+#include <BlendFactor.hpp>
 #include <VertexLayoutFormat.hpp>
 
 namespace sgns::sgprocessing
@@ -1442,6 +1443,22 @@ namespace sgns::sgprocessing
         return ( d == sgns::DepthTest::ENABLED ) ? VK_TRUE : VK_FALSE;
     }
 
+    VkBlendFactor RenderProcessor::ToVkBlendFactor( sgns::BlendFactor f )
+    {
+        switch ( f )
+        {
+            case sgns::BlendFactor::ONE:
+                return VK_BLEND_FACTOR_ONE;
+            case sgns::BlendFactor::ZERO:
+                return VK_BLEND_FACTOR_ZERO;
+            case sgns::BlendFactor::SRC_ALPHA:
+                return VK_BLEND_FACTOR_SRC_ALPHA;
+            case sgns::BlendFactor::ONE_MINUS_SRC_ALPHA:
+                return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        }
+        return VK_BLEND_FACTOR_ONE;
+    }
+
     uint32_t RenderProcessor::VertexFormatByteSize( sgns::VertexLayoutFormat f )
     {
         switch ( f )
@@ -1573,7 +1590,19 @@ namespace sgns::sgprocessing
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        colorBlendAttachment.blendEnable = VK_FALSE;
+        bool blendEnable = pipelineState && pipelineState->get_blend_enable().value_or( false );
+        colorBlendAttachment.blendEnable = blendEnable ? VK_TRUE : VK_FALSE;
+        if ( blendEnable )
+        {
+            colorBlendAttachment.srcColorBlendFactor =
+                ToVkBlendFactor( pipelineState->get_blend_src_factor().value_or( sgns::BlendFactor::SRC_ALPHA ) );
+            colorBlendAttachment.dstColorBlendFactor = ToVkBlendFactor(
+                pipelineState->get_blend_dst_factor().value_or( sgns::BlendFactor::ONE_MINUS_SRC_ALPHA ) );
+            colorBlendAttachment.colorBlendOp        = VK_BLEND_OP_ADD;
+            colorBlendAttachment.srcAlphaBlendFactor  = VK_BLEND_FACTOR_ONE;
+            colorBlendAttachment.dstAlphaBlendFactor  = VK_BLEND_FACTOR_ZERO;
+            colorBlendAttachment.alphaBlendOp         = VK_BLEND_OP_ADD;
+        }
 
         VkPipelineColorBlendStateCreateInfo colorBlending{};
         colorBlending.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
