@@ -501,6 +501,51 @@ namespace sgns::sgprocessing
                 ps.set_depth_test( static_cast<sgns::DepthTest>( tag ) );
             }
 
+            uint8_t hasBlendEnable = 0;
+            if ( !ReadU8( data, size, offset, hasBlendEnable ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading has_blend_enable" );
+            }
+            if ( hasBlendEnable )
+            {
+                uint8_t blendEnableValue = 0;
+                if ( !ReadU8( data, size, offset, blendEnableValue ) )
+                {
+                    return fail( "ParseRenderPassConfig: truncated buffer reading blend_enable_value" );
+                }
+                ps.set_blend_enable( blendEnableValue != 0 );
+            }
+
+            uint8_t hasBlendSrcFactor = 0;
+            if ( !ReadU8( data, size, offset, hasBlendSrcFactor ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading has_blend_src_factor" );
+            }
+            if ( hasBlendSrcFactor )
+            {
+                uint32_t tag = 0;
+                if ( !ReadU32( data, size, offset, tag ) )
+                {
+                    return fail( "ParseRenderPassConfig: truncated buffer reading blend_src_factor_tag" );
+                }
+                ps.set_blend_src_factor( static_cast<sgns::BlendFactor>( tag ) );
+            }
+
+            uint8_t hasBlendDstFactor = 0;
+            if ( !ReadU8( data, size, offset, hasBlendDstFactor ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading has_blend_dst_factor" );
+            }
+            if ( hasBlendDstFactor )
+            {
+                uint32_t tag = 0;
+                if ( !ReadU32( data, size, offset, tag ) )
+                {
+                    return fail( "ParseRenderPassConfig: truncated buffer reading blend_dst_factor_tag" );
+                }
+                ps.set_blend_dst_factor( static_cast<sgns::BlendFactor>( tag ) );
+            }
+
             outPipelineState = ps;
         }
 

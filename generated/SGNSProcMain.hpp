@@ -32,6 +32,7 @@
 #include "OptimizerType.hpp"
 #include "OptimizerConfig.hpp"
 #include "ModelConfig.hpp"
+#include "BlendFactor.hpp"
 #include "CullMode.hpp"
 #include "DepthTest.hpp"
 #include "FrontFace.hpp"

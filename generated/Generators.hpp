@@ -34,6 +34,7 @@
 #include "FrontFace.hpp"
 #include "DepthTest.hpp"
 #include "CullMode.hpp"
+#include "BlendFactor.hpp"
 #include "ModelConfig.hpp"
 #include "OptimizerConfig.hpp"
 #include "OptimizerType.hpp"
@@ -144,6 +145,9 @@ namespace sgns {
 
     void from_json(const json & j, OptimizerType & x);
     void to_json(json & j, const OptimizerType & x);
+
+    void from_json(const json & j, BlendFactor & x);
+    void to_json(json & j, const BlendFactor & x);
 
     void from_json(const json & j, CullMode & x);
     void to_json(json & j, const CullMode & x);
@@ -381,6 +385,9 @@ namespace sgns {
     }
 
     inline void from_json(const json & j, PipelineState& x) {
+        x.set_blend_dst_factor(get_stack_optional<BlendFactor>(j, "blend_dst_factor"));
+        x.set_blend_enable(get_stack_optional<bool>(j, "blend_enable"));
+        x.set_blend_src_factor(get_stack_optional<BlendFactor>(j, "blend_src_factor"));
         x.set_cull_mode(get_stack_optional<CullMode>(j, "cull_mode"));
         x.set_depth_test(get_stack_optional<DepthTest>(j, "depth_test"));
         x.set_front_face(get_stack_optional<FrontFace>(j, "front_face"));
@@ -389,6 +396,9 @@ namespace sgns {
 
     inline void to_json(json & j, const PipelineState & x) {
         j = json::object();
+        j["blend_dst_factor"] = x.get_blend_dst_factor();
+        j["blend_enable"] = x.get_blend_enable();
+        j["blend_src_factor"] = x.get_blend_src_factor();
         j["cull_mode"] = x.get_cull_mode();
         j["depth_test"] = x.get_depth_test();
         j["front_face"] = x.get_front_face();
@@ -507,11 +517,14 @@ namespace sgns {
         x.set_data_transforms(get_stack_optional<std::vector<DataTransform>>(j, "data_transforms"));
         x.set_description(get_stack_optional<std::string>(j, "description"));
         x.set_enabled(get_stack_optional<bool>(j, "enabled"));
+        x.set_estimated_gpu_memory_bytes(get_stack_optional<int64_t>(j, "estimated_gpu_memory_bytes"));
         x.set_index_buffer(get_stack_optional<IndexBuffer>(j, "index_buffer"));
         x.set_inputs(get_stack_optional<std::vector<PassIoBinding>>(j, "inputs"));
+        x.set_max_output_artifact_bytes(get_stack_optional<int64_t>(j, "max_output_artifact_bytes"));
         x.set_model(get_stack_optional<ModelConfig>(j, "model"));
         x.set_name(j.at("name").get<std::string>());
         x.set_outputs(get_stack_optional<std::vector<PassIoBinding>>(j, "outputs"));
+        x.set_per_pass_deadline_ms(get_stack_optional<int64_t>(j, "per_pass_deadline_ms"));
         x.set_pipeline_state(get_stack_optional<PipelineState>(j, "pipeline_state"));
         x.set_render_shader(get_stack_optional<RenderShaderConfig>(j, "render_shader"));
         x.set_render_target(get_stack_optional<RenderTarget>(j, "render_target"));
@@ -526,11 +539,14 @@ namespace sgns {
         j["data_transforms"] = x.get_data_transforms();
         j["description"] = x.get_description();
         j["enabled"] = x.get_enabled();
+        j["estimated_gpu_memory_bytes"] = x.get_estimated_gpu_memory_bytes();
         j["index_buffer"] = x.get_index_buffer();
         j["inputs"] = x.get_inputs();
+        j["max_output_artifact_bytes"] = x.get_max_output_artifact_bytes();
         j["model"] = x.get_model();
         j["name"] = x.get_name();
         j["outputs"] = x.get_outputs();
+        j["per_pass_deadline_ms"] = x.get_per_pass_deadline_ms();
         j["pipeline_state"] = x.get_pipeline_state();
         j["render_shader"] = x.get_render_shader();
         j["render_target"] = x.get_render_target();
@@ -775,6 +791,24 @@ namespace sgns {
             case OptimizerType::RMSPROP: j = "rmsprop"; break;
             case OptimizerType::SGD: j = "sgd"; break;
             default: throw std::runtime_error("Unexpected value in enumeration \"OptimizerType\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, BlendFactor & x) {
+        if (j == "one") x = BlendFactor::ONE;
+        else if (j == "one_minus_src_alpha") x = BlendFactor::ONE_MINUS_SRC_ALPHA;
+        else if (j == "src_alpha") x = BlendFactor::SRC_ALPHA;
+        else if (j == "zero") x = BlendFactor::ZERO;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const BlendFactor & x) {
+        switch (x) {
+            case BlendFactor::ONE: j = "one"; break;
+            case BlendFactor::ONE_MINUS_SRC_ALPHA: j = "one_minus_src_alpha"; break;
+            case BlendFactor::SRC_ALPHA: j = "src_alpha"; break;
+            case BlendFactor::ZERO: j = "zero"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"BlendFactor\": " + std::to_string(static_cast<int>(x)));
         }
     }
 

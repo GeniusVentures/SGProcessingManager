@@ -548,7 +548,7 @@
     },
     "pipeline_state": {
       "type": "object",
-      "description": "Curated, minimal v1 fixed-function pipeline state subset (D-13); depth compare op is fixed at 'less', not schema-configurable (D-14)",
+      "description": "Curated, minimal v1 fixed-function pipeline state subset (D-13); depth compare op is fixed at 'less', not schema-configurable (D-14); blend state added Phase 17 (D-05)",
       "properties": {
         "topology": {
           "type": "string",
@@ -569,6 +569,20 @@
           "type": "string",
           "enum": ["enabled", "disabled"],
           "default": "enabled"
+        },
+        "blend_enable": {
+          "type": "boolean",
+          "default": false
+        },
+        "blend_src_factor": {
+          "type": "string",
+          "enum": ["one", "zero", "src_alpha", "one_minus_src_alpha"],
+          "default": "src_alpha"
+        },
+        "blend_dst_factor": {
+          "type": "string",
+          "enum": ["one", "zero", "src_alpha", "one_minus_src_alpha"],
+          "default": "one_minus_src_alpha"
         }
       }
     },
@@ -672,7 +686,7 @@
       "enum": [
         "texture1D", "texture2D", "texture3D", "textureCube",
         "tensor", "float", "int", "bool", "vec2", "vec3", "vec4",
-        "mat2", "mat3", "mat4", "buffer", "string"
+        "mat2", "mat3", "mat4", "buffer", "string", "llm"
       ]
     }
   }

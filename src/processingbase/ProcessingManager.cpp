@@ -167,10 +167,13 @@ namespace sgns::sgprocessing
          *   float    clear_depth
          *   uint8_t  has_pipeline_state
          *   if has_pipeline_state:
-         *     uint8_t has_topology    + [uint32_t topology_tag]
-         *     uint8_t has_cull_mode   + [uint32_t cull_mode_tag]
-         *     uint8_t has_front_face  + [uint32_t front_face_tag]
-         *     uint8_t has_depth_test  + [uint32_t depth_test_tag]
+         *     uint8_t has_topology         + [uint32_t topology_tag]
+         *     uint8_t has_cull_mode        + [uint32_t cull_mode_tag]
+         *     uint8_t has_front_face       + [uint32_t front_face_tag]
+         *     uint8_t has_depth_test       + [uint32_t depth_test_tag]
+         *     uint8_t has_blend_enable     + [uint8_t  blend_enable_value]      (Phase 17, D-05)
+         *     uint8_t has_blend_src_factor + [uint32_t blend_src_factor_tag]    (Phase 17, D-05)
+         *     uint8_t has_blend_dst_factor + [uint32_t blend_dst_factor_tag]    (Phase 17, D-05)
          *   uint32_t vertex_layout_count
          *   per entry:
          *     uint32_t name_len + name bytes (raw UTF-8, no null terminator)
@@ -284,6 +287,36 @@ namespace sgns::sgprocessing
                 {
                     appendU8( 1 );
                     appendU32( static_cast<uint32_t>( ps.get_depth_test().value() ) );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+
+                if ( ps.get_blend_enable() )
+                {
+                    appendU8( 1 );
+                    appendU8( ps.get_blend_enable().value() ? 1 : 0 );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+
+                if ( ps.get_blend_src_factor() )
+                {
+                    appendU8( 1 );
+                    appendU32( static_cast<uint32_t>( ps.get_blend_src_factor().value() ) );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+
+                if ( ps.get_blend_dst_factor() )
+                {
+                    appendU8( 1 );
+                    appendU32( static_cast<uint32_t>( ps.get_blend_dst_factor().value() ) );
                 }
                 else
                 {
