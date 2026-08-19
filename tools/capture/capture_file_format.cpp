@@ -288,7 +288,7 @@ namespace sgns::sgproccapture
         }
 
         std::vector<uint8_t> manifestRegion;
-        if ( !ReadFixedRegion( bytes, offset, sgns::sgprocessing::MANIFEST_SERIALIZED_SIZE, manifestRegion ) )
+        if ( !ReadFixedRegion( bytes, offset, sgns::sgprocessing::MANIFEST_V2_SERIALIZED_SIZE, manifestRegion ) )
         {
             return false;
         }

@@ -24,7 +24,7 @@
  *     per record:
  *       [8]  preQuantizeBytes.size() (uint64) + that many raw bytes
  *       [8]  quantizedBytes.size() (uint64) + that many raw bytes
- *   [MANIFEST_SERIALIZED_SIZE]  SerializeManifest(manifest) bytes, unmodified
+ *   [MANIFEST_V2_SERIALIZED_SIZE]  SerializeManifest(manifest) bytes, unmodified
  *   [4]  combinedHash.size() (uint32) + that many raw bytes
  *
  * DeserializeCaptureFile validates every declared length/count against the
