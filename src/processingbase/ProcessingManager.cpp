@@ -194,6 +194,11 @@ namespace sgns::sgprocessing
          *     uint32_t index_type_tag (static_cast<uint32_t>(IndexType))
          *     uint32_t index_len + index bytes
          *   uint32_t data_transform_count
+         *   uint8_t has_texture_buffer                                          (Phase 17, D-05)
+         *   if has_texture_buffer:
+         *     uint32_t texture_width
+         *     uint32_t texture_height
+         *     uint32_t texture_len + texture bytes (raw RGBA8)
          */
         std::vector<char> SerializeRenderPassConfig(
             const sgns::RenderTarget                                                &target,
@@ -204,7 +209,11 @@ namespace sgns::sgprocessing
             bool                                                                     hasIndexBuffer,
             sgns::IndexType                                                          indexType,
             const std::vector<char>                                                 &indexBytes,
-            uint32_t                                                                 dataTransformCount )
+            uint32_t                                                                 dataTransformCount,
+            bool                                                                     hasTextureBuffer,
+            uint32_t                                                                 textureWidth,
+            uint32_t                                                                 textureHeight,
+            const std::vector<char>                                                 &textureBytes )
         {
             std::vector<char> out;
 
@@ -394,6 +403,19 @@ namespace sgns::sgprocessing
             }
 
             appendU32( dataTransformCount );
+
+            if ( hasTextureBuffer )
+            {
+                appendU8( 1 );
+                appendU32( textureWidth );
+                appendU32( textureHeight );
+                appendU32( static_cast<uint32_t>( textureBytes.size() ) );
+                appendBytes( textureBytes.data(), textureBytes.size() );
+            }
+            else
+            {
+                appendU8( 0 );
+            }
 
             return out;
         }
@@ -1792,6 +1814,14 @@ namespace sgns::sgprocessing
         bool                               hasIndexBuffer = false;
         sgns::IndexType                    indexType      = sgns::IndexType::UINT16;
 
+        // Independently-resolved texture buffer fetch (Phase 17, D-05 -- texturing
+        // "define contracts" half). texture_buffer is optional; if present it is
+        // resolved via the same "input:name" prefix convention as vertex_buffer.
+        auto     textureBuffer     = std::make_shared<std::vector<char>>();
+        uint32_t textureWidth      = 0;
+        uint32_t textureHeight     = 0;
+        bool     hasTextureBuffer = false;
+
         if ( isRender )
         {
             // NOTE: get_render_shader() returns boost::optional<RenderShaderConfig> BY VALUE
@@ -1855,6 +1885,30 @@ namespace sgns::sgprocessing
                 hasIndexBuffer        = true;
                 indexType             = indexBufferCfg.get_index_type().value_or( sgns::IndexType::UINT16 );
                 GetSubCidForProc( ioc, indexUrl, indexBuffer );
+            }
+
+            // texture_buffer is optional (Phase 17 D-05); if present, its source is
+            // already required to be "input:"-prefixed by CheckProcessValidity() --
+            // this call-site check is defense-in-depth, mirroring vertex_buffer's
+            // own re-check comment above.
+            if ( p.get_texture_buffer() )
+            {
+                const auto        textureBufferCfg = p.get_texture_buffer().value();
+                const std::string textureSource    = textureBufferCfg.get_source();
+                if ( textureSource.rfind( "input:", 0 ) != 0 )
+                {
+                    return outcome::failure( Error::MISSING_INPUT );
+                }
+                auto texInputIndex = GetInputIndex( textureSource );
+                if ( !texInputIndex )
+                {
+                    return outcome::failure( Error::MISSING_INPUT );
+                }
+                std::string textureUrl = processing_.get_inputs()[texInputIndex.value()].get_source_uri_param();
+                GetSubCidForProc( ioc, textureUrl, textureBuffer );
+                hasTextureBuffer = true;
+                textureWidth     = static_cast<uint32_t>( textureBufferCfg.get_width() );
+                textureHeight    = static_cast<uint32_t>( textureBufferCfg.get_height() );
             }
         }
         else
@@ -1928,6 +1982,7 @@ namespace sgns::sgprocessing
             }
 
             static const std::vector<char> kEmptyIndexBytes;
+            static const std::vector<char> kEmptyTextureBytes;
             *mainbuffers->second = SerializeRenderPassConfig( p.get_render_target().value(),
                                                                p.get_pipeline_state(),
                                                                p.get_vertex_layout().value(),
@@ -1939,7 +1994,12 @@ namespace sgns::sgprocessing
                                                                p.get_data_transforms()
                                                                    ? static_cast<uint32_t>(
                                                                          p.get_data_transforms()->size() )
-                                                                   : 0u );
+                                                                   : 0u,
+                                                               hasTextureBuffer,
+                                                               textureWidth,
+                                                               textureHeight,
+                                                               hasTextureBuffer ? *textureBuffer
+                                                                                 : kEmptyTextureBytes );
         }
 
         if ( mainbuffers == nullptr )

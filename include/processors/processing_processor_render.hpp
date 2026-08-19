@@ -76,7 +76,11 @@ namespace sgns::sgprocessing
         /// produces sgns::RenderTarget/PipelineState/VertexLayoutEntry/uniform-map
         /// instances inside RenderProcessor, and the only source of
         /// outDataTransformCount -- RenderProcessor has no other path to a
-        /// Pass/RenderShaderConfig object at all.
+        /// Pass/RenderShaderConfig object at all. outHasTextureBuffer/
+        /// outTextureWidth/outTextureHeight/outTextureBytes carry the trailing
+        /// texture_buffer section (Phase 17, D-05) -- populated here but not yet
+        /// consumed until Wave 3's Plan 17-04 (BuildPipeline's descriptor binding,
+        /// UploadBuffers' image upload).
         static bool ParseRenderPassConfig(
             const std::vector<char>                                            &imageData,
             sgns::RenderTarget                                                 &outTarget,
@@ -88,6 +92,10 @@ namespace sgns::sgprocessing
             sgns::IndexType                                                    &outIndexType,
             std::vector<uint8_t>                                               &outIndexBytes,
             uint32_t                                                           &outDataTransformCount,
+            bool                                                                &outHasTextureBuffer,
+            uint32_t                                                            &outTextureWidth,
+            uint32_t                                                            &outTextureHeight,
+            std::vector<uint8_t>                                               &outTextureBytes,
             ProcessingResult                                                   &errorOut );
 
         /// Resolves each declared uniform's value -- either a literal

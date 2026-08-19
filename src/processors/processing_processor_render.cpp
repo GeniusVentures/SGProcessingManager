@@ -364,6 +364,10 @@ namespace sgns::sgprocessing
         sgns::IndexType                                                    &outIndexType,
         std::vector<uint8_t>                                               &outIndexBytes,
         uint32_t                                                           &outDataTransformCount,
+        bool                                                                &outHasTextureBuffer,
+        uint32_t                                                            &outTextureWidth,
+        uint32_t                                                            &outTextureHeight,
+        std::vector<uint8_t>                                               &outTextureBytes,
         ProcessingResult                                                   &errorOut )
     // Function-try-block: several generated setters below (set_width/set_height/
     // set_clear_depth/set_offset, etc.) enforce schema-level constraints and throw
@@ -380,6 +384,10 @@ namespace sgns::sgprocessing
         outHasIndex = false;
         outIndexBytes.clear();
         outDataTransformCount = 0;
+        outHasTextureBuffer = false;
+        outTextureWidth = 0;
+        outTextureHeight = 0;
+        outTextureBytes.clear();
 
         const char  *data   = imageData.data();
         const size_t size   = imageData.size();
@@ -714,6 +722,42 @@ namespace sgns::sgprocessing
             return fail( "ParseRenderPassConfig: truncated buffer reading data_transform_count" );
         }
         outDataTransformCount = dataTransformCount;
+
+        uint8_t hasTextureBuffer = 0;
+        if ( !ReadU8( data, size, offset, hasTextureBuffer ) )
+        {
+            return fail( "ParseRenderPassConfig: truncated buffer reading has_texture_buffer" );
+        }
+        if ( hasTextureBuffer )
+        {
+            uint32_t textureWidth = 0;
+            if ( !ReadU32( data, size, offset, textureWidth ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading texture_width" );
+            }
+            uint32_t textureHeight = 0;
+            if ( !ReadU32( data, size, offset, textureHeight ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading texture_height" );
+            }
+            uint32_t textureLen = 0;
+            if ( !ReadU32( data, size, offset, textureLen ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading texture_len" );
+            }
+            if ( textureLen > 0 )
+            {
+                const char *bytes = nullptr;
+                if ( !ReadBytes( data, size, offset, textureLen, bytes ) )
+                {
+                    return fail( "ParseRenderPassConfig: truncated buffer reading texture bytes" );
+                }
+                outTextureBytes.assign( bytes, bytes + textureLen );
+            }
+            outHasTextureBuffer = true;
+            outTextureWidth     = textureWidth;
+            outTextureHeight    = textureHeight;
+        }
 
         return true;
     }
@@ -2151,9 +2195,14 @@ namespace sgns::sgprocessing
         sgns::IndexType                                                   indexType = sgns::IndexType::UINT32;
         std::vector<uint8_t>                                              indexBytes;
         uint32_t                                                          dataTransformCount = 0;
+        bool                                                              hasTextureBuffer   = false;
+        uint32_t                                                          textureWidth        = 0;
+        uint32_t                                                          textureHeight       = 0;
+        std::vector<uint8_t>                                              textureBytes;
 
         if ( !ParseRenderPassConfig( imageData, renderTarget, pipelineState, vertexLayout, uniformsMap, vertexBytes,
-                                     hasIndex, indexType, indexBytes, dataTransformCount, errorOut ) )
+                                     hasIndex, indexType, indexBytes, dataTransformCount, hasTextureBuffer,
+                                     textureWidth, textureHeight, textureBytes, errorOut ) )
         {
             RunTeardown();
             return errorOut;
