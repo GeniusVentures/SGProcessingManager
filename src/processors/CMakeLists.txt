@@ -10,13 +10,14 @@ endif()
 option(ENABLE_VULKAN_VALIDATION "Enable Vulkan validation layers for RenderProcessor (best-effort)" ${_vulkan_val_default})
 
 # PROC-01 (Phase 04-sgprocessing-integration): MNN's autoregressive LLM engine
-# (MNN::Transformer::Llm, <MNN/llm/llm.hpp>) is a separately-buildable MNN
-# feature gated by MNN's own MNN_BUILD_LLM CMake option (default OFF, see
-# thirdparty/MNN/CMakeLists.txt). The vendored MNN static library this target
-# links (MNN::MNN) was NOT built with MNN_BUILD_LLM=ON in this checkout --
-# confirmed by direct inspection: MNN_INCLUDE_DIR's resolved tree has no
-# MNN/llm/ subdirectory at all. Detect this at configure time (mirroring this
-# codebase's own established find_library(...)+if(TARGET/EXISTS...)
+# (MNN::Transformer::Llm, <llm/llm.hpp>) is a separately-buildable MNN feature
+# gated by MNN's own MNN_BUILD_LLM CMake option. The vendored MNN static
+# library this target links has MNN_BUILD_LLM=ON in this checkout, but MNN's
+# own install rules place the LLM headers at MNN_INCLUDE_DIR/llm/llm.hpp (a
+# sibling of MNN_INCLUDE_DIR/MNN/), not the nested MNN_INCLUDE_DIR/MNN/llm/
+# path the include convention would suggest -- confirmed by direct inspection
+# on both Windows and macOS vendored builds. Detect this at configure time
+# (mirroring this codebase's own established find_library(...)+if(TARGET/EXISTS...)
 # unconditional-dependency pattern, see GNUS-NEO-SWARM/src/core/CMakeLists.txt's
 # SGProcessingManager link block) rather than letting the whole SGProcessors
 # target -- and every consumer of this shared submodule branch -- fail to
@@ -26,14 +27,14 @@ option(ENABLE_VULKAN_VALIDATION "Enable Vulkan validation layers for RenderProce
 # -- a sibling subdirectory added separately from SGProcessingManager/CMakeLists.txt,
 # outside this variable's normal directory-scope inheritance chain -- can read the same
 # detection result without duplicating the EXISTS check.
-if(EXISTS "${MNN_INCLUDE_DIR}/MNN/llm/llm.hpp")
-    message(STATUS "MNN LLM engine headers found (${MNN_INCLUDE_DIR}/MNN/llm) -- building MNN_Llm processor (PROC-01)")
+if(EXISTS "${MNN_INCLUDE_DIR}/llm/llm.hpp")
+    message(STATUS "MNN LLM engine headers found (${MNN_INCLUDE_DIR}/llm) -- building MNN_Llm processor (PROC-01)")
     set(SGPROC_HAS_MNN_LLM TRUE CACHE INTERNAL "MNN vendored build has MNN_BUILD_LLM support (PROC-01)")
 else()
     message(STATUS "MNN LLM engine headers NOT found under MNN_INCLUDE_DIR -- MNN_Llm processor (PROC-01) source is "
-                    "excluded from this build. The vendored MNN was built with MNN_BUILD_LLM=OFF in this checkout; "
-                    "DataType::LLM falls back to ProcessingManager's existing NO_PROCESSOR error path until a "
-                    "future phase rebuilds MNN with LLM support.")
+                    "excluded from this build. The vendored MNN was built without LLM headers installed in this "
+                    "checkout; DataType::LLM falls back to ProcessingManager's existing NO_PROCESSOR error path "
+                    "until a future phase's MNN build installs them.")
     set(SGPROC_HAS_MNN_LLM FALSE CACHE INTERNAL "MNN vendored build has MNN_BUILD_LLM support (PROC-01)")
 endif()
 

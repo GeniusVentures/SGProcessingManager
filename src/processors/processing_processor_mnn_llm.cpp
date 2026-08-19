@@ -11,7 +11,7 @@
 
 #include "util/sha256.hpp"
 
-#include <MNN/llm/llm.hpp>
+#include <llm/llm.hpp>
 
 namespace sgns::sgprocessing
 {

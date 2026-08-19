@@ -6,7 +6,7 @@
 * GNUS-NEO-SWARM/src/core/engine/mnn_inference_engine.hpp's own established
 * pattern for this exact type) so that consumers of this header -- notably
 * ProcessingManager.hpp, which must name the concrete MNN_Llm class to
-* register its factory -- never need <MNN/llm/llm.hpp> to be available at
+* register its factory -- never need <llm/llm.hpp> to be available at
 * their translation unit. Only processing_processor_mnn_llm.cpp needs the
 * real header, since only it calls into MNN::Transformer::Llm's API.
 *
