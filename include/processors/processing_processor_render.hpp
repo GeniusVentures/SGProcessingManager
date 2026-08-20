@@ -13,6 +13,7 @@
 #include <RenderTarget.hpp>
 #include <PipelineState.hpp>
 #include <VertexLayoutEntry.hpp>
+#include <TextureFilter.hpp>
 
 namespace sgns::sgprocessing
 {
@@ -172,10 +173,15 @@ namespace sgns::sgprocessing
         /// schema-documented defaults when absent), the auto-computed vertex
         /// input binding/attributes from vertexLayout, and a pipeline layout
         /// branching on uniforms.pushConstant (D-29/D-30's all-or-nothing rule).
+        /// hasTexture (Phase 17 Wave 3, D-05) independently forces a descriptor
+        /// set to exist (binding=1 combined-image-sampler) even when uniforms
+        /// alone would have used push constants -- binding=0's uniform-buffer
+        /// entry is only added when uniforms also route through a descriptor set.
         bool BuildPipeline( const std::vector<ParsedStage>             &stages,
                              const std::vector<sgns::VertexLayoutEntry> &vertexLayout,
                              const boost::optional<sgns::PipelineState> &pipelineState,
                              const ResolvedUniforms                     &uniforms,
+                             bool                                        hasTexture,
                              ProcessingResult                           &errorOut );
 
         /// Validates vertexBytes.size() % stride == 0 and (if hasIndex)
@@ -195,6 +201,25 @@ namespace sgns::sgprocessing
                              uint32_t                    stride,
                              const ResolvedUniforms      &uniforms,
                              ProcessingResult            &errorOut );
+
+        /// Phase 17 Wave 3 (D-05): the genuinely new Vulkan work texturing needs --
+        /// staging buffer (HOST_VISIBLE|HOST_COHERENT, mirrors UploadBuffers'
+        /// existing memcpy-into-staging-buffer style) -> device-local sampled
+        /// VkImage (via the existing CreateImageDedicated()) -> VkImageView ->
+        /// VkSampler -> a binding=1 combined-image-sampler descriptor-set write
+        /// (mirrors UploadBuffers' existing binding=0 uniform-buffer write).
+        /// Validates textureBytes.size() == width*height*4 BEFORE any GPU
+        /// resource is created (T-17-09, RESOURCE_RESOLUTION on mismatch). Must
+        /// be called after BuildPipeline() has already created m_descriptorSet
+        /// (BuildPipeline()'s hasTexture=true path). Sets m_hasTexture/
+        /// m_textureWidth/m_textureHeight on success -- consumed by
+        /// RecordAndSubmit()'s pre-render-pass upload barrier/copy/barrier
+        /// sequence.
+        bool UploadTexture( const std::vector<uint8_t> &textureBytes,
+                             uint32_t                    width,
+                             uint32_t                    height,
+                             sgns::TextureFilter         filter,
+                             ProcessingResult           &errorOut );
 
         /// Records and submits ONE command buffer: begin render pass (clears from
         /// target.get_clear_color()/get_clear_depth()) -> bind pipeline/vertex/
@@ -270,6 +295,19 @@ namespace sgns::sgprocessing
         VkBuffer       m_uniformBuffer{VK_NULL_HANDLE}, m_stagingBuffer{VK_NULL_HANDLE};
         VkDeviceMemory m_vertexMemory{VK_NULL_HANDLE}, m_indexMemory{VK_NULL_HANDLE};
         VkDeviceMemory m_uniformMemory{VK_NULL_HANDLE}, m_stagingMemory{VK_NULL_HANDLE};
+
+        /// Texture upload path state (Phase 17 Wave 3, D-05 texturing): staging
+        /// buffer -> device-local sampled VkImage -> VkImageView -> VkSampler,
+        /// bound at descriptor set binding=1. Populated by UploadTexture(),
+        /// consumed by RecordAndSubmit()'s upload barrier/copy sequence.
+        VkBuffer       m_textureStagingBuffer{VK_NULL_HANDLE};
+        VkDeviceMemory m_textureStagingMemory{VK_NULL_HANDLE};
+        VkImage        m_textureImage{VK_NULL_HANDLE};
+        VkDeviceMemory m_textureMemory{VK_NULL_HANDLE};
+        VkImageView    m_textureView{VK_NULL_HANDLE};
+        VkSampler      m_textureSampler{VK_NULL_HANDLE};
+        bool           m_hasTexture{false};
+        uint32_t       m_textureWidth{0}, m_textureHeight{0};
 
         VkCommandPool   m_commandPool{VK_NULL_HANDLE};
         VkCommandBuffer m_commandBuffer{VK_NULL_HANDLE};
