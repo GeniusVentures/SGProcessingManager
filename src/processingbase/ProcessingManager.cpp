@@ -834,6 +834,27 @@ namespace sgns::sgprocessing
                     }
                     break;
                 }
+                case DataType::LLM:
+                {
+                    // LLM inputs (PROC-01, plan 04-03) carry a text prompt via the input source,
+                    // not a fixed-width buffer -- MNN::Transformer::Llm::response() takes plain
+                    // text, so unlike the tensor-shaped types above there is no dimensions/format
+                    // requirement here. The only recognized parameter is an optional "maxNewTokens"
+                    // INT (processing_processor_mnn_llm.cpp's ResolveMaxNewTokens() already defaults
+                    // it when absent) -- validate its type only when the schema author supplied one.
+                    if ( processing_.get_parameters() )
+                    {
+                        for ( const auto &param : processing_.get_parameters().value() )
+                        {
+                            if ( param.get_name() == "maxNewTokens" && param.get_type() != sgns::ParameterType::INT )
+                            {
+                                m_logger->error( "LLM maxNewTokens parameter must be INT type" );
+                                return outcome::failure( Error::PROCESS_INFO_MISSING );
+                            }
+                        }
+                    }
+                    break;
+                }
                 case DataType::MAT2:
                 {
                     if ( !input.get_dimensions() || !input.get_dimensions()->get_width() )
