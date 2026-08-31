@@ -1,11 +1,14 @@
 #include "processors/processing_processor_mnn_string.hpp"
+#include "processingbase/vulkan_init_guard.hpp"
 #include <functional>
+#include <mutex>
 #include <thread>
 #include <sstream>
 #include <algorithm>
 #include <cstring>
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include "util/sha256.hpp"
+#include "util/quantization.hpp"
 
 namespace sgns::sgprocessing
 {
@@ -44,26 +47,47 @@ namespace sgns::sgprocessing
                                                    const sgns::IoDeclaration         &proc,
                                                    std::vector<char>                 &textData,
                                                    std::vector<char>                 &modelFile,
-                                                   const std::vector<sgns::Parameter> *parameters )
+                                                   const std::vector<sgns::Parameter> *parameters,
+                                                   const ExecutionContext            &execCtx )
     {
-        (void)parameters;
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
 
         std::vector<uint8_t> subTaskResultHash(SHA256_DIGEST_LENGTH);
-        
+
         // Convert text data to string
         std::string inputText( textData.begin(), textData.end() );
 
         m_logger->info( "Processing text input: {}", inputText );
-        
+
         // For string inputs, we process as a single "chunk"
         m_progress = 0.0f;
-        
+
         std::vector<uint8_t> shahash( SHA256_DIGEST_LENGTH );
-        
-        // Default max length (could be extracted from parameters)
+
+        // Default max length, overridden below by the job's schema-declared "maxLength"
+        // parameter when present. Different models compiled into different jobs require
+        // different FIXED input sequence lengths (e.g. 128 for the legacy multi-input BERT
+        // model, 16 for the tiny single-input embedding model) -- a single hardcoded literal
+        // cannot serve both, since resizing a fixed-shape model's input to any length other
+        // than the one baked in at export time breaks its downstream fully-connected layer.
+        const float scale = sgprocmanagerquant::ResolveQuantScale( parameters );
         int maxLength = 128;
+        if ( parameters )
+        {
+            for ( const auto &param : *parameters )
+            {
+                if ( param.get_name() == "maxLength" && param.get_type() == sgns::ParameterType::INT )
+                {
+                    const auto &def = param.get_parameter_default();
+                    if ( def.is_number_integer() && def.get<int>() > 0 )
+                    {
+                        maxLength = def.get<int>();
+                    }
+                    break;
+                }
+            }
+        }
 
         std::vector<int32_t> tokenIds;
         bool                 parsedTokenIds = TryParseTokenIds( inputText, tokenIds );
@@ -85,8 +109,23 @@ namespace sgns::sgprocessing
             }
         }
 
-        auto procresults = Process( tokenIds, modelFile_bytes, maxLength );
-        
+        // resizeLen is the model's fixed/declared sequence length (from the schema's
+        // maxLength parameter, clamped to at least 1) -- NOT the raw token count -- so a
+        // fixed-shape model's input tensor is always resized to the exact length its
+        // compiled graph expects, regardless of how many tokens were actually parsed
+        // (shorter inputs are zero-padded by the existing fill loop in Process()).
+        const int resizeLen   = std::max( 1, maxLength );
+        auto      procresults = Process( tokenIds, modelFile_bytes, resizeLen );
+
+        if ( !procresults || procresults->elementSize() == 0 )
+        {
+            m_logger->error( "MNN string processing produced no output (see prior errors)" );
+            ProcessingResult errResult;
+            errResult.error = ProcessingError{ ProcessingErrorStage::UNSPECIFIED,
+                                                "MNN string processing produced no output" };
+            return errResult;
+        }
+
         const float *data     = procresults->host<float>();
         size_t       dataSize = procresults->elementSize() * sizeof( float );
         {
@@ -103,10 +142,22 @@ namespace sgns::sgprocessing
             }
             m_logger->info( "{}", sample.str() );
         }
-        shahash               = sgprocmanagersha::sha256( data, dataSize );
+        // Phase 10 CAPT-02: quantize-then-capture-then-hash at the per-chunk site.
+        // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+        std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+        sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size(), scale );
+        if ( execCtx.rawOutputCapture )
+        {
+            const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+            const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+            execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                       std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+        }
+
+        shahash               = sgprocmanagersha::sha256( localCopy.data(), dataSize );
         std::string hashString( shahash.begin(), shahash.end() );
         chunkhashes.push_back( shahash );
-        
+
         std::string combinedHash = std::string(subTaskResultHash.begin(), subTaskResultHash.end()) + hashString;
         subTaskResultHash = sgprocmanagersha::sha256( combinedHash.c_str(), combinedHash.length() );
         
@@ -151,8 +202,12 @@ namespace sgns::sgprocessing
         MNN::ScheduleConfig config;
         config.type = MNN_FORWARD_VULKAN;  // Use Vulkan backend as requested
         config.numThread = 4;
-        
-        auto session = interpreter->createSession(config);
+
+        MNN::Session *session = nullptr;
+        {
+            std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
+            session = interpreter->createSession(config);
+        }
         if (!session) {
             m_logger->error( "Failed to create MNN session" );
             return std::make_unique<MNN::Tensor>();
@@ -183,7 +238,7 @@ namespace sgns::sgprocessing
         // BERT models expect: input_ids, attention_mask, token_type_ids (all same shape)
         for (const auto& inputPair : inputTensors) {
             auto tensor = inputPair.second;
-            if (tensor->elementSize() <= 4) {
+            if (tensor->elementSize() != maxLength) {
                 m_logger->info( "Resizing '{}' to [1, {}]", inputPair.first, maxLength );
                 interpreter->resizeTensor( tensor, { 1, maxLength } );
             }
@@ -233,8 +288,13 @@ namespace sgns::sgprocessing
         
         // Run inference
         m_logger->info( "Running MNN inference" );
-        interpreter->runSession(session);
-        
+        MNN::ErrorCode runResult = interpreter->runSession( session );
+        if ( runResult != MNN::NO_ERROR )
+        {
+            m_logger->error( "MNN runSession failed with ErrorCode {}", static_cast<int>( runResult ) );
+            return std::make_unique<MNN::Tensor>();
+        }
+
         // Get output tensor
         auto outputTensor = interpreter->getSessionOutput(session, nullptr);
         if (!outputTensor) {

@@ -1,14 +1,17 @@
 #include "processors/processing_processor_mnn_texturecube.hpp"
+#include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <openssl/sha.h>
 #include "datasplitter/ImageSplitter.hpp"
 #include "util/InputTypes.hpp"
 #include "util/sha256.hpp"
+#include "util/quantization.hpp"
 
 namespace sgns::sgprocessing
 {
@@ -255,8 +258,11 @@ namespace sgns::sgprocessing
                                                        const sgns::IoDeclaration         &proc,
                                                        std::vector<char>                 &cubeData,
                                                        std::vector<char>                 &modelFile,
-                                                       const std::vector<sgns::Parameter> *parameters )
+                                                       const std::vector<sgns::Parameter> *parameters,
+                                                       const ExecutionContext            &execCtx )
     {
+        const float scale = sgprocmanagerquant::ResolveQuantScale( parameters );
+        const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFileBytes;
         modelFileBytes.assign( modelFile.begin(), modelFile.end() );
 
@@ -350,8 +356,25 @@ namespace sgns::sgprocessing
         std::vector<float> outputFloats;
         size_t totalChunks = 0;
 
+        // LOAD_MODEL stage — fire progress and check cancel
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::LOAD_MODEL, 25.0f ) );
+        }
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "TextureCube pass cancelled" } };
+        }
+
         for ( int faceIndex = 0; faceIndex < 6; ++faceIndex )
         {
+            if ( execCtx.cancelToken.IsCancelled() )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "TextureCube pass cancelled" } };
+            }
+
             const auto &face = faces[faceIndex];
 
             if ( hasChunkFields && isImageFormat )
@@ -377,6 +400,12 @@ namespace sgns::sgprocessing
 
                 for ( int chunkIdx = 0; chunkIdx < chunkCount; ++chunkIdx )
                 {
+                    if ( execCtx.cancelToken.IsCancelled() )
+                    {
+                        RunTeardown();
+                        return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "TextureCube pass cancelled" } };
+                    }
+
                     const auto chunkData = chunkSplitter.GetPart( chunkIdx );
                     const int chunkWidth = chunkSplitter.GetPartWidthActual( chunkIdx );
                     const int chunkHeight = chunkSplitter.GetPartHeightActual( chunkIdx );
@@ -390,11 +419,15 @@ namespace sgns::sgprocessing
                     }
 
                     MNN::ScheduleConfig config;
-                    config.type = MNN_FORWARD_CPU;
+                    config.type = MNN_FORWARD_VULKAN;
                     config.numThread = 4;
                     config.backendConfig = nullptr;
 
-                    auto session = interpreter->createSession( config );
+                    MNN::Session *session = nullptr;
+                    {
+                        std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
+                        session = interpreter->createSession( config );
+                    }
                     if ( !session )
                     {
                         m_logger->error( "Failed to create MNN session" );
@@ -441,7 +474,19 @@ namespace sgns::sgprocessing
                     const float *data = outputUserTensor->host<float>();
                     const size_t dataSize = outputUserTensor->elementSize() * sizeof( float );
 
-                    auto hash = sgprocmanagersha::sha256( data, dataSize );
+                    // Phase 10 CAPT-02: quantize-then-capture-then-hash at this branch's chunk-hash site.
+                    // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+                    std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+                    sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size(), scale );
+                    if ( execCtx.rawOutputCapture )
+                    {
+                        const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+                        const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+                        execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                                   std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+                    }
+
+                    auto hash = sgprocmanagersha::sha256( localCopy.data(), dataSize );
                     chunkhashes.emplace_back( hash.begin(), hash.end() );
                     std::string combinedHash = std::string( subTaskResultHash.begin(), subTaskResultHash.end() ) +
                         std::string( hash.begin(), hash.end() );
@@ -475,7 +520,19 @@ namespace sgns::sgprocessing
                 const float *data = outputTensor->host<float>();
                 const size_t dataSize = outputTensor->elementSize() * sizeof( float );
 
-                auto hash = sgprocmanagersha::sha256( data, dataSize );
+                // Phase 10 CAPT-02: quantize-then-capture-then-hash at this branch's chunk-hash site.
+                // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+                std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+                sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size(), scale );
+                if ( execCtx.rawOutputCapture )
+                {
+                    const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+                    const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+                    execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                               std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+                }
+
+                auto hash = sgprocmanagersha::sha256( localCopy.data(), dataSize );
                 chunkhashes.emplace_back( hash.begin(), hash.end() );
                 std::string combinedHash = std::string( subTaskResultHash.begin(), subTaskResultHash.end() ) +
                     std::string( hash.begin(), hash.end() );
@@ -486,7 +543,28 @@ namespace sgns::sgprocessing
             }
         }
 
+        // RUN + READ_OUTPUT stages — fire progress
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::RUN, 75.0f ) );
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::READ_OUTPUT, 100.0f ) );
+        }
+
         m_progress = 100.0f;
+
+        // Output budget check (EXEC-03)
+        if ( !outputFloats.empty() && execCtx.maxOutputArtifactBytes > 0 )
+        {
+            size_t outputSize = outputFloats.size() * sizeof( float );
+            if ( outputSize > execCtx.maxOutputArtifactBytes )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {},
+                    ProcessingError{ ProcessingErrorStage::BUDGET_EXCEEDED,
+                        "Output artifact size " + std::to_string( outputSize ) + " exceeds budget " +
+                            std::to_string( execCtx.maxOutputArtifactBytes ) } };
+            }
+        }
 
         ProcessingResult result;
         result.hash = subTaskResultHash;
@@ -504,6 +582,10 @@ namespace sgns::sgprocessing
         }
 
         m_logger->info( "TextureCube processing complete ({} chunks)", totalChunks );
+
+        // Tear down all MNN sessions accumulated during processing
+        RunTeardown();
+
         return result;
     }
 
@@ -523,11 +605,15 @@ namespace sgns::sgprocessing
         }
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_CPU;
+        config.type = MNN_FORWARD_VULKAN;
         config.numThread = 4;
         config.backendConfig = nullptr;
 
-        auto session = interpreter->createSession( config );
+        MNN::Session *session = nullptr;
+        {
+            std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
+            session = interpreter->createSession( config );
+        }
         if ( !session )
         {
             m_logger->error( "Failed to create MNN session" );

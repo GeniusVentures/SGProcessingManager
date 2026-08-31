@@ -7,7 +7,14 @@ set(BOOST_PATCH_VERSION "0" CACHE STRING "Boost Patch Version")
 set(BOOST_VERSION "${BOOST_MAJOR_VERSION}.${BOOST_MINOR_VERSION}.${BOOST_PATCH_VERSION}")
 set(BOOST_VERSION_2U "${BOOST_MAJOR_VERSION}_${BOOST_MINOR_VERSION}")
 
-set(CMAKE_CXX_STANDARD 20)
+# Default to C++20 only when the including project has not already chosen a
+# standard.  The standalone build (build/CommonCompilerOptions.cmake) sets
+# C++17 before including this file, matching SuperGenius and all other
+# projects; forcing 20 here breaks fmt/spdlog consteval format-string checks
+# on newer clang (e.g. SPDLOG_LOGGER_CATCH in spdlog/logger.h).
+if(NOT DEFINED CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -32,15 +39,81 @@ set(OPENSSL_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/openssl/build/include" CACHE P
 
 find_package(OpenSSL REQUIRED CONFIG)
 
-# Vulkan
-find_package(Vulkan)
+# VulkanHeaders
+set(VulkanHeaders_DIR "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/share/cmake/VulkanHeaders" CACHE PATH "Path to Vulkan-Headers install folder")
+find_package(VulkanHeaders CONFIG REQUIRED)
 
-if(NOT TARGET Vulkan::Vulkan)
-    if(NOT DEFINED $ENV{VULKAN_SDK})
-        set(ENV{VULKAN_SDK} "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader")
+# Vulkan
+#
+# On macOS, create the Vulkan::Vulkan target manually pointing at the MoltenVK
+# dylib nested inside the thirdparty-built MoltenVK.xcframework.  MoltenVK is a
+# complete Vulkan implementation that exports the full loader API — it can be
+# used directly without any ICD plumbing, exactly as MNN's Vulkan backend does.
+#
+# On other platforms, use the vendored Khronos Vulkan-Loader found via the
+# standard find_package(Vulkan) / VULKAN_SDK mechanism.
+if(APPLE)
+    if(NOT TARGET Vulkan::Vulkan)
+        set(_MVK_LIB "${_THIRDPARTY_BUILD_DIR}/MoltenVK/build/lib/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a")
+        add_library(Vulkan::Vulkan STATIC IMPORTED GLOBAL)
+        set_target_properties(Vulkan::Vulkan PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
+            IMPORTED_LOCATION "${_MVK_LIB}"
+        )
+        # Frameworks MoltenVK links against; inherited by every consumer of Vulkan::Vulkan.
+        target_link_libraries(Vulkan::Vulkan INTERFACE
+            "-framework Metal"
+            "-framework IOSurface"
+            "-framework QuartzCore"
+            "-framework Foundation"
+            "-framework CoreFoundation"
+            "-framework CoreGraphics"
+            "-framework IOKit"
+            "-framework AppKit"
+        )
+    endif()
+else()
+    find_package(Vulkan)
+
+    if(NOT TARGET Vulkan::Vulkan)
+        set(Vulkan_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include")
+        if(NOT DEFINED ENV{VULKAN_SDK})
+            set(ENV{VULKAN_SDK} "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader")
+        endif()
+
+        find_package(Vulkan REQUIRED)
     endif()
 
-    find_package(Vulkan REQUIRED)
+    # Override Vulkan::Vulkan to use our vendored Vulkan-Headers on all non-Apple
+    # platforms.  vk-bootstrap was built against our headers (v1.4); mixing with
+    # system/NDK headers (v1.3 or other versions) causes unknown-type errors in
+    # VkBootstrapDispatch.h and VkBootstrapFeatureChain.h.
+    set_target_properties(Vulkan::Vulkan PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
+    )
+endif()
+
+# vk-bootstrap
+set(vk-bootstrap_DIR "${_THIRDPARTY_BUILD_DIR}/vk-bootstrap/lib/cmake/vk-bootstrap")
+find_package(vk-bootstrap CONFIG REQUIRED)
+
+# SPIRV-Tools — no longer a standalone build.  libshaderc_combined (linked via
+# shaderc::shaderc below) statically bundles the exact same SPIRV-Tools code at the
+# exact same pinned commit (v2024.3 DEPS).  The spirv-tools include path is folded into
+# shaderc::shaderc's INTERFACE_INCLUDE_DIRECTORIES so <spirv-tools/libspirv.hpp> resolves.
+
+# shaderc — installs no CMake package config (confirmed in 02-02-RESEARCH.md against
+# github.com/google/shaderc/issues/1369 and github.com/microsoft/vcpkg/issues/23208); hand-written
+# IMPORTED target required, mirroring thirdparty/build/CommonTargets.cmake's own target.
+# libshaderc_combined statically bundles glslang+SPIRV-Tools and installs spirv-tools
+# headers into <prefix>/include/spirv-tools/, so <spirv-tools/libspirv.hpp> resolves
+# for consumers that call spvtools::SpirvTools::Validate() directly (SHADER-02).
+if(NOT TARGET shaderc::shaderc)
+    add_library(shaderc::shaderc STATIC IMPORTED GLOBAL)
+    set_target_properties(shaderc::shaderc PROPERTIES
+        IMPORTED_LOCATION "${_THIRDPARTY_BUILD_DIR}/shaderc/lib/${CMAKE_STATIC_LIBRARY_PREFIX}shaderc_combined${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/shaderc/include"
+    )
 endif()
 
 # for compression, we need snappy
@@ -181,6 +254,10 @@ find_package(libp2p CONFIG REQUIRED)
 set(ipfs-lite-cpp_DIR "${_THIRDPARTY_BUILD_DIR}/ipfs-lite-cpp/lib/cmake/ipfs-lite-cpp")
 find_package(ipfs-lite-cpp CONFIG REQUIRED)
 
+# ipfs-bitswap-cpp
+set(ipfs-bitswap-cpp_DIR "${_THIRDPARTY_BUILD_DIR}/ipfs-bitswap-cpp/lib/cmake/ipfs-bitswap-cpp")
+find_package(ipfs-bitswap-cpp CONFIG REQUIRED)
+
 # MNN
 set(MNN_DIR "${_THIRDPARTY_BUILD_DIR}/MNN/lib/cmake/MNN")
 find_package(MNN CONFIG REQUIRED)
@@ -195,6 +272,31 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     get_target_property(MNN_LIB_PATH MNN::MNN IMPORTED_LOCATION_RELWITHDEBINFO)
 endif()
 
+# zlib
+set(ZLIB_ROOT "${_THIRDPARTY_BUILD_DIR}/zlib")
+
+# Prefer package config files while loading Libssh2's dependencies.
+# Libssh2 config calls `find_dependency(ZLIB)` without `CONFIG`, which can
+# otherwise resolve to CMake's FindZLIB module on Windows CI.
+set(_SGNS_CMAKE_FIND_PACKAGE_PREFER_CONFIG_WAS_DEFINED FALSE)
+if(DEFINED CMAKE_FIND_PACKAGE_PREFER_CONFIG)
+    set(_SGNS_CMAKE_FIND_PACKAGE_PREFER_CONFIG_WAS_DEFINED TRUE)
+    set(_SGNS_CMAKE_FIND_PACKAGE_PREFER_CONFIG_PREV "${CMAKE_FIND_PACKAGE_PREFER_CONFIG}")
+endif()
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
+
+# libssh2
+set(Libssh2_DIR "${_THIRDPARTY_BUILD_DIR}/libssh2/lib/cmake/libssh2")
+find_package(Libssh2 CONFIG REQUIRED)
+
+if(_SGNS_CMAKE_FIND_PACKAGE_PREFER_CONFIG_WAS_DEFINED)
+    set(CMAKE_FIND_PACKAGE_PREFER_CONFIG "${_SGNS_CMAKE_FIND_PACKAGE_PREFER_CONFIG_PREV}")
+else()
+    unset(CMAKE_FIND_PACKAGE_PREFER_CONFIG)
+endif()
+unset(_SGNS_CMAKE_FIND_PACKAGE_PREFER_CONFIG_PREV)
+unset(_SGNS_CMAKE_FIND_PACKAGE_PREFER_CONFIG_WAS_DEFINED)
+
 # AsyncioManager
 set(AsyncIOManager_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/AsyncIOManager/include")
 set(AsyncIOManager_DIR "${_THIRDPARTY_BUILD_DIR}/AsyncIOManager/lib/cmake/AsyncIOManager")
@@ -206,20 +308,8 @@ include_directories(
 )
 
 add_subdirectory(${PROJECT_ROOT}/src ${CMAKE_BINARY_DIR}/src)
-
-# if(BUILD_TESTS)
-        # add_executable(${PROJECT_NAME}_test
-                # "${CMAKE_CURRENT_LIST_DIR}/../test/main_test.cpp"
-                # "${CMAKE_CURRENT_LIST_DIR}/../test/BitcoinKeyGenerator_test.cpp"
-                # "${CMAKE_CURRENT_LIST_DIR}/../test/EthereumKeyGenerator_test.cpp"
-                # "${CMAKE_CURRENT_LIST_DIR}/../test/ElGamalKeyGenerator_test.cpp"
-                # "${CMAKE_CURRENT_LIST_DIR}/../test/ECElGamalKeyGenerator_test.cpp"
-                # "${CMAKE_CURRENT_LIST_DIR}/../test/TransactionVerifierCircuit_test.cpp"
-                # "${CMAKE_CURRENT_LIST_DIR}/../test/MPCVerifierCircuit_test.cpp"
-                # "${CMAKE_CURRENT_LIST_DIR}/../test/Requestor.cpp"
-        # )
-        # target_link_libraries(${PROJECT_NAME}_test PUBLIC ${PROJECT_NAME} SGProofCircuits GTest::gtest Boost::random)
-# endif()
+add_subdirectory(${PROJECT_ROOT}/tools ${CMAKE_BINARY_DIR}/tools)
+add_subdirectory(${PROJECT_ROOT}/test ${CMAKE_BINARY_DIR}/test)
 
 # Install Headers
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager" FILES_MATCHING PATTERN "*.h*")

@@ -1,10 +1,12 @@
 #include "processors/processing_processor_mnn_image.hpp"
 #include "datasplitter/ImageSplitter.hpp"
+#include "processingbase/vulkan_init_guard.hpp"
 #include <functional>
 #include <mutex>
 #include <thread>
 #include <openssl/sha.h> // For SHA256_DIGEST_LENGTH
 #include "util/sha256.hpp"
+#include "util/quantization.hpp"
 #include "util/InputTypes.hpp"
 
 //#define STB_IMAGE_IMPLEMENTATION
@@ -20,9 +22,11 @@ namespace sgns::sgprocessing
                                                  const sgns::IoDeclaration         &proc,
                                                  std::vector<char>                 &imageData,
                                                  std::vector<char>                 &modelFile,
-                                                 const std::vector<sgns::Parameter> *parameters )
+                                                 const std::vector<sgns::Parameter> *parameters,
+                                                 const ExecutionContext            &execCtx )
     {
-        (void)parameters;
+        const float scale = sgprocmanagerquant::ResolveQuantScale( parameters );
+        const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
 
@@ -61,12 +65,28 @@ namespace sgns::sgprocessing
             
             auto totalChunks = proc.get_dimensions().value().get_chunk_count().value();
             m_progress = 0.0f; // Reset progress at start
+
+            // LOAD_MODEL stage — fire progress and check cancel
+            if ( execCtx.progressCallback )
+            {
+                execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::LOAD_MODEL, 25.0f ) );
+            }
+            if ( execCtx.cancelToken.IsCancelled() )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Image pass cancelled" } };
+            }
             
             for ( int chunkIdx = 0; chunkIdx < totalChunks; ++chunkIdx )
             {
                 m_logger->info( "Chunk IDX {} Total {}",
                                 chunkIdx,
                                 totalChunks );
+                if ( execCtx.cancelToken.IsCancelled() )
+                {
+                    RunTeardown();
+                    return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Image pass cancelled" } };
+                }
                 std::vector<uint8_t> shahash( SHA256_DIGEST_LENGTH );
 
                 // Chunk result hash should be calculated
@@ -83,7 +103,20 @@ namespace sgns::sgprocessing
 
                 const float *data     = procresults->host<float>();
                 size_t       dataSize = procresults->elementSize() * sizeof( float );
-                shahash               = sgprocmanagersha::sha256( data, dataSize );
+
+                // Phase 10 CAPT-02: quantize-then-capture-then-hash at the per-chunk site.
+                // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+                std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+                sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size(), scale );
+                if ( execCtx.rawOutputCapture )
+                {
+                    const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+                    const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+                    execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                               std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+                }
+
+                shahash               = sgprocmanagersha::sha256( localCopy.data(), dataSize );
                 std::string hashString( shahash.begin(), shahash.end() );
                 chunkhashes.push_back( shahash );
 
@@ -95,8 +128,22 @@ namespace sgns::sgprocessing
                 
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
+
+            // RUN + READ_OUTPUT stages — fire progress
+            if ( execCtx.progressCallback )
+            {
+                execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::RUN, 75.0f ) );
+                execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::READ_OUTPUT, 100.0f ) );
+            }
+
+            m_progress = 100.0f;
+
             ProcessingResult result;
             result.hash = subTaskResultHash;
+
+            // Tear down all MNN sessions accumulated during processing
+            RunTeardown();
+
             return result;
         //}
         //return subTaskResultHash;
@@ -109,10 +156,7 @@ namespace sgns::sgprocessing
                                                          const int origheight, 
                                                          const std::string filename) 
     {
-        // ponytail: MNN's Vulkan backend is not safe to initialize concurrently. Keep the
-        // process-wide lock until MNN exposes a shareable runtime/session API.
-        static std::mutex mnn_vulkan_mutex;
-        std::lock_guard lock( mnn_vulkan_mutex );
+        std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
 
         std::vector<uint8_t> ret_vect(imgdata);
 

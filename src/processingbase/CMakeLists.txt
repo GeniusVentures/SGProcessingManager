@@ -23,6 +23,9 @@ target_link_libraries(
 		AsyncIOManager
 		SGProcessors
 		DataSplitter
+		SGShaderCompiler
+		SGCapability
+		SGArtifacts
 )
 
 sgnus_install(ProcessingBase)
