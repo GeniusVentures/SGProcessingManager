@@ -192,6 +192,7 @@ namespace sgns::sgprocessing
                                                   const ExecutionContext            &execCtx )
     {
         const float scale = sgprocmanagerquant::ResolveQuantScale( parameters );
+        const MNNForwardType backend = sgprocmanagerquant::ResolveMnnBackend( parameters );
         const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFileBytes;
         modelFileBytes.assign( modelFile.begin(), modelFile.end() );
@@ -237,7 +238,9 @@ namespace sgns::sgprocessing
             m_logger->error( "Tensor input size {} bytes is smaller than expected {} bytes",
                              tensorData.size(),
                              expectedBytes );
-            return ProcessingResult{};
+            return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::FORMAT_UNSUPPORTED,
+                "Tensor input size " + std::to_string( tensorData.size() ) + " bytes is smaller than expected "
+                    + std::to_string( expectedBytes ) + " bytes (buffer size vs dimensions mismatch)" } };
         }
 
         std::vector<float> signalValues;
@@ -331,7 +334,17 @@ namespace sgns::sgprocessing
                 patch[static_cast<size_t>( i )] = signalValues[static_cast<size_t>( srcIndex )];
             }
 
-            auto procresults = Process( patch, modelFileBytes, patchLength );
+            auto procresults = Process( patch, modelFileBytes, patchLength, backend );
+            if ( !procresults )
+            {
+                // SGF-02/D-11: Process() has four documented nullptr return paths
+                // (malformed model bytes, session creation failure, missing input
+                // tensor, missing output tensor). Surface them as a structured
+                // error instead of dereferencing the null pointer below.
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::FORMAT_UNSUPPORTED,
+                    "MNN_Tensor::Process returned null (malformed or incompatible model)" } };
+            }
             const float *data = procresults->host<float>();
             size_t dataSize = procresults->elementSize() * sizeof( float );
 
@@ -464,7 +477,8 @@ namespace sgns::sgprocessing
 
     std::unique_ptr<MNN::Tensor> MNN_Tensor::Process( const std::vector<float> &signalData,
                                                       std::vector<uint8_t>    &modelFile,
-                                                      int                      length )
+                                                      int                      length,
+                                                      MNNForwardType           backend )
     {
         auto interpreter = std::shared_ptr<MNN::Interpreter>(
             MNN::Interpreter::createFromBuffer( modelFile.data(), modelFile.size() ) );
@@ -474,12 +488,23 @@ namespace sgns::sgprocessing
             return nullptr;
         }
 
+        // Phase 13 (D-04/D-05): backend is schema-selected via
+        // sgprocmanagerquant::ResolveMnnBackend() in StartProcessing(); the
+        // MNN_FORWARD_VULKAN hardcode is only the fallback default now.
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_VULKAN;
+        config.type = backend;
         config.numThread = 4;
         config.backendConfig = nullptr;
 
         MNN::Session *session = nullptr;
+        if ( backend == MNN_FORWARD_CPU )
+        {
+            // CPU sessions never touch the Vulkan device, so they must not
+            // serialize behind VulkanInitMutex() (D-05: the CPU path is
+            // genuinely distinct from the Vulkan path).
+            session = interpreter->createSession( config );
+        }
+        else
         {
             std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
             session = interpreter->createSession( config );
