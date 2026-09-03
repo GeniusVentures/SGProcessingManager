@@ -1239,7 +1239,7 @@ namespace sgns::sgprocessing
         return outcome::success();
     }
 
-    outcome::result<uint64_t> ProcessingManager::ParseBlockSize()
+    outcome::result<uint64_t> ProcessingManager::ParseBlockSize() const
     {
         uint64_t block_total_len = 0;
         auto     passes          = processing_.get_passes();
@@ -2040,7 +2040,7 @@ namespace sgns::sgprocessing
         return processing_;
     }
 
-    outcome::result<size_t> ProcessingManager::GetInputIndex( const std::string &input )
+    outcome::result<size_t> ProcessingManager::GetInputIndex( const std::string &input ) const
     {
         auto it = m_inputMap.find( input );
         if ( it != m_inputMap.end() )
