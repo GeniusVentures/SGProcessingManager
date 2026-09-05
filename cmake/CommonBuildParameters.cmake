@@ -61,6 +61,8 @@ if(APPLE)
             IMPORTED_LOCATION "${_MVK_LIB}"
         )
         # Frameworks MoltenVK links against; inherited by every consumer of Vulkan::Vulkan.
+        # AppKit does not exist on iOS (ld: framework 'AppKit' not found); MoltenVK
+        # uses UIKit there, mirroring the gating in SGProcessors.
         target_link_libraries(Vulkan::Vulkan INTERFACE
             "-framework Metal"
             "-framework IOSurface"
@@ -69,8 +71,12 @@ if(APPLE)
             "-framework CoreFoundation"
             "-framework CoreGraphics"
             "-framework IOKit"
-            "-framework AppKit"
         )
+        if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            target_link_libraries(Vulkan::Vulkan INTERFACE "-framework AppKit")
+        else()
+            target_link_libraries(Vulkan::Vulkan INTERFACE "-framework UIKit")
+        endif()
     endif()
 else()
     find_package(Vulkan)
