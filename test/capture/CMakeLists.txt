@@ -5,6 +5,15 @@
 # deliberately does NOT assert cross-machine hash equality (Pattern 5,
 # ARCHITECTURE.md); that is Phase 11's manual, multi-machine job.
 
+# Host-only test: it shells out to capture_harness via std::system(), which
+# is a hard compile error on iOS ('system' is unavailable) and meaningless on
+# any cross-compiled target (iOS/Android device builds cannot spawn the host
+# subprocess the test exists to exercise).
+if(CMAKE_CROSSCOMPILING)
+    message(STATUS "Skipping capture_smoke_test: subprocess-based smoke test is host-only (cross-compiling for ${CMAKE_SYSTEM_NAME})")
+    return()
+endif()
+
 add_executable(capture_smoke_test
     capture_smoke_test.cpp
 )
