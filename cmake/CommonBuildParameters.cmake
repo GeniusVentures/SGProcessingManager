@@ -30,6 +30,18 @@ find_package(GTest CONFIG REQUIRED)
 include_directories(${GTest_INCLUDE_DIR})
 add_compile_definitions(CRYPTO3_CODEC_BASE58)
 
+# Per-case GTest registration (gtest_discover_tests) EXECUTES each test binary
+# at build time to enumerate its cases. Desirable for standalone
+# SGProcessingManager development, but wrong when this project is built as a
+# subdirectory of SuperGenius: cross-compiled targets (iOS/Android) cannot run
+# on the build host at all, and even host Debug builds have tripped discovery
+# timeouts on slow self-hosted runners. This file is included only by the
+# standalone build (build/<Platform>/CMakeLists.txt); SuperGenius pulls in
+# SGProcessingManager via add_subdirectory() WITHOUT including this file, so
+# the option is undefined there and whole-binary add_test() registration is
+# used instead. Granular per-case ctest runs belong to the standalone build.
+option(SGPROC_TEST_DISCOVERY "Register individual GTest cases via gtest_discover_tests() (executes test binaries at build time to list cases)" ON)
+
 #OpenSSL
 set(OpenSSL_DIR "${_THIRDPARTY_BUILD_DIR}/openssl/build/lib/cmake/OpenSSL" CACHE PATH "Path to OpenSSL install folder")
 set(OPENSSL_ROOT_DIR "${_THIRDPARTY_BUILD_DIR}/openssl/build" CACHE PATH "Path to OpenSSL install root folder")
