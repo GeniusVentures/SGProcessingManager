@@ -14,6 +14,7 @@
 #include "helper.hpp"
 
 #include "SgnsProcessing.hpp"
+#include "Validation.hpp"
 #include "Pass.hpp"
 #include "VertexLayoutEntry.hpp"
 #include "VertexLayoutFormat.hpp"
@@ -52,12 +53,26 @@
 #include "Parameter.hpp"
 #include "ParameterType.hpp"
 #include "Constraints.hpp"
+#include "JobType.hpp"
 #include "IoDeclaration.hpp"
 #include "DataType.hpp"
 #include "InputFormat.hpp"
 #include "Dimensions.hpp"
+#include "ElmFunding.hpp"
+#include "Elm.hpp"
+#include "ElmGeneration.hpp"
+#include "ElmType.hpp"
 
 namespace sgns {
+    void from_json(const json & j, ElmGeneration & x);
+    void to_json(json & j, const ElmGeneration & x);
+
+    void from_json(const json & j, Elm & x);
+    void to_json(json & j, const Elm & x);
+
+    void from_json(const json & j, ElmFunding & x);
+    void to_json(json & j, const ElmFunding & x);
+
     void from_json(const json & j, Dimensions & x);
     void to_json(json & j, const Dimensions & x);
 
@@ -127,11 +142,17 @@ namespace sgns {
     void from_json(const json & j, SgnsProcessing & x);
     void to_json(json & j, const SgnsProcessing & x);
 
+    void from_json(const json & j, ElmType & x);
+    void to_json(json & j, const ElmType & x);
+
     void from_json(const json & j, InputFormat & x);
     void to_json(json & j, const InputFormat & x);
 
     void from_json(const json & j, DataType & x);
     void to_json(json & j, const DataType & x);
+
+    void from_json(const json & j, JobType & x);
+    void to_json(json & j, const JobType & x);
 
     void from_json(const json & j, ParameterType & x);
     void to_json(json & j, const ParameterType & x);
@@ -186,6 +207,52 @@ namespace sgns {
 
     void from_json(const json & j, VertexLayoutFormat & x);
     void to_json(json & j, const VertexLayoutFormat & x);
+
+    void from_json(const json & j, Validation & x);
+    void to_json(json & j, const Validation & x);
+
+    inline void from_json(const json & j, ElmGeneration& x) {
+        x.set_max_output_tokens(get_stack_optional<int64_t>(j, "max_output_tokens"));
+        x.set_seed(get_stack_optional<int64_t>(j, "seed"));
+        x.set_temperature(get_stack_optional<double>(j, "temperature"));
+        x.set_top_p(get_stack_optional<double>(j, "top_p"));
+    }
+
+    inline void to_json(json & j, const ElmGeneration & x) {
+        j = json::object();
+        j["max_output_tokens"] = x.get_max_output_tokens();
+        j["seed"] = x.get_seed();
+        j["temperature"] = x.get_temperature();
+        j["top_p"] = x.get_top_p();
+    }
+
+    inline void from_json(const json & j, Elm& x) {
+        x.set_elm_type(j.at("elm_type").get<ElmType>());
+        x.set_generation(get_stack_optional<ElmGeneration>(j, "generation"));
+        x.set_input_uri(j.at("input_uri").get<std::string>());
+        x.set_model_manifest_hash(j.at("model_manifest_hash").get<std::string>());
+        x.set_model_manifest_uri(j.at("model_manifest_uri").get<std::string>());
+        x.set_work_item_id(j.at("work_item_id").get<std::string>());
+    }
+
+    inline void to_json(json & j, const Elm & x) {
+        j = json::object();
+        j["elm_type"] = x.get_elm_type();
+        j["generation"] = x.get_generation();
+        j["input_uri"] = x.get_input_uri();
+        j["model_manifest_hash"] = x.get_model_manifest_hash();
+        j["model_manifest_uri"] = x.get_model_manifest_uri();
+        j["work_item_id"] = x.get_work_item_id();
+    }
+
+    inline void from_json(const json & j, ElmFunding& x) {
+        x.set_maximum_processing_hours(get_stack_optional<double>(j, "maximum_processing_hours"));
+    }
+
+    inline void to_json(json & j, const ElmFunding & x) {
+        j = json::object();
+        j["maximum_processing_hours"] = x.get_maximum_processing_hours();
+    }
 
     inline void from_json(const json & j, Dimensions& x) {
         x.set_batch(get_stack_optional<int64_t>(j, "batch"));
@@ -584,14 +651,18 @@ namespace sgns {
     inline void from_json(const json & j, SgnsProcessing& x) {
         x.set_author(get_stack_optional<std::string>(j, "author"));
         x.set_description(get_stack_optional<std::string>(j, "description"));
+        x.set_elms(get_stack_optional<std::vector<Elm>>(j, "elms"));
+        x.set_funding(get_stack_optional<ElmFunding>(j, "funding"));
         x.set_gnus_spec_version(j.at("gnus_spec_version").get<double>());
-        x.set_inputs(j.at("inputs").get<std::vector<IoDeclaration>>());
+        x.set_inputs(get_stack_optional<std::vector<IoDeclaration>>(j, "inputs"));
+        x.set_job_type(get_stack_optional<JobType>(j, "job_type"));
         x.set_metadata(get_stack_optional<std::map<std::string, nlohmann::json>>(j, "metadata"));
         x.set_name(j.at("name").get<std::string>());
-        x.set_outputs(j.at("outputs").get<std::vector<IoDeclaration>>());
+        x.set_outputs(get_stack_optional<std::vector<IoDeclaration>>(j, "outputs"));
         x.set_parameters(get_stack_optional<std::vector<Parameter>>(j, "parameters"));
-        x.set_passes(j.at("passes").get<std::vector<Pass>>());
+        x.set_passes(get_stack_optional<std::vector<Pass>>(j, "passes"));
         x.set_tags(get_stack_optional<std::vector<std::string>>(j, "tags"));
+        x.set_validation(get_stack_optional<Validation>(j, "validation"));
         x.set_version(j.at("version").get<std::string>());
     }
 
@@ -599,15 +670,31 @@ namespace sgns {
         j = json::object();
         j["author"] = x.get_author();
         j["description"] = x.get_description();
+        j["elms"] = x.get_elms();
+        j["funding"] = x.get_funding();
         j["gnus_spec_version"] = x.get_gnus_spec_version();
         j["inputs"] = x.get_inputs();
+        j["job_type"] = x.get_job_type();
         j["metadata"] = x.get_metadata();
         j["name"] = x.get_name();
         j["outputs"] = x.get_outputs();
         j["parameters"] = x.get_parameters();
         j["passes"] = x.get_passes();
         j["tags"] = x.get_tags();
+        j["validation"] = x.get_validation();
         j["version"] = x.get_version();
+    }
+
+    inline void from_json(const json & j, ElmType & x) {
+        if (j == "causal_lm") x = ElmType::CAUSAL_LM;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const ElmType & x) {
+        switch (x) {
+            case ElmType::CAUSAL_LM: j = "causal_lm"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"ElmType\": " + std::to_string(static_cast<int>(x)));
+        }
     }
 
     inline void from_json(const json & j, InputFormat & x) {
@@ -682,6 +769,18 @@ namespace sgns {
             case DataType::VEC3: j = "vec3"; break;
             case DataType::VEC4: j = "vec4"; break;
             default: throw std::runtime_error("Unexpected value in enumeration \"DataType\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, JobType & x) {
+        if (j == "elm_processing") x = JobType::ELM_PROCESSING;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const JobType & x) {
+        switch (x) {
+            case JobType::ELM_PROCESSING: j = "elm_processing"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"JobType\": " + std::to_string(static_cast<int>(x)));
         }
     }
 
@@ -1000,6 +1099,22 @@ namespace sgns {
             case VertexLayoutFormat::FLOAT32: j = "FLOAT32"; break;
             case VertexLayoutFormat::INT32: j = "INT32"; break;
             default: throw std::runtime_error("Unexpected value in enumeration \"VertexLayoutFormat\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, Validation & x) {
+        if (j == "exact") x = Validation::EXACT;
+        else if (j == "none") x = Validation::NONE;
+        else if (j == "redundant") x = Validation::REDUNDANT;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const Validation & x) {
+        switch (x) {
+            case Validation::EXACT: j = "exact"; break;
+            case Validation::NONE: j = "none"; break;
+            case Validation::REDUNDANT: j = "redundant"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"Validation\": " + std::to_string(static_cast<int>(x)));
         }
     }
 }

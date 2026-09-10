@@ -13,10 +13,15 @@
 #include <nlohmann/json.hpp>
 #include "helper.hpp"
 
+#include "ElmType.hpp"
+#include "ElmGeneration.hpp"
+#include "Elm.hpp"
+#include "ElmFunding.hpp"
 #include "Dimensions.hpp"
 #include "InputFormat.hpp"
 #include "DataType.hpp"
 #include "IoDeclaration.hpp"
+#include "JobType.hpp"
 #include "Constraints.hpp"
 #include "ParameterType.hpp"
 #include "Parameter.hpp"
@@ -55,6 +60,7 @@
 #include "VertexLayoutFormat.hpp"
 #include "VertexLayoutEntry.hpp"
 #include "Pass.hpp"
+#include "Validation.hpp"
 #include "SgnsProcessing.hpp"
 namespace sgns {
 }

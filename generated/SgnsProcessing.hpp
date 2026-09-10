@@ -13,9 +13,16 @@
 #include <nlohmann/json.hpp>
 #include "helper.hpp"
 
+#include "Elm.hpp"
+#include "ElmFunding.hpp"
 #include "IoDeclaration.hpp"
 #include "Parameter.hpp"
 #include "Pass.hpp"
+
+namespace sgns {
+    enum class JobType : int;
+    enum class Validation : int;
+}
 
 namespace sgns {
     /**
@@ -39,16 +46,20 @@ namespace sgns {
         private:
         boost::optional<std::string> author;
         boost::optional<std::string> description;
+        boost::optional<std::vector<Elm>> elms;
+        boost::optional<ElmFunding> funding;
         double gnus_spec_version;
         ClassMemberConstraints gnus_spec_version_constraint;
-        std::vector<IoDeclaration> inputs;
+        boost::optional<std::vector<IoDeclaration>> inputs;
+        boost::optional<JobType> job_type;
         boost::optional<std::map<std::string, nlohmann::json>> metadata;
         std::string name;
         ClassMemberConstraints name_constraint;
-        std::vector<IoDeclaration> outputs;
+        boost::optional<std::vector<IoDeclaration>> outputs;
         boost::optional<std::vector<Parameter>> parameters;
-        std::vector<Pass> passes;
+        boost::optional<std::vector<Pass>> passes;
         boost::optional<std::vector<std::string>> tags;
+        boost::optional<Validation> validation;
         std::string version;
         ClassMemberConstraints version_constraint;
 
@@ -66,6 +77,19 @@ namespace sgns {
         void set_description(boost::optional<std::string> value) { this->description = value; }
 
         /**
+         * ELM work items for elm_processing jobs. Non-empty enforced by the ProcessingManager C++
+         * gate (quicktype drops minItems)
+         */
+        boost::optional<std::vector<Elm>> get_elms() const { return elms; }
+        void set_elms(boost::optional<std::vector<Elm>> value) { this->elms = value; }
+
+        /**
+         * Funding envelope for elm_processing jobs (maximum processing hours)
+         */
+        boost::optional<ElmFunding> get_funding() const { return funding; }
+        void set_funding(boost::optional<ElmFunding> value) { this->funding = value; }
+
+        /**
          * Version of the GNUS processing definition specification
          */
         const double & get_gnus_spec_version() const { return gnus_spec_version; }
@@ -75,9 +99,16 @@ namespace sgns {
         /**
          * Declares the external inputs this process requires
          */
-        const std::vector<IoDeclaration> & get_inputs() const { return inputs; }
-        std::vector<IoDeclaration> & get_mutable_inputs() { return inputs; }
-        void set_inputs(const std::vector<IoDeclaration> & value) { this->inputs = value; }
+        boost::optional<std::vector<IoDeclaration>> get_inputs() const { return inputs; }
+        void set_inputs(boost::optional<std::vector<IoDeclaration>> value) { this->inputs = value; }
+
+        /**
+         * Discriminator for the job payload. Absent means a legacy shader/inference job governed by
+         * passes/inputs/outputs. v1.0 implements elm_processing only; unknown strings reject at
+         * parse via the generated enum chain
+         */
+        boost::optional<JobType> get_job_type() const { return job_type; }
+        void set_job_type(boost::optional<JobType> value) { this->job_type = value; }
 
         /**
          * Additional metadata for the processing definition
@@ -95,9 +126,8 @@ namespace sgns {
         /**
          * Declares the final outputs this process will produce
          */
-        const std::vector<IoDeclaration> & get_outputs() const { return outputs; }
-        std::vector<IoDeclaration> & get_mutable_outputs() { return outputs; }
-        void set_outputs(const std::vector<IoDeclaration> & value) { this->outputs = value; }
+        boost::optional<std::vector<IoDeclaration>> get_outputs() const { return outputs; }
+        void set_outputs(boost::optional<std::vector<IoDeclaration>> value) { this->outputs = value; }
 
         /**
          * Overridable parameters with defaults
@@ -108,15 +138,21 @@ namespace sgns {
         /**
          * Array of processing passes to execute
          */
-        const std::vector<Pass> & get_passes() const { return passes; }
-        std::vector<Pass> & get_mutable_passes() { return passes; }
-        void set_passes(const std::vector<Pass> & value) { this->passes = value; }
+        boost::optional<std::vector<Pass>> get_passes() const { return passes; }
+        void set_passes(boost::optional<std::vector<Pass>> value) { this->passes = value; }
 
         /**
          * Tags for categorizing this definition
          */
         boost::optional<std::vector<std::string>> get_tags() const { return tags; }
         void set_tags(boost::optional<std::vector<std::string>> value) { this->tags = value; }
+
+        /**
+         * Work-item result validation mode. v1.0 implements none only; exact/redundant parse but
+         * are refused by the ProcessingManager C++ gate as unimplemented
+         */
+        boost::optional<Validation> get_validation() const { return validation; }
+        void set_validation(boost::optional<Validation> value) { this->validation = value; }
 
         /**
          * Version of this processing definition

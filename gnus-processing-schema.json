@@ -4,7 +4,7 @@
   "title": "GNUS.ai Processing Definition",
   "description": "Schema for defining AI inference and retraining workflows with shader passes",
   "type": "object",
-  "required": ["name", "version", "gnus_spec_version", "passes", "inputs", "outputs"],
+  "required": ["name", "version", "gnus_spec_version"],
   "properties": {
     "name": {
       "type": "string",
@@ -68,6 +68,27 @@
         "$ref": "#/definitions/pass"
       }
     },
+    "job_type": {
+      "type": "string",
+      "description": "Discriminator for the job payload. Absent means a legacy shader/inference job governed by passes/inputs/outputs. v1.0 implements elm_processing only; unknown strings reject at parse via the generated enum chain",
+      "enum": ["elm_processing"]
+    },
+    "elms": {
+      "type": "array",
+      "description": "ELM work items for elm_processing jobs. Non-empty enforced by the ProcessingManager C++ gate (quicktype drops minItems)",
+      "items": {
+        "$ref": "#/definitions/Elm"
+      }
+    },
+    "funding": {
+      "$ref": "#/definitions/ElmFunding",
+      "description": "Funding envelope for elm_processing jobs (maximum processing hours)"
+    },
+    "validation": {
+      "type": "string",
+      "description": "Work-item result validation mode. v1.0 implements none only; exact/redundant parse but are refused by the ProcessingManager C++ gate as unimplemented",
+      "enum": ["none", "exact", "redundant"]
+    },
     "metadata": {
       "type": "object",
       "description": "Additional metadata for the processing definition",
@@ -75,6 +96,82 @@
     }
   },
   "definitions": {
+    "Elm": {
+      "type": "object",
+      "description": "One ELM (causal-LM) work item. work_item_id charset is constrained now so later phases never interpolate arbitrary strings into filesystem paths",
+      "required": ["work_item_id", "elm_type", "model_manifest_uri", "model_manifest_hash", "input_uri"],
+      "properties": {
+        "work_item_id": {
+          "type": "string",
+          "description": "Unique identifier for this work item within the job (same charset as root name)",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "elm_type": {
+          "type": "string",
+          "description": "v1.0 implements causal_lm only",
+          "enum": ["causal_lm"]
+        },
+        "model_manifest_uri": {
+          "type": "string",
+          "description": "URI of the model manifest for this work item",
+          "minLength": 1
+        },
+        "model_manifest_hash": {
+          "type": "string",
+          "description": "Expected hash of the model manifest content",
+          "minLength": 1
+        },
+        "input_uri": {
+          "type": "string",
+          "description": "URI of the input data for this work item",
+          "minLength": 1
+        },
+        "generation": {
+          "$ref": "#/definitions/ElmGeneration",
+          "description": "Generation settings; defaults documented per-field are applied by ProcessingManager C++ normalization (quicktype never applies JSON Schema defaults)"
+        }
+      }
+    },
+    "ElmGeneration": {
+      "type": "object",
+      "description": "Generation settings for an ELM work item. Defaults (max_output_tokens unset = model default, temperature 1.0, top_p 1.0, seed unset) are applied by ProcessingManager C++ normalization, not by codegen",
+      "properties": {
+        "max_output_tokens": {
+          "type": "integer",
+          "description": "Maximum tokens to generate (minimum 1)",
+          "minimum": 1
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Sampling temperature, default 1.0",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "top_p": {
+          "type": "number",
+          "description": "Nucleus sampling threshold, default 1.0. The >0 exclusive half is enforced by the ProcessingManager C++ gate (exclusiveMinimum does not survive quicktype codegen)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "seed": {
+          "type": "integer",
+          "description": "Sampling seed for deterministic generation",
+          "minimum": 0
+        }
+      }
+    },
+    "ElmFunding": {
+      "type": "object",
+      "description": "Funding envelope for an elm_processing job. maximum_processing_hours defaults to 1.0 via ProcessingManager C++ normalization; the >0 exclusive half of minimum is enforced by the C++ gate",
+      "properties": {
+        "maximum_processing_hours": {
+          "type": "number",
+          "description": "Wall-clock processing cap in hours, default 1.0, hard cap 24",
+          "minimum": 0,
+          "maximum": 24
+        }
+      }
+    },
     "io_declaration": {
       "type": "object",
       "required": ["source_uri_param", "name", "type"],
