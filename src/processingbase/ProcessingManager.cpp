@@ -578,6 +578,28 @@ namespace sgns::sgprocessing
             // caught here as well or it propagates uncaught out of Init().
             return outcome::failure( Error::INVALID_JSON );
         }
+        // Non-ELM parity gate (SC-5, Pitfall 1): the schema root no longer
+        // requires passes/inputs/outputs (relaxed so minimal ELM jobs parse,
+        // D-04). For jobs without the elm_processing discriminator, preserve
+        // today's reject-at-Create outcome: all three arrays present AND
+        // passes non-empty, else INVALID_JSON -- the same error the old
+        // root-required enforcement produced, including the previously-
+        // downstream "passes": [] case.
+        if ( !processing_.get_job_type() )
+        {
+            const bool hasAllLegacyFields = processing_.get_passes() && processing_.get_inputs()
+                                          && processing_.get_outputs() && !processing_.get_passes()->empty();
+            // Defensive: an ELM payload without its discriminator is malformed,
+            // not a legacy job -- reject rather than misinterpreting it.
+            const bool hasElmPayloadWithoutDiscriminator = processing_.get_elms().has_value();
+            if ( !hasAllLegacyFields || hasElmPayloadWithoutDiscriminator )
+            {
+                m_logger->error(
+                    "Non-ELM job is missing passes/inputs/outputs or has an empty passes array "
+                    "(or an elms payload without a job_type discriminator)" );
+                return outcome::failure( Error::INVALID_JSON );
+            }
+        }
         auto isvalid = CheckProcessValidity();
         if ( !isvalid )
         {
@@ -598,8 +620,134 @@ namespace sgns::sgprocessing
         return outcome::success();
     }
 
+    outcome::result<void> ProcessingManager::CheckElmValidity( const sgns::SgnsProcessing &data )
+    {
+        // Only meaningful for elm_processing jobs; the non-ELM parity gate in
+        // Init() handles everything else.
+        if ( !data.get_job_type() || data.get_job_type().value() != sgns::JobType::ELM_PROCESSING )
+        {
+            return outcome::success();
+        }
+
+        // D-04/D-07/D-13 gates, in order. Each logs then returns a structured
+        // Error so callers can distinguish policy rejections from parse noise.
+
+        // quicktype drops minItems (Pitfall 6): enforce non-empty elms here.
+        if ( !data.get_elms() || data.get_elms()->empty() )
+        {
+            m_logger->error( "elm_processing job declares no elms work items" );
+            return outcome::failure( Error::ELM_WORK_ITEMS_MISSING );
+        }
+
+        // Duplicate work_item_id across work items (D-07): later phases key
+        // results by this id; duplicates would silently alias them.
+        std::set<std::string> seenWorkItemIds;
+        for ( const auto &elm : *data.get_elms() )
+        {
+            if ( !seenWorkItemIds.insert( elm.get_work_item_id() ).second )
+            {
+                m_logger->error( "elm_processing job has duplicate work_item_id: " + elm.get_work_item_id() );
+                return outcome::failure( Error::DUPLICATE_WORK_ITEM_ID );
+            }
+        }
+
+        // Validation mode (D-13): the schema accepts the full enum so the wire
+        // format is stable, but exact/redundant are unimplemented in v1.0 --
+        // parseable but refused by policy.
+        if ( data.get_validation() && data.get_validation().value() != sgns::Validation::NONE )
+        {
+            m_logger->error( "elm_processing job requests an unimplemented validation mode "
+                             "(v1.0 implements none only)" );
+            return outcome::failure( Error::ELM_VALIDATION_UNIMPLEMENTED );
+        }
+
+        // Funding (D-05): schema maximum is 0..24 inclusive; the exclusive >0
+        // half is ours (quicktype never emitted inclusive bounds for optional
+        // numbers either -- see Task 1 deviation).
+        if ( data.get_funding() )
+        {
+            const auto hours = data.get_funding()->get_maximum_processing_hours();
+            if ( hours && *hours <= 0.0 )
+            {
+                m_logger->error( "elm_processing job funding.maximum_processing_hours must be > 0" );
+                return outcome::failure( Error::ELM_FUNDING_INVALID );
+            }
+            if ( hours && *hours > 24.0 )
+            {
+                m_logger->error( "elm_processing job funding.maximum_processing_hours exceeds the 24h cap" );
+                return outcome::failure( Error::ELM_FUNDING_INVALID );
+            }
+        }
+
+        // Generation settings (A3 belt-and-braces): schema bounds did not
+        // survive codegen for optional numbers, so enforce them all here.
+        for ( const auto &elm : *data.get_elms() )
+        {
+            if ( elm.get_generation() )
+            {
+                const auto &generation = *elm.get_generation();
+                if ( auto topP = generation.get_top_p() )
+                {
+                    if ( *topP <= 0.0 || *topP > 1.0 )
+                    {
+                        m_logger->error( "elm generation.top_p out of range (0, 1]" );
+                        return outcome::failure( Error::ELM_GENERATION_SETTINGS_INVALID );
+                    }
+                }
+                if ( auto temperature = generation.get_temperature() )
+                {
+                    if ( *temperature < 0.0 || *temperature > 2.0 )
+                    {
+                        m_logger->error( "elm generation.temperature out of range [0, 2]" );
+                        return outcome::failure( Error::ELM_GENERATION_SETTINGS_INVALID );
+                    }
+                }
+                if ( auto maxTokens = generation.get_max_output_tokens() )
+                {
+                    if ( *maxTokens < 1 )
+                    {
+                        m_logger->error( "elm generation.max_output_tokens must be >= 1" );
+                        return outcome::failure( Error::ELM_GENERATION_SETTINGS_INVALID );
+                    }
+                }
+                if ( auto seed = generation.get_seed() )
+                {
+                    if ( *seed < 0 )
+                    {
+                        m_logger->error( "elm generation.seed must be >= 0" );
+                        return outcome::failure( Error::ELM_GENERATION_SETTINGS_INVALID );
+                    }
+                }
+            }
+        }
+
+        return outcome::success();
+    }
+
+    double ProcessingManager::GetElmMaximumProcessingHours() const
+    {
+        // Single defaulted read site (D-04): plan 01-02's cost branch and the
+        // three-clock derivation consume exactly this view.
+        if ( !processing_.get_job_type() || processing_.get_job_type().value() != sgns::JobType::ELM_PROCESSING )
+        {
+            return 0.0;
+        }
+        if ( processing_.get_funding() )
+        {
+            return processing_.get_funding()->get_maximum_processing_hours().value_or( 1.0 );
+        }
+        return 1.0;
+    }
+
     outcome::result<void> ProcessingManager::CheckProcessValidity()
     {
+        // ELM payload gates (JOB-01/JOB-03): everything quicktype cannot enforce
+        // (minItems, cross-element uniqueness, unimplemented enum members, the
+        // exclusive >0 halves of schema bounds) rejects here with structured codes.
+        if ( auto elmGates = CheckElmValidity( processing_ ); !elmGates )
+        {
+            return elmGates.error();
+        }
         // Phase 01-01 (D-04): passes is now optional at the schema level. The
         // non-ELM parity gate in Init() rejects non-ELM jobs without a
         // non-empty passes array before CheckProcessValidity runs; for ELM jobs

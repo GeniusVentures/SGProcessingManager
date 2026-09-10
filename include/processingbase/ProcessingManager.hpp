@@ -91,6 +91,16 @@ namespace sgns::sgprocessing
             MODEL_FORMAT_UNSUPPORTED = 11,
             RENDER_SHADER_MISSING    = 12,
             UNKNOWN_PASS_TYPE        = 13,
+            /// ELM job declares two work items with the same work_item_id (D-07)
+            DUPLICATE_WORK_ITEM_ID   = 14,
+            /// ELM job requests exact/redundant validation, unimplemented in v1.0 (D-13)
+            ELM_VALIDATION_UNIMPLEMENTED = 15,
+            /// ELM job declares no elms[] work items (quicktype drops minItems)
+            ELM_WORK_ITEMS_MISSING   = 16,
+            /// ELM job funding envelope out of range (<= 0 or > 24 hours, D-05)
+            ELM_FUNDING_INVALID      = 17,
+            /// ELM job generation settings out of range (top_p/temperature/max_output_tokens)
+            ELM_GENERATION_SETTINGS_INVALID = 18,
         };
         static outcome::result<std::shared_ptr<ProcessingManager>> Create( const std::string &jsondata );
 
@@ -186,6 +196,15 @@ namespace sgns::sgprocessing
             return m_lastManifest;
         }
 
+        /** Get the normalized ELM maximum processing hours (D-04).
+         * Single defaulted read site for the funding envelope: returns
+         * funding.maximum_processing_hours.value_or(1.0) for elm_processing
+         * jobs, and 0.0 when the parsed job is not elm_processing. Consumed by
+         * the SuperGenius-side cost branch and three-clock derivation (plan 01-02).
+         * @return Normalized hours (default 1.0), or 0.0 for non-ELM jobs.
+         */
+        double GetElmMaximumProcessingHours() const;
+
         /**
          * @brief       Checks whether a processing json is valid by attempting to create a ProcessingManager instance with it
          * @param[in]   jsondata JSON string containing the processing data to validate.
@@ -209,6 +228,13 @@ namespace sgns::sgprocessing
     private:
         ProcessingManager() = default;
         outcome::result<void> Init( const std::string &jsondata );
+        /** ELM payload gates for everything quicktype cannot enforce (JOB-01/JOB-03):
+         * non-empty elms, unique work_item_id, validation mode implemented, funding
+         * and generation settings within bounds. Called from CheckProcessValidity.
+         * @param data - the parsed job payload
+         * @return success or a structured Error
+         */
+        outcome::result<void> CheckElmValidity( const sgns::SgnsProcessing &data );
         outcome::result<
             std::shared_ptr<std::pair<std::shared_ptr<std::vector<char>>, std::shared_ptr<std::vector<char>>>>>
              GetCidForProc( std::shared_ptr<boost::asio::io_context> ioc, sgns::ModelNode &model );
