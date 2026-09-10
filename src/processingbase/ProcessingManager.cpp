@@ -583,7 +583,12 @@ namespace sgns::sgprocessing
         {
             return isvalid.error();
         }
-        const auto &inputs = processing_.get_inputs();
+        // Phase 01-01 (D-04): inputs is now optional at the schema level (root
+        // required relaxed to name/version/gnus_spec_version so minimal ELM jobs
+        // parse). For non-ELM jobs the Init parity gate below guarantees the
+        // optional is engaged before we reach this point, so value_or(empty) is
+        // a compile-shim, never a behavioral path.
+        const auto inputs = processing_.get_inputs().value_or( std::vector<sgns::IoDeclaration>{} );
         for ( size_t i = 0; i < inputs.size(); ++i )
         {
             std::string sourceKey = "input:" + inputs[i].get_name();
@@ -595,7 +600,13 @@ namespace sgns::sgprocessing
 
     outcome::result<void> ProcessingManager::CheckProcessValidity()
     {
-        for ( auto &pass : processing_.get_passes() )
+        // Phase 01-01 (D-04): passes is now optional at the schema level. The
+        // non-ELM parity gate in Init() rejects non-ELM jobs without a
+        // non-empty passes array before CheckProcessValidity runs; for ELM jobs
+        // there are no passes to iterate. value_or(empty) keeps this loop a
+        // no-op for both cases instead of a compile error.
+        const auto passes = processing_.get_passes().value_or( std::vector<sgns::Pass>{} );
+        for ( auto &pass : passes )
         {
             //Check optional params if needed
             switch ( pass.get_type() )
@@ -736,7 +747,10 @@ namespace sgns::sgprocessing
             }
         }
         //Check Input optionals
-        for ( auto &input : processing_.get_inputs() )
+        // Phase 01-01 (D-04): inputs is schema-optional now; see the parity
+        // gate note above -- value_or(empty) is the compile shim.
+        const auto inputsToCheck = processing_.get_inputs().value_or( std::vector<sgns::IoDeclaration>{} );
+        for ( auto &input : inputsToCheck )
         {
             switch ( input.get_type() )
             {
@@ -1232,7 +1246,10 @@ namespace sgns::sgprocessing
             }
         }
         //Check Output optionals. Anything to do here?
-        for ( auto &output : processing_.get_outputs() )
+        // Phase 01-01 (D-04): outputs is schema-optional now; see the parity
+        // gate note above -- value_or(empty) is the compile shim.
+        const auto outputsToCheck = processing_.get_outputs().value_or( std::vector<sgns::IoDeclaration>{} );
+        for ( auto &output : outputsToCheck )
         {
         }
 
@@ -1242,7 +1259,11 @@ namespace sgns::sgprocessing
     outcome::result<uint64_t> ProcessingManager::ParseBlockSize() const
     {
         uint64_t block_total_len = 0;
-        auto     passes          = processing_.get_passes();
+        // Phase 01-01 (D-04): passes/inputs are schema-optional now; ELM jobs
+        // carry neither. For non-ELM jobs the Init parity gate guarantees both
+        // are present before any Process/ParseBlockSize call can succeed, so the
+        // value_or shims only satisfy the compiler.
+        auto     passes          = processing_.get_passes().value_or( std::vector<sgns::Pass>{} );
         for ( const auto &pass : passes )
         {
             if ( !pass.get_model() )
@@ -1257,8 +1278,12 @@ namespace sgns::sgprocessing
                 {
                     return index.error();
                 }
-                block_total_len +=
-                    processing_.get_inputs()[index.value()].get_dimensions().value().get_block_len().value();
+                block_total_len += processing_.get_inputs()
+                                       .value_or( std::vector<sgns::IoDeclaration>{} )[index.value()]
+                                       .get_dimensions()
+                                       .value()
+                                       .get_block_len()
+                                       .value();
             }
         }
         return block_total_len;
@@ -1305,7 +1330,13 @@ namespace sgns::sgprocessing
             return maybe_buffers.error();
         }
         auto buffers = maybe_buffers.value();
-        const auto &pass = processing_.get_passes()[index.value()];
+        // Phase 01-01 (D-04): passes/inputs are schema-optional now (see the
+        // Init parity gate). ProcessInternal is only reachable for non-ELM
+        // jobs that already passed that gate, so these value_or shims are
+        // compile-only, never behavioral.
+        const auto passesVec = processing_.get_passes().value_or( std::vector<sgns::Pass>{} );
+        const auto inputsVec = processing_.get_inputs().value_or( std::vector<sgns::IoDeclaration>{} );
+        const auto &pass     = passesVec[index.value()];
 
         // Extract budget fields from pass schema (D-06, D-07, D-08)
         uint64_t gpuMemoryBudget    = pass.get_estimated_gpu_memory_bytes().value_or( 0 );
@@ -1321,7 +1352,7 @@ namespace sgns::sgprocessing
         }
         else
         {
-            if ( !SetProcessorByName( static_cast<int>( processing_.get_inputs()[index.value()].get_type() ) ) )
+            if ( !SetProcessorByName( static_cast<int>( inputsVec[index.value()].get_type() ) ) )
             {
                 return outcome::failure( Error::NO_PROCESSOR );
             }
@@ -1400,7 +1431,7 @@ namespace sgns::sgprocessing
 
             // Call new 6-arg StartProcessing() overload (D-18)
             auto processResult = m_processor->StartProcessing( chunkhashes,
-                                                               processing_.get_inputs()[index.value()],
+                                                               inputsVec[index.value()],
                                                                *buffers->second,
                                                                *buffers->first,
                                                                parameters,
@@ -1483,8 +1514,8 @@ namespace sgns::sgprocessing
 
             // ── Build ProcessOutput: artifact records + execution manifest (Phase 08) ──
             ProcessOutput output{};
-            const auto   &procInput = processing_.get_inputs()[index.value()];
-            const auto   &outputs   = processing_.get_outputs();
+            const auto   &procInput = inputsVec[index.value()];
+            const auto   outputs    = processing_.get_outputs().value_or( std::vector<sgns::IoDeclaration>{} );
 
             if ( processResult.output_buffers && !outputs.empty() )
             {
@@ -1815,7 +1846,11 @@ namespace sgns::sgprocessing
                 std::make_shared<std::vector<char>>(),
                 std::make_shared<std::vector<char>>() );
 
-        const auto &p        = processing_.get_passes()[index.value()];
+        // Phase 01-01 (D-04): passes/inputs are schema-optional now; see the
+        // Init parity gate. GetCidForProc is only reachable for non-ELM jobs
+        // that passed it, so these value_or shims are compile-only.
+        const auto passesForCid = processing_.get_passes().value_or( std::vector<sgns::Pass>{} );
+        const auto &p        = passesForCid[index.value()];
         const bool  isRender = ( p.get_type() == PassType::RENDER && p.get_render_shader() );
 
         //Init Loaders
@@ -1880,7 +1915,8 @@ namespace sgns::sgprocessing
             {
                 return outcome::failure( Error::MISSING_INPUT );
             }
-            std::string vertexUrl = processing_.get_inputs()[vertexInputIndex.value()].get_source_uri_param();
+            const auto inputsForVertex = processing_.get_inputs().value_or( std::vector<sgns::IoDeclaration>{} );
+            std::string vertexUrl = inputsForVertex[vertexInputIndex.value()].get_source_uri_param();
             vertexBuffer          = std::make_shared<std::vector<char>>();
             GetSubCidForProc( ioc, vertexUrl, vertexBuffer );
 
@@ -1901,7 +1937,8 @@ namespace sgns::sgprocessing
                 {
                     return outcome::failure( Error::MISSING_INPUT );
                 }
-                std::string indexUrl = processing_.get_inputs()[indexInputIndex.value()].get_source_uri_param();
+                const auto inputsForIndex = processing_.get_inputs().value_or( std::vector<sgns::IoDeclaration>{} );
+                std::string indexUrl = inputsForIndex[indexInputIndex.value()].get_source_uri_param();
                 indexBuffer           = std::make_shared<std::vector<char>>();
                 hasIndexBuffer        = true;
                 indexType             = indexBufferCfg.get_index_type().value_or( sgns::IndexType::UINT16 );
@@ -1925,7 +1962,8 @@ namespace sgns::sgprocessing
                 {
                     return outcome::failure( Error::MISSING_INPUT );
                 }
-                std::string textureUrl = processing_.get_inputs()[texInputIndex.value()].get_source_uri_param();
+                const auto inputsForTex = processing_.get_inputs().value_or( std::vector<sgns::IoDeclaration>{} );
+                std::string textureUrl = inputsForTex[texInputIndex.value()].get_source_uri_param();
                 GetSubCidForProc( ioc, textureUrl, textureBuffer );
                 hasTextureBuffer = true;
                 textureWidth     = static_cast<uint32_t>( textureBufferCfg.get_width() );
@@ -1947,7 +1985,8 @@ namespace sgns::sgprocessing
             // SerializeRenderPassConfig() below, not by this raw single fetch --
             // `index` here is the coincidental pass-index-as-input-index value,
             // not any render-specific buffer.
-            std::string image = processing_.get_inputs()[index.value()].get_source_uri_param();
+            const auto inputsForImage = processing_.get_inputs().value_or( std::vector<sgns::IoDeclaration>{} );
+            std::string image = inputsForImage[index.value()].get_source_uri_param();
             m_logger->info( "Data Input URL: {}", image );
 
             string imageUrl = image;
