@@ -567,6 +567,7 @@ namespace sgns::sgprocessing
         }
         catch ( const nlohmann::json::exception &e )
         {
+            m_logger->error( "Job JSON parse error: {}", e.what() );
             return outcome::failure( Error::INVALID_JSON );
         }
         catch ( const std::exception &e )
@@ -576,6 +577,7 @@ namespace sgns::sgprocessing
             // nlohmann::json::exception subclass -- when a job submits a
             // schema-invalid enum value (e.g. legacy "hlsl"/"metal"). Must be
             // caught here as well or it propagates uncaught out of Init().
+            m_logger->error( "Job schema violation: {}", e.what() );
             return outcome::failure( Error::INVALID_JSON );
         }
         // Non-ELM parity gate (SC-5, Pitfall 1): the schema root no longer
@@ -587,11 +589,17 @@ namespace sgns::sgprocessing
         // downstream "passes": [] case.
         if ( !processing_.get_job_type() )
         {
-            const bool hasAllLegacyFields = processing_.get_passes() && processing_.get_inputs()
-                                          && processing_.get_outputs() && !processing_.get_passes()->empty();
+            // Materialize the by-value optionals (see CheckElmValidity lifetime
+            // note -- quicktype getters return boost::optional<T> by value).
+            const auto passesOpt = processing_.get_passes();
+            const auto inputsOpt = processing_.get_inputs();
+            const auto outputsOpt = processing_.get_outputs();
+            const auto elmsOpt = processing_.get_elms();
+            const bool hasAllLegacyFields =
+                passesOpt && inputsOpt && outputsOpt && !passesOpt->empty();
             // Defensive: an ELM payload without its discriminator is malformed,
             // not a legacy job -- reject rather than misinterpreting it.
-            const bool hasElmPayloadWithoutDiscriminator = processing_.get_elms().has_value();
+            const bool hasElmPayloadWithoutDiscriminator = elmsOpt.has_value();
             if ( !hasAllLegacyFields || hasElmPayloadWithoutDiscriminator )
             {
                 m_logger->error(
@@ -624,7 +632,14 @@ namespace sgns::sgprocessing
     {
         // Only meaningful for elm_processing jobs; the non-ELM parity gate in
         // Init() handles everything else.
-        if ( !data.get_job_type() || data.get_job_type().value() != sgns::JobType::ELM_PROCESSING )
+        //
+        // CRITICAL lifetime note: the quicktype getters (get_elms etc.) return
+        // boost::optional<T> BY VALUE. Dereferencing the call result directly
+        // (*data.get_elms()) yields a reference into a temporary optional that
+        // dies at the end of the full expression -- iterating it is UB. Always
+        // materialize the optional into a named local first.
+        const auto jobTypeOpt = data.get_job_type();
+        if ( !jobTypeOpt || jobTypeOpt.value() != sgns::JobType::ELM_PROCESSING )
         {
             return outcome::success();
         }
@@ -633,7 +648,8 @@ namespace sgns::sgprocessing
         // Error so callers can distinguish policy rejections from parse noise.
 
         // quicktype drops minItems (Pitfall 6): enforce non-empty elms here.
-        if ( !data.get_elms() || data.get_elms()->empty() )
+        const auto elmsOpt = data.get_elms();
+        if ( !elmsOpt || elmsOpt->empty() )
         {
             m_logger->error( "elm_processing job declares no elms work items" );
             return outcome::failure( Error::ELM_WORK_ITEMS_MISSING );
@@ -642,7 +658,7 @@ namespace sgns::sgprocessing
         // Duplicate work_item_id across work items (D-07): later phases key
         // results by this id; duplicates would silently alias them.
         std::set<std::string> seenWorkItemIds;
-        for ( const auto &elm : *data.get_elms() )
+        for ( const auto &elm : *elmsOpt )
         {
             if ( !seenWorkItemIds.insert( elm.get_work_item_id() ).second )
             {
@@ -654,7 +670,8 @@ namespace sgns::sgprocessing
         // Validation mode (D-13): the schema accepts the full enum so the wire
         // format is stable, but exact/redundant are unimplemented in v1.0 --
         // parseable but refused by policy.
-        if ( data.get_validation() && data.get_validation().value() != sgns::Validation::NONE )
+        const auto validationOpt = data.get_validation();
+        if ( validationOpt && validationOpt.value() != sgns::Validation::NONE )
         {
             m_logger->error( "elm_processing job requests an unimplemented validation mode "
                              "(v1.0 implements none only)" );
@@ -664,9 +681,10 @@ namespace sgns::sgprocessing
         // Funding (D-05): schema maximum is 0..24 inclusive; the exclusive >0
         // half is ours (quicktype never emitted inclusive bounds for optional
         // numbers either -- see Task 1 deviation).
-        if ( data.get_funding() )
+        const auto fundingOpt = data.get_funding();
+        if ( fundingOpt )
         {
-            const auto hours = data.get_funding()->get_maximum_processing_hours();
+            const auto hours = fundingOpt->get_maximum_processing_hours();
             if ( hours && *hours <= 0.0 )
             {
                 m_logger->error( "elm_processing job funding.maximum_processing_hours must be > 0" );
@@ -681,11 +699,12 @@ namespace sgns::sgprocessing
 
         // Generation settings (A3 belt-and-braces): schema bounds did not
         // survive codegen for optional numbers, so enforce them all here.
-        for ( const auto &elm : *data.get_elms() )
+        for ( const auto &elm : *elmsOpt )
         {
-            if ( elm.get_generation() )
+            const auto generationOpt = elm.get_generation();
+            if ( generationOpt )
             {
-                const auto &generation = *elm.get_generation();
+                const auto &generation = *generationOpt;
                 if ( auto topP = generation.get_top_p() )
                 {
                     if ( *topP <= 0.0 || *topP > 1.0 )
@@ -727,14 +746,17 @@ namespace sgns::sgprocessing
     double ProcessingManager::GetElmMaximumProcessingHours() const
     {
         // Single defaulted read site (D-04): plan 01-02's cost branch and the
-        // three-clock derivation consume exactly this view.
-        if ( !processing_.get_job_type() || processing_.get_job_type().value() != sgns::JobType::ELM_PROCESSING )
+        // three-clock derivation consume exactly this view. Materialize the
+        // by-value optionals into locals (see CheckElmValidity lifetime note).
+        const auto jobTypeOpt = processing_.get_job_type();
+        if ( !jobTypeOpt || jobTypeOpt.value() != sgns::JobType::ELM_PROCESSING )
         {
             return 0.0;
         }
-        if ( processing_.get_funding() )
+        const auto fundingOpt = processing_.get_funding();
+        if ( fundingOpt )
         {
-            return processing_.get_funding()->get_maximum_processing_hours().value_or( 1.0 );
+            return fundingOpt->get_maximum_processing_hours().value_or( 1.0 );
         }
         return 1.0;
     }

@@ -416,7 +416,13 @@ int main( int argc, char **argv )
         auto manager = mgrResult.value();
 
         auto        processingData = manager->GetProcessingData();
-        const auto &passes         = processingData.get_passes();
+        // Phase 01-01 (D-04): passes is schema-optional now (root required
+        // relaxed so minimal ELM jobs parse); this harness always runs legacy
+        // fixtures that passed the non-ELM parity gate, so the value_or shim
+        // only satisfies the compiler. Materialized into a local because the
+        // quicktype getter returns boost::optional<T> by value.
+        const auto  passesOpt      = processingData.get_passes();
+        const auto  passes         = passesOpt.value_or( std::vector<sgns::Pass>{} );
         if ( passes.empty() )
         {
             std::cerr << "capture_harness: iteration " << i << ": fixture has no passes\n";
