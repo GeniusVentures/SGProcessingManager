@@ -23,6 +23,11 @@ target_include_directories(sgprocmanagerelmruntime PUBLIC
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/generated>
     $<BUILD_INTERFACE:${Boost_INCLUDE_DIRS}>
     $<BUILD_INTERFACE:${OPENSSL_INCLUDE_DIR}>
+    # elmruntime headers include <outcome/sgprocmgr-outcome.hpp>, which pulls
+    # <libp2p/outcome/outcome.hpp> -- expose libp2p PUBLIC the same way
+    # sgprocmanagertypes does (src/util/CMakeLists.txt) so consumers of the
+    # public headers resolve it.
+    $<BUILD_INTERFACE:${libp2p_INCLUDE_DIR}>
     # PRIVATE visibility for the one production FetchFn TU (ElmArtifactFetcher.cpp)
     PRIVATE
     ${AsyncIOManager_INCLUDE_DIR}
