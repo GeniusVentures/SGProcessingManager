@@ -1,10 +1,15 @@
 /**
- * CapabilityValidator implementation — BuildSnapshot and CanExecute.
+ * CapabilityValidator implementation — BuildSnapshot, CanExecute, and
+ * CheckElmResources.
  *
  * BuildSnapshot: queries Vulkan device properties, MNN executor registry,
- * disk space, and computes the deterministic executor identity hash.
+ * disk space, host RAM (ELM preflight), and computes the deterministic
+ * executor identity hash.
  * CanExecute: validates jobs against the cached snapshot across all five
  * check categories (PassType, Vulkan, MNN, GPU memory, disk space).
+ * CheckElmResources: local ELM resource preflight (host RAM + disk) against
+ * the same cached snapshot — pass-free entry point for ELM work items
+ * (plan 02-02, Pitfall 13); CanExecute itself is untouched.
  */
 
 #include <capability/capability_validator.hpp>
@@ -24,6 +29,7 @@
 #include <windows.h>
 #else
 #include <sys/statvfs.h>
+#include <unistd.h>
 #endif
 
 namespace sgns::sgprocessing
@@ -107,6 +113,27 @@ namespace sgns::sgprocessing
             struct statvfs stat;
             if ( statvfs( path.empty() ? "." : path.c_str(), &stat ) == 0 )
                 return static_cast<uint64_t>( stat.f_bavail ) * stat.f_frsize;
+            return 0;
+#endif
+        }
+
+        /// Total physical host RAM in bytes (ELM required_memory_bytes preflight,
+        /// plan 02-02 / RQ6 option ii). Same degraded-0 convention as
+        /// QueryAvailableDiskBytes: a failed platform query returns 0, and the
+        /// consumer skips its check leg rather than failing spuriously.
+        uint64_t QueryAvailableMemoryBytes()
+        {
+#ifdef _WIN32
+            MEMORYSTATUSEX statex{};
+            statex.dwLength = sizeof( MEMORYSTATUSEX );
+            if ( GlobalMemoryStatusEx( &statex ) )
+                return statex.ullTotalPhys;
+            return 0;
+#else
+            long pages    = sysconf( _SC_PHYS_PAGES );
+            long pageSize = sysconf( _SC_PAGE_SIZE );
+            if ( pages > 0 && pageSize > 0 )
+                return static_cast<uint64_t>( pages ) * static_cast<uint64_t>( pageSize );
             return 0;
 #endif
         }
@@ -239,6 +266,9 @@ namespace sgns::sgprocessing
 
         // Disk space query (D-16)
         snapshot.availableDiskBytes = QueryAvailableDiskBytes( "." );
+
+        // Host RAM query (ELM required_memory_bytes preflight, plan 02-02)
+        snapshot.availableMemoryBytes = QueryAvailableMemoryBytes();
 
         // Executor identity hash (D-08)
         {

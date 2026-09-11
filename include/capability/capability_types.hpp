@@ -62,6 +62,7 @@ namespace sgns::sgprocessing
         VkPhysicalDeviceMemoryProperties     memProps{};       ///< From vkGetPhysicalDeviceMemoryProperties() (D-15)
         std::vector<ExecutorCapability>      executorCaps;     ///< From registry query (D-11)
         uint64_t                             availableDiskBytes = 0; ///< From platform syscall (D-16); 0 = query failed (degraded)
+        uint64_t                             availableMemoryBytes = 0; ///< Total physical host RAM from platform syscall (ELM preflight, plan 02-02); 0 = query failed (degraded)
         std::vector<uint8_t>                 identityHash;     ///< SHA-256 of serialized snapshot (D-08)
         std::unordered_map<PassType, bool, PassTypeHash> checkpointSupport; ///< Per-PassType checkpoint support flag (D-20)
     };
