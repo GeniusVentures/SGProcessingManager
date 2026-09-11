@@ -172,6 +172,83 @@
         }
       }
     },
+    "ElmModelArtifact": {
+      "type": "object",
+      "description": "One artifact of an ELM model bundle. The name is a ROLE from a closed set (never a filesystem path); the runtime materializes each role at MNN's default filename via ElmRuntime RoleFileName",
+      "required": ["name", "uri", "sha256", "size_bytes"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Artifact role: llm_config, llm_model, llm_weight, tokenizer_file, or context_file",
+          "pattern": "^(llm_config|llm_model|llm_weight|tokenizer_file|context_file)$"
+        },
+        "uri": {
+          "type": "string",
+          "description": "URI the artifact is fetched from (production: FileManager loaders only)",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "description": "sha256 of the artifact bytes, 64 hex characters",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "description": "Exact artifact size in bytes; drives cache LRU accounting and the disk preflight",
+          "minimum": 0
+        }
+      }
+    },
+    "ElmModelManifest": {
+      "type": "object",
+      "description": "Content-addressed manifest of an ELM model bundle. Its bytes are hash-pinned by the work item's model_manifest_hash before parsing (SC-1). model_format is deliberately a pattern-constrained STRING, not an enum: sgns::ModelFormat is already a live generated enum from model_config.format with in-repo consumers",
+      "required": ["schema_version", "elm_type", "model_format", "artifacts"],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "description": "Manifest shape version; fixed at 1 (gnus_spec_version style const)",
+          "minimum": 1,
+          "maximum": 1
+        },
+        "elm_type": {
+          "type": "string",
+          "description": "v1.0 implements causal_lm only (same enum as the Elm work item)",
+          "enum": ["causal_lm"]
+        },
+        "model_format": {
+          "type": "string",
+          "description": "v1.0 mandates MNN. Pattern is documentation-only post-codegen; the C++ semantic gate fail-closes on any value != mnn (MANIFEST_INVALID)",
+          "pattern": "^mnn$"
+        },
+        "quantization": {
+          "type": "string",
+          "description": "Quantization descriptor (informational metadata only in v1.0)",
+          "minLength": 1
+        },
+        "artifacts": {
+          "type": "array",
+          "description": "Bundle artifacts. Non-empty is enforced by the ElmManifest C++ gate (quicktype drops minItems)",
+          "items": {
+            "$ref": "#/definitions/ElmModelArtifact"
+          }
+        },
+        "runtime": {
+          "$ref": "#/definitions/ElmModelRuntime",
+          "description": "Runtime resource requirements (local capability preflight only)"
+        }
+      }
+    },
+    "ElmModelRuntime": {
+      "type": "object",
+      "description": "Runtime resource block of an ELM model manifest. Feeds the local CapabilityValidator preflight (plan 02-02); never advertised on the network",
+      "properties": {
+        "required_memory_bytes": {
+          "type": "integer",
+          "description": "Host RAM the loaded model requires; 0/absent = no requirement (the number bound does not survive codegen on optionals -- the C++ gate re-checks >= 0)",
+          "minimum": 0
+        }
+      }
+    },
     "io_declaration": {
       "type": "object",
       "required": ["source_uri_param", "name", "type"],
