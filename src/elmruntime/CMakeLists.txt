@@ -23,6 +23,10 @@ add_library(sgprocmanagerelmruntime STATIC
     ElmRuntimeError.cpp
     ElmManifest.cpp
     ElmArtifactFetcher.cpp
+    # Content-addressed model cache (plan 02-03, Task 2): publish/hit/single-flight/
+    # pin/quarantine/LRU/restart-scan. AsyncIOManager (PRIVATE above) covers the
+    # factory's FileManager usage; no new link deps.
+    ElmModelCache.cpp
     # Self-gating TU: the whole MNN surface sits inside #if defined(SGPROC_HAS_MNN_LLM);
     # compiled unconditionally so the fail-closed fallback always links.
     ElmSmokeCheck.cpp
@@ -30,6 +34,7 @@ add_library(sgprocmanagerelmruntime STATIC
     ../../include/elmruntime/ElmManifest.hpp
     ../../include/elmruntime/ElmArtifactFetcher.hpp
     ../../include/elmruntime/ElmResourcePreflight.hpp
+    ../../include/elmruntime/ElmModelCache.hpp
     ../../include/elmruntime/ElmSmokeCheck.hpp
 )
 
