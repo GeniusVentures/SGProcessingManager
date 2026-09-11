@@ -19,3 +19,22 @@ if(SGPROC_TEST_DISCOVERY AND NOT CMAKE_CROSSCOMPILING)
     gtest_discover_tests(sgprocelmruntime_manifest_test DISCOVERY_TIMEOUT 60)
 endif()
 set_tests_properties(sgprocelmruntime_manifest_test PROPERTIES TIMEOUT 120)
+
+# elm_model_cache_test (Plan 02-03, Task 3): cache lifecycle matrix -- publish,
+# hit, tamper->quarantine->retry, single-flight, pin/evict/LRU, restart rescan,
+# tmp sweep, temp cleanliness. The gated garbage-bundle leg runs the REAL
+# MakeMnnLlmSmokeCheck() (createLLM on garbage bytes fails inside load()), so the
+# target needs MNN/Vulkan under the LLM gate (test/processors/CMakeLists.txt:28-48
+# pattern). TIMEOUT 300: the MNN-touching leg initializes the engine; generous
+# bound, fast in practice (Pitfall 15.2/15.3).
+add_executable(sgprocelmruntime_cache_test elm_model_cache_test.cpp)
+target_link_libraries(sgprocelmruntime_cache_test PRIVATE GTest::gtest_main sgprocmanagerelmruntime)
+if(SGPROC_HAS_MNN_LLM)
+    target_compile_definitions(sgprocelmruntime_cache_test PRIVATE SGPROC_HAS_MNN_LLM)
+    target_link_libraries(sgprocelmruntime_cache_test PRIVATE MNN::MNN Vulkan::Vulkan)
+endif()
+add_test(NAME sgprocelmruntime_cache_test COMMAND sgprocelmruntime_cache_test)
+if(SGPROC_TEST_DISCOVERY AND NOT CMAKE_CROSSCOMPILING)
+    gtest_discover_tests(sgprocelmruntime_cache_test DISCOVERY_TIMEOUT 60)
+endif()
+set_tests_properties(sgprocelmruntime_cache_test PROPERTIES TIMEOUT 300)
