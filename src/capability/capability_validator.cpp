@@ -514,6 +514,75 @@ namespace sgns::sgprocessing
         callback( result );
     }
 
+    // =========================================================================
+    // CheckElmResources — local ELM resource preflight (plan 02-02, Pitfall 13)
+    // =========================================================================
+
+    void CapabilityValidator::CheckElmResources( uint64_t                  requiredMemoryBytes,
+                                                 uint64_t                  totalArtifactBytes,
+                                                 const CanExecuteCallback &callback )
+    {
+        CanExecuteResult              result;
+        std::vector<UnmetRequirement> unmet;
+
+        if ( !m_impl->snapshotBuilt )
+        {
+            result.executable = false;
+            result.unmet.push_back(
+                { UnmetRequirementCategory::RESOURCE,
+                  "CapabilityValidator not initialized" } );
+            callback( result );
+            return;
+        }
+
+        const CapabilitySnapshot &snapshot = m_impl->snapshot;
+
+        // —— Memory leg: manifest runtime.required_memory_bytes vs host RAM ——
+        // Degraded convention (same as the Step-4 disk check): a snapshot field
+        // of 0 means the platform query failed -- skip the leg, never fail
+        // spuriously. requiredMemoryBytes == 0 means the requirement is absent.
+        if ( requiredMemoryBytes > 0 && snapshot.availableMemoryBytes > 0
+             && requiredMemoryBytes > snapshot.availableMemoryBytes )
+        {
+            unmet.push_back(
+                { UnmetRequirementCategory::RESOURCE,
+                  "required_memory_bytes " + FormatBytes( requiredMemoryBytes )
+                      + " exceeds available host memory "
+                      + FormatBytes( snapshot.availableMemoryBytes ) } );
+        }
+
+        // —— Disk leg: total artifact bytes vs available disk ——
+        if ( snapshot.availableDiskBytes > 0
+             && totalArtifactBytes > snapshot.availableDiskBytes )
+        {
+            unmet.push_back(
+                { UnmetRequirementCategory::RESOURCE,
+                  "Artifact bytes " + FormatBytes( totalArtifactBytes )
+                      + " exceed available disk space "
+                      + FormatBytes( snapshot.availableDiskBytes ) } );
+        }
+
+        // —— Build final result (log-then-fail idiom) ——
+        if ( !unmet.empty() )
+        {
+            for ( const auto &u : unmet )
+            {
+                std::fprintf( stderr,
+                              "[CapabilityValidator] ELM resource preflight unmet: %s\n",
+                              u.detail.c_str() );
+            }
+            result.executable = false;
+            result.unmet      = std::move( unmet );
+        }
+        else
+        {
+            result.executable = true;
+            result.executorId = DeriveExecutorId( snapshot.identityHash );
+        }
+
+        callback( result );
+    }
+
 #ifdef SGPROCMGR_TEST_FRIEND
     void CapabilityValidator::SetSnapshotForTest( CapabilitySnapshot snap )
     {

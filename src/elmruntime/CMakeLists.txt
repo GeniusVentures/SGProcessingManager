@@ -15,6 +15,7 @@ add_library(sgprocmanagerelmruntime STATIC
     ../../include/elmruntime/ElmRuntimeError.hpp
     ../../include/elmruntime/ElmManifest.hpp
     ../../include/elmruntime/ElmArtifactFetcher.hpp
+    ../../include/elmruntime/ElmResourcePreflight.hpp
 )
 
 target_include_directories(sgprocmanagerelmruntime PUBLIC
