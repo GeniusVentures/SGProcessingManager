@@ -38,3 +38,19 @@ if(SGPROC_TEST_DISCOVERY AND NOT CMAKE_CROSSCOMPILING)
     gtest_discover_tests(sgprocelmruntime_cache_test DISCOVERY_TIMEOUT 60)
 endif()
 set_tests_properties(sgprocelmruntime_cache_test PROPERTIES TIMEOUT 300)
+
+# elm_envelope_test + elm_stop_streambuf_test (elmbridge Phase 3, plan 03-03,
+# Task 1): the RES-01 envelope matrix and the D-05/D-06/D-07 stop-string
+# streambuf legs -- both PURE units (no MNN touch, no fixture), but bundled
+# into one target per the plan's single sgprocelmruntime_envelope_test
+# registration. TIMEOUT 120: fast legs, no engine initialization.
+add_executable(sgprocelmruntime_envelope_test
+    elm_envelope_test.cpp
+    elm_stop_streambuf_test.cpp
+)
+target_link_libraries(sgprocelmruntime_envelope_test PRIVATE GTest::gtest_main sgprocmanagerelmruntime)
+add_test(NAME sgprocelmruntime_envelope_test COMMAND sgprocelmruntime_envelope_test)
+if(SGPROC_TEST_DISCOVERY AND NOT CMAKE_CROSSCOMPILING)
+    gtest_discover_tests(sgprocelmruntime_envelope_test DISCOVERY_TIMEOUT 60)
+endif()
+set_tests_properties(sgprocelmruntime_envelope_test PROPERTIES TIMEOUT 120)

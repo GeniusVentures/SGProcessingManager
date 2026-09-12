@@ -30,7 +30,15 @@ add_library(sgprocmanagerelmruntime STATIC
     # Self-gating TU: the whole MNN surface sits inside #if defined(SGPROC_HAS_MNN_LLM);
     # compiled unconditionally so the fail-closed fallback always links.
     ElmSmokeCheck.cpp
+    # Result envelope + stop-string streambuf (elmbridge Phase 3, plan 03-03):
+    # pure no-MNN units -- the envelope is the RES-01 result shape, the
+    # streambuf is the D-05/D-06/D-07 stop-string observer with the injectable
+    # cancel hook the gated processor TU wires to Llm::cancel().
+    ElmEnvelope.cpp
+    ElmStopStringStreamBuf.cpp
     ../../include/elmruntime/ElmRuntimeError.hpp
+    ../../include/elmruntime/ElmEnvelope.hpp
+    ../../include/elmruntime/ElmStopStringStreamBuf.hpp
     ../../include/elmruntime/ElmManifest.hpp
     ../../include/elmruntime/ElmArtifactFetcher.hpp
     ../../include/elmruntime/ElmResourcePreflight.hpp
