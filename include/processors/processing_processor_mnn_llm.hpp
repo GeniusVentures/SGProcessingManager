@@ -1,19 +1,25 @@
 /**
-* Header file for processing autoregressive LLM text generation using MNN's
-* native MNN::Transformer::Llm API (PROC-01, Phase 04-sgprocessing-integration).
+* Header file for the RETIRED MNN_Llm processor (elmbridge Phase 3, D-04).
 *
-* MNN::Transformer::Llm is only forward-declared here (matching
-* GNUS-NEO-SWARM/src/core/engine/mnn_inference_engine.hpp's own established
-* pattern for this exact type) so that consumers of this header -- notably
-* ProcessingManager.hpp, which must name the concrete MNN_Llm class to
-* register its factory -- never need <llm/llm.hpp> to be available at
-* their translation unit. Only processing_processor_mnn_llm.cpp needs the
-* real header, since only it calls into MNN::Transformer::Llm's API.
+* MNN_Llm is now a fail-closed shim: its DataType::LLM two-buffer job shape
+* (promptData + modelFile bytes) has no production caller -- ELM jobs carry
+* no passes[] and never route here, and non-ELM jobs never use DataType::LLM
+* today -- and the temp-dir materializer it used to own is DELETED (zero
+* temp-dir materializers remain in the tree; the Phase 2 content-addressed
+* ELM cache is the single model materialization point). This shim exists so
+* a legacy two-buffer DataType::LLM call fails closed with a structured
+* RESOURCE_RESOLUTION error instead of linking away.
+*
+* MNN::Transformer::Llm remains only forward-declared here (its historical
+* include-isolation pattern) so consumers of this header -- notably
+* ProcessingManager.hpp, which must name the concrete class for factory
+* registration -- never need <llm/llm.hpp> at their translation unit. The
+* shim TU itself no longer includes llm.hpp at all: it performs no MNN
+* calls and takes no locks.
 *
 * @author Justin Church
 */
 #pragma once
-#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -34,7 +40,7 @@ namespace sgns::sgprocessing
     class MNN_Llm : public ProcessingProcessor
     {
     public:
-        /** Create an LLM processor
+        /** Create the retired-LLM shim
         */
         MNN_Llm()
         {
@@ -44,14 +50,16 @@ namespace sgns::sgprocessing
         {
         };
 
-        /** Start processing data -- autoregressive LLM text generation.
+        /** Start processing -- RETIRED, always fails closed (elmbridge Phase 3 D-04).
+        * The pre-cancel check and the empty-model check remain; any non-empty
+        * model buffer returns a structured RESOURCE_RESOLUTION retirement
+        * error. ELM jobs execute via ElmProcessor::StartProcessingElm with the
+        * content-addressed cache (see processing_processor_elm.hpp).
         * @param chunkhashes - Reference to vector to store chunk hashes
         * @param proc - Input/output declaration with processing parameters
-        * @param promptData - Input prompt text as character vector
-        * @param modelFile - MNN LLM model file data (materialized to a temp
-        *                    directory before MNN::Transformer::Llm::createLLM(),
-        *                    which -- unlike MNN::Interpreter::createFromBuffer --
-        *                    requires a directory path, not an in-memory buffer)
+        * @param promptData - Input prompt text as character vector (ignored)
+        * @param modelFile - Legacy model-file buffer (any non-empty value is
+        *                   rejected with the retirement message)
         */
         ProcessingResult StartProcessing( std::vector<std::vector<uint8_t>> &chunkhashes,
                            const sgns::IoDeclaration         &proc,
@@ -59,18 +67,6 @@ namespace sgns::sgprocessing
                            std::vector<char>                 &modelFile,
                            const std::vector<sgns::Parameter> *parameters,
                            const ExecutionContext            &execCtx ) override;
-
-    private:
-        /** Materializes modelFile bytes to a fresh temp directory and loads them via
-        * MNN::Transformer::Llm::createLLM()/load(), taking VulkanInitMutex() around
-        * that call to preserve the Vulkan coexistence contract every other MNN
-        * processor in this codebase already follows.
-        * @param modelFileBytes - Raw MNN LLM model bytes
-        * @return A loaded MNN::Transformer::Llm* (caller takes ownership, must
-        *         destroy via MNN::Transformer::Llm::destroy()), or nullptr on any
-        *         failure (empty bytes, materialize failure, createLLM/load failure).
-        */
-        MNN::Transformer::Llm *LoadModel( const std::vector<uint8_t> &modelFileBytes );
     };
 
 }
