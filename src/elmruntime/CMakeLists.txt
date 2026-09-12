@@ -36,8 +36,13 @@ add_library(sgprocmanagerelmruntime STATIC
     # cancel hook the gated processor TU wires to Llm::cancel().
     ElmEnvelope.cpp
     ElmStopStringStreamBuf.cpp
+    # Plain-value pinned-entry preflight bridge (plan 03-03): holds the
+    # fallback generated-set includes so the processor TU (root generated set)
+    # never mixes the two quicktype families.
+    ElmEntryPreflight.cpp
     ../../include/elmruntime/ElmRuntimeError.hpp
     ../../include/elmruntime/ElmEnvelope.hpp
+    ../../include/elmruntime/ElmEntryPreflight.hpp
     ../../include/elmruntime/ElmStopStringStreamBuf.hpp
     ../../include/elmruntime/ElmManifest.hpp
     ../../include/elmruntime/ElmArtifactFetcher.hpp

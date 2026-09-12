@@ -43,6 +43,28 @@ set(_SGPROC_LLM_HEADERS "")
 if(SGPROC_HAS_MNN_LLM)
     list(APPEND _SGPROC_LLM_SOURCES processing_processor_mnn_llm.cpp)
     list(APPEND _SGPROC_LLM_HEADERS ../../include/processors/processing_processor_mnn_llm.hpp)
+    # ELM processor (elmbridge Phase 3, plan 03-03): same gate -- the whole
+    # MNN surface sits inside #if defined(SGPROC_HAS_MNN_LLM) in the TU with a
+    # fail-closed #else, but every leg needs the engine, so the source joins
+    # the gated list.
+    list(APPEND _SGPROC_LLM_SOURCES processing_processor_elm.cpp)
+    list(APPEND _SGPROC_LLM_HEADERS ../../include/processors/processing_processor_elm.hpp)
+endif()
+
+# GNUS fork-patch detection (elmbridge Phase 3, D-14): grep the INSTALLED
+# llm.hpp for kGnusLlmForkPatchLevel -- the marker the dev_elmruntime fork
+# branch carries (sampler seed config key D-12 + Llm::cancel() D-13). A stock
+# MNN checkout still builds: without the marker the processor's cancel
+# trigger compiles to a documented degraded no-op path.
+set(SGPROC_MNN_LLM_FORK_PATCHES FALSE CACHE INTERNAL "Vendored MNN llm.hpp carries the GNUS fork patches (D-14)")
+if(SGPROC_HAS_MNN_LLM)
+    file(READ "${MNN_INCLUDE_DIR}/llm/llm.hpp" _SGPROC_MNN_LLM_HPP)
+    if(_SGPROC_MNN_LLM_HPP MATCHES "kGnusLlmForkPatchLevel")
+        set(SGPROC_MNN_LLM_FORK_PATCHES TRUE CACHE INTERNAL "Vendored MNN llm.hpp carries the GNUS fork patches (D-14)")
+        message(STATUS "MNN llm.hpp carries kGnusLlmForkPatchLevel -- SGPROC_MNN_LLM_FORK_PATCHES defined (elmbridge D-14; seeded sampling + Llm::cancel available)")
+    else()
+        message(STATUS "MNN llm.hpp does NOT carry kGnusLlmForkPatchLevel (stock MNN) -- SGPROC_MNN_LLM_FORK_PATCHES undefined; the ELM cancel trigger compiles to the documented degraded no-op path (elmbridge D-14)")
+    endif()
 endif()
 
 add_library(SGProcessors STATIC
@@ -93,6 +115,12 @@ add_library(SGProcessors STATIC
 
 if(SGPROC_HAS_MNN_LLM)
     target_compile_definitions(SGProcessors PUBLIC SGPROC_HAS_MNN_LLM)
+endif()
+
+# Fork-patch compile marker (D-14): consumers can #ifdef on
+# SGPROC_MNN_LLM_FORK_PATCHES to detect seeded sampling + Llm::cancel.
+if(SGPROC_MNN_LLM_FORK_PATCHES)
+    target_compile_definitions(SGProcessors PUBLIC SGPROC_MNN_LLM_FORK_PATCHES)
 endif()
 
 

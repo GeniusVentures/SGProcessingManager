@@ -447,14 +447,19 @@ namespace sgns::sgprocessing
         RegisterProcessorFactory( static_cast<int>( DataType::INT ),
                                   [] { return std::make_unique<sgprocessing::MNN_Int>(); } );
 #ifdef SGPROC_HAS_MNN_LLM
-        // PROC-01: only registered when the vendored MNN was built with MNN_BUILD_LLM=ON
-        // (see ProcessingManager.hpp's include guard and src/processors/CMakeLists.txt's
-        // configure-time detection). In checkouts without LLM support (like this one),
-        // DataType::LLM has no registered factory and SetProcessorByName() returns false,
-        // so ProcessInternal() fails closed with the existing Error::NO_PROCESSOR path --
-        // the same behavior any other unregistered DataType already has.
+        // ELM bridge (elmbridge Phase 3): the retired MNN_Llm shim is replaced
+        // by the ELM processor. The base StartProcessing remains fail-closed
+        // for legacy two-buffer calls; ELM work items enter via
+        // StartProcessingElm -- Phase 4 wires grid routing (the splitter
+        // constructs the sgns::Elm and passes the production cache +
+        // validator). Registration keeps the same configure-time gate: only
+        // registered when the vendored MNN was built with MNN_BUILD_LLM=ON
+        // (see src/processors/CMakeLists.txt's detection). In checkouts
+        // without LLM support, DataType::LLM has no registered factory and
+        // SetProcessorByName() returns false, so ProcessInternal() fails
+        // closed with the existing Error::NO_PROCESSOR path.
         RegisterProcessorFactory( static_cast<int>( DataType::LLM ),
-                                  [] { return std::make_unique<sgprocessing::MNN_Llm>(); } );
+                                  [] { return std::make_unique<sgprocessing::ElmProcessor>(); } );
 #endif
         RegisterProcessorFactory( static_cast<int>( DataType::MAT2 ),
                                   [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );

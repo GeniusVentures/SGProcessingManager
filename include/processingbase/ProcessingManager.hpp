@@ -28,12 +28,15 @@
 // src/processors/CMakeLists.txt's configure-time detection) -- MNN_Llm.hpp itself
 // only forward-declares MNN::Transformer::Llm, so this include is always safe; the
 // guard exists solely because src/processors/CMakeLists.txt conditionally excludes
-// processing_processor_mnn_llm.cpp's definition of StartProcessing() in checkouts
-// (like this one) where the vendored MNN wasn't built with LLM support -- without
-// this guard, RegisterProcessorFactory's lambda below would reference an
-// MNN_Llm vtable with no definition anywhere, breaking the link for every consumer
-// of this shared submodule branch.
+// the processor definitions in checkouts (like this one) where the vendored MNN
+// wasn't built with LLM support -- without this guard, RegisterProcessorFactory's
+// lambda below would reference a vtable with no definition anywhere, breaking the
+// link for every consumer of this shared submodule branch.
 #include <processors/processing_processor_mnn_llm.hpp>
+// ELM processor (elmbridge Phase 3): the DataType::LLM factory now constructs
+// ElmProcessor (the retired MNN_Llm shim's replacement). Same gate + same
+// include-isolation rationale -- the header forward-declares Llm only.
+#include <processors/processing_processor_elm.hpp>
 #endif
 #include <capability/capability_validator.hpp>
 #include <execution/execution_context.hpp>

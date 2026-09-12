@@ -48,13 +48,16 @@ namespace sgns::elmruntime
             const auto logger = SmokeCheckLogger();
             const std::string dir = EnsureTrailingSlash( bundleDirWithTrailingSlash );
 
-            // One load per entry under the process-wide init mutex: adapting
-            // MNN_Llm::LoadModel's exact sequence (processing_processor_mnn_llm.cpp:86-93).
-            // Scope the lock to the probe: createLLM + load + the 1-token response
-            // are one indivisible usability check.
-            std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
-
-            MNN::Transformer::Llm *llm = MNN::Transformer::Llm::createLLM( dir );
+            // Split-lock discipline (elmbridge Phase 3, D-01/D-03): createLLM
+            // under VulkanInitMutex (the GPU-init window ONLY); set_config
+            // outside any lock; load under LlmLoadMutex (LLM-load
+            // serialization, never blocking non-LLM processors); the 1-token
+            // response unlocked. Destroy on EVERY failure path.
+            MNN::Transformer::Llm *llm = nullptr;
+            {
+                std::lock_guard<std::mutex> gpuInit( sgns::sgprocessing::VulkanInitMutex() );
+                llm = MNN::Transformer::Llm::createLLM( dir );
+            }
             if ( llm == nullptr )
             {
                 logger->error( "ElmSmokeCheck: createLLM returned null for {}", dir );
@@ -70,14 +73,17 @@ namespace sgns::elmruntime
                 return outcome::failure( ElmRuntimeError::SMOKE_CHECK_FAILED );
             }
 
-            if ( !llm->load() )
             {
-                // Wrong-tokenizer / garbage bundles die here (Llm::load() checks
-                // llm_config.json, llm.mnn, llm.mnn.weight, tokenizer.txt
-                // unconditionally -- llm.cpp:265-283): SC-2's structured error.
-                logger->error( "ElmSmokeCheck: Llm::load() failed for {}", dir );
-                MNN::Transformer::Llm::destroy( llm );
-                return outcome::failure( ElmRuntimeError::SMOKE_CHECK_FAILED );
+                std::lock_guard<std::mutex> llmLoad( sgns::sgprocessing::LlmLoadMutex() );
+                if ( !llm->load() )
+                {
+                    // Wrong-tokenizer / garbage bundles die here (Llm::load() checks
+                    // llm_config.json, llm.mnn, llm.mnn.weight, tokenizer.txt
+                    // unconditionally -- llm.cpp:265-283): SC-2's structured error.
+                    logger->error( "ElmSmokeCheck: Llm::load() failed for {}", dir );
+                    MNN::Transformer::Llm::destroy( llm );
+                    return outcome::failure( ElmRuntimeError::SMOKE_CHECK_FAILED );
+                }
             }
 
             std::ostringstream oss;
