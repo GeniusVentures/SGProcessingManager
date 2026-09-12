@@ -1955,6 +1955,16 @@ namespace sgns::sgprocessing
         }
 
         //Run IO
+        // The work guard MUST be released before run(): it was only needed to keep the
+        // context alive while the fetches above were queued (every GetSubCidForProc/
+        // LoadASync initiates its async op synchronously). Left engaged, run() can only
+        // end via FileManager's GLOBAL singleton operation counter hitting zero and
+        // calling ioc->stop() — but that stop lands on whichever single ioc owns the
+        // globally-last completion. With concurrent Process() callers each on their own
+        // ioc (exactly what vulkan_init_concurrency_test exercises), every other caller's
+        // run() then blocks in epoll_wait forever. Released here, run() drains this
+        // ioc's queued work and returns naturally, independently of other callers.
+        workGuard.reset();
         ioc->reset();
         ioc->run();
 
