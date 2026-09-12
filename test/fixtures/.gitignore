@@ -1,0 +1,9 @@
+# ELM test fixture binaries (elmbridge Phase 3, plan 03-04): staged locally
+# per test/fixtures/README.md -- only the README (hash-recorded provenance)
+# and the synthesized elm_manifest.json are committed.
+elm-test-model/*.bin
+elm-test-model/*.weight
+elm-test-model/llm.mnn
+elm-test-model/llm_config.json
+elm-test-model/llm.mnn.json
+elm-test-model/tokenizer.txt

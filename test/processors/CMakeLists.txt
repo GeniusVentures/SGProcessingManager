@@ -35,6 +35,30 @@ if(SGPROC_HAS_MNN_LLM)
     )
 
     add_test(NAME MNNLlmTest COMMAND mnn_llm_test)
+
+    # ELM processor conformance tests (elmbridge Phase 3, plan 03-04).
+    # Every leg needs the engine TU (StartProcessingElm), so the whole target
+    # gates on SGPROC_HAS_MNN_LLM like mnn_llm_test. Fixture legs locate the
+    # staged Qwen bundle via SGPROC_ELM_TEST_MODEL_DIR and GTEST_SKIP with a
+    # cross-reference when unset. TIMEOUT 300: MNN-touching legs initialize
+    # the engine and load a real model (Pitfall 15.2/15.3).
+    add_executable(sgproc_elm_processor_test
+        elm_processor_test.cpp
+    )
+
+    target_link_libraries(sgproc_elm_processor_test
+        PRIVATE
+        SGProcessors
+        SGCapability
+        sgprocmanagerelmruntime
+        GTest::gtest_main
+    )
+
+    add_test(NAME sgproc_elm_processor_test COMMAND sgproc_elm_processor_test)
+    if(SGPROC_TEST_DISCOVERY AND NOT CMAKE_CROSSCOMPILING)
+        gtest_discover_tests(sgproc_elm_processor_test DISCOVERY_TIMEOUT 60)
+    endif()
+    set_tests_properties(sgproc_elm_processor_test PROPERTIES TIMEOUT 300)
 else()
     message(STATUS "MNN LLM engine headers NOT found -- mnn_llm_test target skipped (see src/processors/CMakeLists.txt)")
 endif()
