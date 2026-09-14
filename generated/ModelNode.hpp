@@ -23,7 +23,7 @@ namespace sgns {
     class ModelNode {
         public:
         ModelNode() :
-            source_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$")),
+            source_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(input|output|internal|parameter):[a-zA-Z0-9][A-Za-z0-9_-]*$")),
             target_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(output|internal):[a-zA-Z][a-zA-Z0-9_]*$"))
         {}
         virtual ~ModelNode() = default;
@@ -52,7 +52,9 @@ namespace sgns {
         void set_shape(boost::optional<std::vector<int64_t>> value) { this->shape = value; }
 
         /**
-         * Data source using prefix notation (input:, output:, internal:, parameter:)
+         * Data source using prefix notation (input:, output:, internal:, parameter:). Id charset:
+         * letter/digit first, then letters/digits/underscore/hyphen (elmbridge 04-03: ELM subtask
+         * sources carry work_item_id, whose schema charset admits hyphens)
          */
         boost::optional<std::string> get_source() const { return source; }
         void set_source(boost::optional<std::string> value) { if (value) CheckConstraint("source", source_constraint, *value); this->source = value; }

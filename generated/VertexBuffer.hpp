@@ -34,7 +34,7 @@ namespace sgns {
     class VertexBuffer {
         public:
         VertexBuffer() :
-            source_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"))
+            source_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(input|output|internal|parameter):[a-zA-Z0-9][A-Za-z0-9_-]*$"))
         {}
         virtual ~VertexBuffer() = default;
 

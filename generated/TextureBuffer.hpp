@@ -41,7 +41,7 @@ namespace sgns {
         public:
         TextureBuffer() :
             height_constraint(1, 8192, boost::none, boost::none, boost::none, boost::none, boost::none),
-            source_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$")),
+            source_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(input|output|internal|parameter):[a-zA-Z0-9][A-Za-z0-9_-]*$")),
             width_constraint(1, 8192, boost::none, boost::none, boost::none, boost::none, boost::none)
         {}
         virtual ~TextureBuffer() = default;

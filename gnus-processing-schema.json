@@ -521,8 +521,8 @@
 			},
 			"source": {
 			  "type": "string",
-			  "description": "Data source using prefix notation (input:, output:, internal:, parameter:)",
-			  "pattern": "^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"
+			  "description": "Data source using prefix notation (input:, output:, internal:, parameter:). Id charset: letter/digit first, then letters/digits/underscore/hyphen (elmbridge 04-03: ELM subtask sources carry work_item_id, whose schema charset admits hyphens)",
+			  "pattern": "^(input|output|internal|parameter):[a-zA-Z0-9][A-Za-z0-9_-]*$"
 			},
 			"shape": {
 			  "type": "array",
@@ -714,7 +714,7 @@
         "source": {
           "type": "string",
           "description": "Data source using prefix notation",
-          "pattern": "^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"
+          "pattern": "^(input|output|internal|parameter):[a-zA-Z0-9][A-Za-z0-9_-]*$"
         }
       }
     },
@@ -730,7 +730,7 @@
         "source": {
           "type": "string",
           "description": "Data source using prefix notation",
-          "pattern": "^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"
+          "pattern": "^(input|output|internal|parameter):[a-zA-Z0-9][A-Za-z0-9_-]*$"
         }
       }
     },
@@ -748,7 +748,7 @@
         "source": {
           "type": "string",
           "description": "Data source using prefix notation",
-          "pattern": "^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"
+          "pattern": "^(input|output|internal|parameter):[a-zA-Z0-9][A-Za-z0-9_-]*$"
         },
         "width": {
           "type": "integer",
@@ -816,7 +816,7 @@
         "source": {
           "type": "string",
           "description": "Data source using prefix notation",
-          "pattern": "^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"
+          "pattern": "^(input|output|internal|parameter):[a-zA-Z0-9][A-Za-z0-9_-]*$"
         },
         "target": {
           "type": "string",
