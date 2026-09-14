@@ -1,8 +1,7 @@
 {"schema_version": 1,"elm_type": "causal_lm","model_format": "mnn","artifacts": [
     {"name": "llm_config",     "uri": "file://llm_config.json",     "sha256": "ec05709b4261d59b510a0b7a636c6dcb6c5635c08fee7eb3c4f04188b509694b", "size_bytes": 272},
     {"name": "llm_model",      "uri": "file://llm.mnn",             "sha256": "480da511e603bd82f8d4af4e1f778ad72baadf8307f3585465ad9a94daca1a88", "size_bytes": 566264},
-    {"name": "llm_model_json", "uri": "file://llm.mnn.json",        "sha256": "245ce4289f456dcb371a8f8deabf75c3c4ee75f34b19e0d9723ba09b2fbacf8c", "size_bytes": 2808932},
     {"name": "llm_weight",     "uri": "file://llm.mnn.weight",      "sha256": "7ed0f4dcdd31dca15fcb548d2fc8b63b0014031fbd5f627508435726f90c75da", "size_bytes": 277967498},
-    {"name": "embeddings",     "uri": "file://embeddings_bf16.bin", "sha256": "4e96b0df6d274768cbb7e72404011853d23349999b658dc2f4dfb3c431ea223f", "size_bytes": 272269312},
+    {"name": "embedding_file", "uri": "file://embeddings_bf16.bin", "sha256": "4e96b0df6d274768cbb7e72404011853d23349999b658dc2f4dfb3c431ea223f", "size_bytes": 272269312},
     {"name": "tokenizer_file", "uri": "file://tokenizer.txt",       "sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b", "size_bytes": 3193477}
   ]}

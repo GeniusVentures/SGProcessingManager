@@ -45,14 +45,14 @@ $env:SGPROC_ELM_TEST_MODEL_DIR = (Resolve-Path $dir).Path
 ```
 
 A synthesized `elm_manifest.json` (Phase 2 manifest format over the four
-required roles) also lives in this directory; the test's FetchFn serves the
-bundle through the normal `ElmModelCache::Acquire` verification pipeline —
-the fixture is never loaded raw (hash-verified manifest + artifacts, the same
-path as production). Regenerate it by re-running the hash-verification step
-and rebuilding the JSON per the manifest schema (`schema_version` 1,
-`elm_type` `causal_lm`, `model_format` `mnn`, artifacts with name/uri/sha256/
-size_bytes), then recompute `sha256(elm_manifest.json)` if a test needs the
-declared hash.
+required roles plus the optional `embedding_file` role) also lives in this
+directory; the test's FetchFn serves the bundle through the normal
+`ElmModelCache::Acquire` verification pipeline — the fixture is never loaded
+raw (hash-verified manifest + artifacts, the same path as production).
+Regenerate it by re-running the hash-verification step and rebuilding the
+JSON per the manifest schema (`schema_version` 1, `elm_type` `causal_lm`,
+`model_format` `mnn`, artifacts with name/uri/sha256/size_bytes), then
+recompute `sha256(elm_manifest.json)` if a test needs the declared hash.
 
 ### Env var convention
 
@@ -60,13 +60,13 @@ declared hash.
 fixture legs report `GTEST_SKIP` with a cross-reference to this file — never
 a silent pass.
 
-### Known gap (escalated to workstream STATE.md)
+### Embedding role (resolved by D-03, Phase 4 plan 04-01)
 
 This model requires `embeddings_bf16.bin` at runtime (MNN's `DiskEmbedding`
 opens it by default; the bundle's `llm_config.json` declares no
-`tie_embeddings`), but the Phase 2 manifest role set
-(`llm_config|llm_model|llm_weight|tokenizer_file|context_file`) has no
-embedding role, so the cache cannot materialize it as a verified artifact.
-The test injects the file into the pinned entry after `Acquire` (the hit path
-tolerates extra files). The role-set amendment is Phase 4's, alongside the
-stop-string schema amendment (same seam; see the 03-03 plan notes).
+`tie_embeddings`). Formerly a known gap — the test injected the file into
+the pinned entry after `Acquire` — the role set now includes the optional
+`embedding_file` role (materialized at `embeddings_bf16.bin`), so the cache
+publishes it as a hash-verified artifact and the injection workaround is
+retired. `llm.mnn.json` (LoRA/GPTQ material `Llm::load` never reads) is no
+longer declared or fetched.

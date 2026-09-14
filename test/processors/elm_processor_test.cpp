@@ -11,13 +11,10 @@
 // divergence, seed-lands-in-dump_config, cancel latency, order permutation,
 // stop-string exclusion/count, both D-02 lock legs.
 //
-// KNOWN FIXTURE GAP (escalated to workstream STATE.md): the Phase 2 manifest
-// role set has no embedding role, but this model needs embeddings_bf16.bin at
-// runtime (DiskEmbedding defaults to it; llm_config.json has no
-// tie_embeddings). The fixture legs INJECT the file into the pinned entry
-// after Acquire (the hit path tolerates extra files) so generation reads real
-// embeddings. The role-set amendment is Phase 4's (same seam as the stop
-// schema escalation).
+// KNOWN FIXTURE GAP RESOLVED (D-03, Phase 4 plan 04-01): embedding_file is
+// now a 6th optional manifest role; StageRealBundle declares it and the
+// cache materializes embeddings_bf16.bin as a hash-verified artifact inside
+// the pinned entry (the Phase 3 post-Acquire injection is retired).
 
 #include <gtest/gtest.h>
 
@@ -222,6 +219,7 @@ namespace
             { "llm_model", "llm.mnn" },
             { "llm_weight", "llm.mnn.weight" },
             { "tokenizer_file", "tokenizer.txt" },
+            { "embedding_file", "embeddings_bf16.bin" },
         };
 
         std::ostringstream artifactsJson;
@@ -271,24 +269,11 @@ namespace
         return staged;
     }
 
-    // KNOWN-GAP injection (see the file header): copy embeddings_bf16.bin
-    // (and the visual-free extra llm.mnn.json) into the PINNED entry dir so
-    // DiskEmbedding reads real embeddings. The hit path tolerates extra
-    // files; the role-set amendment is Phase 4's.
-    void InjectFixtureExtras( const ElmCachePin &pin )
-    {
-        const std::string dir = FixtureModelDir();
-        for ( const char *extra : { "embeddings_bf16.bin", "llm.mnn.json" } )
-        {
-            const fs::path src = fs::path( dir ) / extra;
-            if ( fs::exists( src ) )
-            {
-                std::error_code ec;
-                fs::copy_file( src, fs::path( pin.GetDir() ) / extra,
-                    fs::copy_options::overwrite_existing, ec );
-            }
-        }
-    }
+    // D-03 (04-01) RETIRED the KNOWN-GAP injection: embedding_file is a
+    // declared manifest role, so the cache materializes embeddings_bf16.bin
+    // as a hash-verified artifact inside the pinned entry (no post-Acquire
+    // copies). llm.mnn.json (LoRA/GPTQ material MNN's Llm::load never reads)
+    // is simply not fetched anymore.
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -476,7 +461,6 @@ TEST( ElmProcessorTest, SameSeedByteIdentical )
     {
         auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
         ASSERT_TRUE( pin );
-        InjectFixtureExtras( pin.value() );
 
         sgns::sgprocessing::ElmProcessor  processor;
         std::vector<std::vector<uint8_t>> chunkhashes;
@@ -491,7 +475,6 @@ TEST( ElmProcessorTest, SameSeedByteIdentical )
     {
         auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
         ASSERT_TRUE( pin );
-        InjectFixtureExtras( pin.value() );
 
         sgns::sgprocessing::ElmProcessor  processor;
         std::vector<std::vector<uint8_t>> chunkhashes;
@@ -520,7 +503,6 @@ TEST( ElmProcessorTest, DifferentSeedDiffers )
 
     auto runOnce = [ &staged ]( int64_t seed ) {
         auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
-        InjectFixtureExtras( pin.value() );
         sgns::sgprocessing::ElmProcessor  processor;
         std::vector<std::vector<uint8_t>> chunkhashes;
         auto                              execCtx = ExecutionContext::NoOp();
@@ -553,7 +535,6 @@ TEST( ElmProcessorTest, SeedLandsInDumpConfig )
 
     auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
     ASSERT_TRUE( pin );
-    InjectFixtureExtras( pin.value() );
 
 #if defined( SGPROC_HAS_MNN_LLM )
     {
@@ -599,7 +580,6 @@ TEST( ElmProcessorTest, CancelLatency )
     double      baselineMs = 0.0;
     {
         auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
-        InjectFixtureExtras( pin.value() );
         sgns::sgprocessing::ElmProcessor  processor;
         std::vector<std::vector<uint8_t>> chunkhashes;
         auto                              execCtx = ExecutionContext::NoOp();
@@ -619,7 +599,6 @@ TEST( ElmProcessorTest, CancelLatency )
     // plan's elapsed/2 heuristic assumed.
     {
         auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
-        InjectFixtureExtras( pin.value() );
         sgns::sgprocessing::ElmProcessor  processor;
         std::vector<std::vector<uint8_t>> chunkhashes;
         auto                              execCtx = ExecutionContext::NoOp();
@@ -682,7 +661,6 @@ TEST( ElmProcessorTest, OrderPermutation )
 
     auto runItem = [ &staged ]( const std::string &id, const std::string &prompt, int64_t seed ) {
         auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
-        InjectFixtureExtras( pin.value() );
         sgns::sgprocessing::ElmProcessor  processor;
         std::vector<std::vector<uint8_t>> chunkhashes;
         auto                              execCtx = ExecutionContext::NoOp();
@@ -717,7 +695,6 @@ TEST( ElmProcessorTest, StopStringExcludesAndCounts )
 
     auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
     ASSERT_TRUE( pin );
-    InjectFixtureExtras( pin.value() );
 
     sgns::sgprocessing::ElmProcessor  processor;
     std::vector<std::vector<uint8_t>> chunkhashes;
@@ -771,7 +748,6 @@ TEST( ElmProcessorTest, TwoLlmLoadsSerialize )
 
     auto runLoad = [ &staged ]() {
         auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
-        InjectFixtureExtras( pin.value() );
         sgns::sgprocessing::ElmProcessor  processor;
         std::vector<std::vector<uint8_t>> chunkhashes;
         auto                              execCtx = ExecutionContext::NoOp();
@@ -839,7 +815,6 @@ TEST( ElmProcessorTest, MnnLoadNotStalledByLlmLoad )
     std::atomic<bool> loadDone{ false };
     std::thread       llmThread( [ &staged, &loadDone ]() {
         auto pin = staged.cache->Acquire( staged.manifestUri, staged.declaredHash );
-        InjectFixtureExtras( pin.value() );
         sgns::sgprocessing::ElmProcessor  processor;
         std::vector<std::vector<uint8_t>> chunkhashes;
         auto                              execCtx = ExecutionContext::NoOp();

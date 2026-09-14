@@ -38,11 +38,12 @@ namespace sgns::elmruntime
         /// (llmconfig.hpp:110-156 filenames; Llm::load() unconditionally checks
         /// llm_config.json, llm.mnn, llm.mnn.weight, and tokenizer.txt.)
         const char *const kRoleFilenames[] = {
-            "llm_config", "llm_config.json",   //
-            "llm_model", "llm.mnn",            //
-            "llm_weight", "llm.mnn.weight",    //
-            "tokenizer_file", "tokenizer.txt", //
-            "context_file", "context.json",    //
+            "llm_config", "llm_config.json",        //
+            "llm_model", "llm.mnn",                 //
+            "llm_weight", "llm.mnn.weight",         //
+            "tokenizer_file", "tokenizer.txt",      //
+            "context_file", "context.json",         //
+            "embedding_file", "embeddings_bf16.bin" //
         };
 
         /// The roles MNN's Llm::load() requires unconditionally (llm.cpp:265-283);

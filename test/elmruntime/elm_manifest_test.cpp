@@ -135,6 +135,35 @@ TEST( ElmManifestTest, ContextFileExtraRoleIsFine )
     EXPECT_EQ( sgns::elmruntime::TotalArtifactBytes( result.value() ), 500u );
 }
 
+// D-03 (04-01): embedding_file is a 6th OPTIONAL role. A manifest declaring
+// it parses (materialized at embeddings_bf16.bin via RoleFileName); a
+// manifest omitting it ALSO parses (embedding-less models unaffected --
+// kRequiredRoles stays at four).
+TEST( ElmManifestTest, EmbeddingFileRoleIsOptional )
+{
+    const std::string withEmbedding = "["                                              //
+                                      + ArtifactJson( "llm_config" ) + ", "           //
+                                      + ArtifactJson( "llm_model" ) + ", "            //
+                                      + ArtifactJson( "llm_weight" ) + ", "           //
+                                      + ArtifactJson( "tokenizer_file" ) + ", "       //
+                                      + ArtifactJson( "embedding_file" ) + "]";
+    const std::string jsonWith = BuildManifestJson( withEmbedding );
+    auto              withResult
+        = sgns::elmruntime::ParseAndVerifyManifest( ToBytes( jsonWith ), Sha256Hex( jsonWith ) );
+    ASSERT_TRUE( withResult ) << "embedding_file must verify like context_file: "
+                              << withResult.error().message();
+    EXPECT_EQ( withResult.value().get_artifacts().size(), 5u );
+
+    // Optionality: the four-role baseline still parses (ValidManifestParses
+    // covers the same shape; this leg pins it beside the declaring leg).
+    const std::string jsonWithout = BuildManifestJson();
+    auto              withoutResult
+        = sgns::elmruntime::ParseAndVerifyManifest( ToBytes( jsonWithout ), Sha256Hex( jsonWithout ) );
+    ASSERT_TRUE( withoutResult ) << "a manifest omitting embedding_file must still verify: "
+                                 << withoutResult.error().message();
+    EXPECT_EQ( withoutResult.value().get_artifacts().size(), 4u );
+}
+
 TEST( ElmManifestTest, QuantizationAndRuntimeOptionalBlocksParse )
 {
     const std::string json = BuildManifestJson(
@@ -337,6 +366,17 @@ TEST( ElmManifestTest, RoleFileNameMapsAllFiveRoles )
     EXPECT_STREQ( RoleFileName( "context_file" ), "context.json" );
     EXPECT_EQ( RoleFileName( "llm.mnn" ), nullptr ); // filenames are not roles
     EXPECT_EQ( RoleFileName( "../evil" ), nullptr ); // never a path
+}
+
+// D-03 (04-01): the 6th role materializes at MNN's DiskEmbedding default
+// filename (llmconfig.hpp:127 -- config_.value("embedding_file",
+// "embeddings_bf16.bin")); a FILENAME is still never a role.
+TEST( ElmManifestTest, RoleFileNameMapsEmbeddingFile )
+{
+    using sgns::elmruntime::RoleFileName;
+    EXPECT_STREQ( RoleFileName( "embedding_file" ), "embeddings_bf16.bin" );
+    EXPECT_EQ( RoleFileName( "embeddings_bf16.bin" ), nullptr ); // filename, not role
+    EXPECT_EQ( RoleFileName( "embeddings" ), nullptr );          // retired non-role name
 }
 
 // ---------------------------------------------------------------------------

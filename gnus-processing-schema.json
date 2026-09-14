@@ -189,8 +189,8 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Artifact role: llm_config, llm_model, llm_weight, tokenizer_file, or context_file",
-          "pattern": "^(llm_config|llm_model|llm_weight|tokenizer_file|context_file)$"
+          "description": "Artifact role: llm_config, llm_model, llm_weight, tokenizer_file, context_file, or embedding_file",
+          "pattern": "^(llm_config|llm_model|llm_weight|tokenizer_file|context_file|embedding_file)$"
         },
         "uri": {
           "type": "string",

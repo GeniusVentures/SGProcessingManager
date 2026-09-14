@@ -30,7 +30,7 @@ namespace sgns {
     class ElmModelArtifact {
         public:
         ElmModelArtifact() :
-            name_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(llm_config|llm_model|llm_weight|tokenizer_file|context_file)$")),
+            name_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^(llm_config|llm_model|llm_weight|tokenizer_file|context_file|embedding_file)$")),
             sha256_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^[0-9a-fA-F]{64}$")),
             size_bytes_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
             uri_constraint(boost::none, boost::none, boost::none, boost::none, 1, boost::none, boost::none)
@@ -49,7 +49,8 @@ namespace sgns {
 
         public:
         /**
-         * Artifact role: llm_config, llm_model, llm_weight, tokenizer_file, or context_file
+         * Artifact role: llm_config, llm_model, llm_weight, tokenizer_file, context_file, or
+         * embedding_file
          */
         const std::string & get_name() const { return name; }
         std::string & get_mutable_name() { return name; }
