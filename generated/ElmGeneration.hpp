@@ -48,6 +48,7 @@ namespace sgns {
         ClassMemberConstraints max_output_tokens_constraint;
         boost::optional<int64_t> seed;
         ClassMemberConstraints seed_constraint;
+        boost::optional<std::vector<std::string>> stop;
         boost::optional<double> temperature;
         ClassMemberConstraints temperature_constraint;
         boost::optional<double> top_p;
@@ -65,6 +66,14 @@ namespace sgns {
          */
         boost::optional<int64_t> get_seed() const { return seed; }
         void set_seed(boost::optional<int64_t> value) { if (value) CheckConstraint("seed", seed_constraint, *value); this->seed = value; }
+
+        /**
+         * Stop strings: generation halts when any one appears in the output. Bounds (max 4 entries,
+         * each 1-128 UTF-8 bytes, no empty strings) are enforced by the ProcessingManager C++ gate
+         * because quicktype codegen drops maxItems/minLength/maxLength
+         */
+        boost::optional<std::vector<std::string>> get_stop() const { return stop; }
+        void set_stop(boost::optional<std::vector<std::string>> value) { this->stop = value; }
 
         /**
          * Sampling temperature, default 1.0

@@ -157,6 +157,16 @@
           "type": "integer",
           "description": "Sampling seed for deterministic generation",
           "minimum": 0
+        },
+        "stop": {
+          "type": "array",
+          "description": "Stop strings: generation halts when any one appears in the output. Bounds (max 4 entries, each 1-128 UTF-8 bytes, no empty strings) are enforced by the ProcessingManager C++ gate because quicktype codegen drops maxItems/minLength/maxLength",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
         }
       }
     },

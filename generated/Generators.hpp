@@ -214,6 +214,7 @@ namespace sgns {
     inline void from_json(const json & j, ElmGeneration& x) {
         x.set_max_output_tokens(get_stack_optional<int64_t>(j, "max_output_tokens"));
         x.set_seed(get_stack_optional<int64_t>(j, "seed"));
+        x.set_stop(get_stack_optional<std::vector<std::string>>(j, "stop"));
         x.set_temperature(get_stack_optional<double>(j, "temperature"));
         x.set_top_p(get_stack_optional<double>(j, "top_p"));
     }
@@ -222,6 +223,7 @@ namespace sgns {
         j = json::object();
         j["max_output_tokens"] = x.get_max_output_tokens();
         j["seed"] = x.get_seed();
+        j["stop"] = x.get_stop();
         j["temperature"] = x.get_temperature();
         j["top_p"] = x.get_top_p();
     }
