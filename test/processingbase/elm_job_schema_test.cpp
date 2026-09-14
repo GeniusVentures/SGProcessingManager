@@ -250,6 +250,55 @@ TEST( ElmJobSchemaTest, GenerationFullValidBlockParses )
 }
 
 // ---------------------------------------------------------------------------
+// Stop-array bounds gates (D-02, 04-02 Task 1) — max 4 entries, each 1-128
+// UTF-8 bytes, reject-at-parse, never clamp
+// ---------------------------------------------------------------------------
+
+TEST( ElmJobSchemaTest, StopFourEntriesParse )
+{
+    auto result = sgns::sgprocessing::ProcessingManager::Create(
+        ElmWithGeneration( R"({ "stop": ["a", "b", "c", "d"] })" ) );
+    ASSERT_TRUE( result );
+}
+
+TEST( ElmJobSchemaTest, StopFiveEntriesReject )
+{
+    EXPECT_EQ( ExpectCreateFailure( ElmWithGeneration( R"({ "stop": ["a", "b", "c", "d", "e"] })" ) ),
+               Error::ELM_GENERATION_SETTINGS_INVALID );
+}
+
+TEST( ElmJobSchemaTest, StopEmptyStringEntryRejects )
+{
+    EXPECT_EQ( ExpectCreateFailure( ElmWithGeneration( R"({ "stop": [""] })" ) ),
+               Error::ELM_GENERATION_SETTINGS_INVALID );
+}
+
+TEST( ElmJobSchemaTest, StopOversizedEntryRejects )
+{
+    // 129 'x' bytes -- one over the 128-byte bound.
+    const std::string oversized( 129, 'x' );
+    EXPECT_EQ( ExpectCreateFailure( ElmWithGeneration( R"({ "stop": [")" + oversized + R"("] })" ) ),
+               Error::ELM_GENERATION_SETTINGS_INVALID );
+}
+
+TEST( ElmJobSchemaTest, StopExactly128ByteEntryParses )
+{
+    const std::string boundary( 128, 'x' );
+    auto result = sgns::sgprocessing::ProcessingManager::Create(
+        ElmWithGeneration( R"({ "stop": [")" + boundary + R"("] })" ) );
+    ASSERT_TRUE( result );
+}
+
+TEST( ElmJobSchemaTest, StopAbsentParses )
+{
+    // The whole generation block without stop — the pre-amendment shape stays
+    // valid (backward compatibility of the optional add).
+    auto result = sgns::sgprocessing::ProcessingManager::Create(
+        ElmWithGeneration( R"({ "temperature": 0.7 })" ) );
+    ASSERT_TRUE( result );
+}
+
+// ---------------------------------------------------------------------------
 // Pattern / discriminator rejections (T-01-02, defensive)
 // ---------------------------------------------------------------------------
 

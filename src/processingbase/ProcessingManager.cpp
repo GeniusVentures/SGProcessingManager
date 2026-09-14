@@ -742,6 +742,34 @@ namespace sgns::sgprocessing
                         return outcome::failure( Error::ELM_GENERATION_SETTINGS_INVALID );
                     }
                 }
+                // Stop-array bounds (D-02, Phase 4 plan 04-01 Task 1): the
+                // schema declares maxItems 4 / items 1-128 bytes, but quicktype
+                // drops those constraints (P4-5) -- this gate is authoritative.
+                // Reject-at-parse, NEVER clamp (Phase 1 D-05 discipline). The
+                // bound is UTF-8 BYTES (.size()), not codepoints.
+                const auto stopOpt = generation.get_stop();
+                if ( stopOpt )
+                {
+                    if ( stopOpt->size() > 4 )
+                    {
+                        m_logger->error( "elm generation.stop has {} entries; max is 4", stopOpt->size() );
+                        return outcome::failure( Error::ELM_GENERATION_SETTINGS_INVALID );
+                    }
+                    for ( const auto &stopString : *stopOpt )
+                    {
+                        if ( stopString.empty() )
+                        {
+                            m_logger->error( "elm generation.stop contains an empty string" );
+                            return outcome::failure( Error::ELM_GENERATION_SETTINGS_INVALID );
+                        }
+                        if ( stopString.size() > 128 )
+                        {
+                            m_logger->error( "elm generation.stop entry exceeds 128 bytes ({} bytes)",
+                                             stopString.size() );
+                            return outcome::failure( Error::ELM_GENERATION_SETTINGS_INVALID );
+                        }
+                    }
+                }
             }
         }
 
