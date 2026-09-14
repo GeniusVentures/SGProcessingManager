@@ -46,6 +46,12 @@ namespace sgns::elmruntime
         doc["completion_tokens"]   = envelope.completion_tokens;
         doc["finish_reason"]       = ToString( envelope.finish_reason );
         doc["model_manifest_hash"] = envelope.model_manifest_hash;
+        // D-04 settlement stamps: ALWAYS emitted (additive keys) so the
+        // settlement's fetchOutputData finds them on every envelope --
+        // including error envelopes (window closes at finish; T-01-10
+        // residual accepted).
+        doc["grab_time_usec"]   = envelope.grab_time_usec;
+        doc["finish_time_usec"] = envelope.finish_time_usec;
         if ( envelope.finish_reason == ElmFinishReason::Error && envelope.error.has_value() )
         {
             doc["error"] = { { "code", envelope.error->code }, { "message", envelope.error->message } };

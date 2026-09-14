@@ -60,15 +60,18 @@ namespace sgns::elmruntime
         int64_t                         completion_tokens = 0; ///< LlmContext::output_tokens.size() (the authority)
         ElmFinishReason                 finish_reason = ElmFinishReason::Error;
         std::string                     model_manifest_hash; ///< provenance: ElmCachePin::GetHash() (SC-4)
+        int64_t                         grab_time_usec = 0;   ///< worker-attested settlement stamp: subtask grab, before ANY fetch incl. model download (accepted residual T-01-10)
+        int64_t                         finish_time_usec = 0; ///< worker-attested settlement stamp: envelope assembly (D-04)
         std::optional<ElmEnvelopeError> error;              ///< present only when finish_reason == Error
     };
 
     /// @brief Serialize an envelope to its canonical JSON wire form.
     ///
     /// Exact key set: work_item_id, text, prompt_tokens, completion_tokens,
-    /// finish_reason, model_manifest_hash -- plus a nested error {code,message}
-    /// object ONLY when finish_reason == Error (D-11's detail field; the key is
-    /// absent otherwise). Counts serialize as JSON numbers.
+    /// finish_reason, model_manifest_hash, grab_time_usec, finish_time_usec
+    /// -- plus a nested error {code,message} object ONLY when
+    /// finish_reason == Error (D-11's detail field; the key is absent
+    /// otherwise). Counts and stamps serialize as JSON numbers.
     /// @param envelope - the envelope to serialize
     /// @return the JSON document as a string
     std::string ElmEnvelopeToJson( const ElmEnvelope &envelope );
