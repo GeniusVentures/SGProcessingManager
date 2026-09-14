@@ -368,13 +368,17 @@ TEST( ElmProcessorTest, EnvelopeFieldsOnFinishReasons )
             envelope.error = sgns::elmruntime::ElmEnvelopeError{ "CODE", "msg" };
         }
         const auto json = nlohmann::json::parse( sgns::elmruntime::ElmEnvelopeToJson( envelope ) );
-        EXPECT_EQ( json.size(), reason == ElmFinishReason::Error ? 7 : 6 );
+        // D-04 (04-01): the two settlement stamps are additive keys -- eight
+        // base keys, nine when the error detail object rides along.
+        EXPECT_EQ( json.size(), reason == ElmFinishReason::Error ? 9 : 8 );
         EXPECT_TRUE( json.contains( "work_item_id" ) );
         EXPECT_TRUE( json.contains( "text" ) );
         EXPECT_TRUE( json.contains( "prompt_tokens" ) );
         EXPECT_TRUE( json.contains( "completion_tokens" ) );
         EXPECT_TRUE( json.contains( "finish_reason" ) );
         EXPECT_TRUE( json.contains( "model_manifest_hash" ) );
+        EXPECT_TRUE( json.contains( "grab_time_usec" ) );
+        EXPECT_TRUE( json.contains( "finish_time_usec" ) );
         EXPECT_EQ( json.contains( "error" ), reason == ElmFinishReason::Error );
     }
 }

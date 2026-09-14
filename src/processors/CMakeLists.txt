@@ -146,6 +146,14 @@ target_link_libraries(
 		sgprocmanagersha
 		sgprocmanagerquant
 		sgprocmanagerdiff
+		# ELM processor link closure (elmbridge Phase 3 gap, fixed in 04-01):
+		# processing_processor_elm.cpp references sgns::elmruntime symbols
+		# (ElmEnvelope/ToString, ElmModelCache, ElmEntryPreflight), but only
+		# test/processors linked sgprocmanagerelmruntime explicitly -- any
+		# OTHER consumer of SGProcessors (e.g. sgprocbase_elm_job_schema_test
+		# via ProcessingBase) hit LNK2019. PUBLIC so the closure propagates;
+		# no cycle (elmruntime links only util libs + MNN/Vulkan PRIVATE).
+		sgprocmanagerelmruntime
 )
 
 if(APPLE)
