@@ -42,6 +42,7 @@
 #include <execution/execution_context.hpp>
 #include <artifacts/artifact_types.hpp>
 #include <artifacts/execution_manifest.hpp>
+#include <elmruntime/ElmModelCache.hpp>
 #include <boost/asio/io_context.hpp>
 #include <iostream>
 #include <Generators.hpp>
@@ -255,6 +256,43 @@ namespace sgns::sgprocessing
                                                         std::vector<std::string>                &output_locations,
                                                         ExecutionContext                        &execCtx );
 
+        /** ELM work-item execution path (elmbridge Phase 4, plan 04-02).
+         * Routes an elm_processing subtask end-to-end: work-item resolution
+         * ("input:<work_item_id>" -> elms[] selection), input_uri prompt fetch,
+         * lazily-constructed production model cache, StartProcessingElm with
+         * stop strings + envelope stamping (grab at entry pre-fetch, finish at
+         * assembly, D-04), and envelope publication through the SaveASync
+         * dual-save loop (ipfs:// primary + local file:// mirror, D-06/D-07).
+         * Terminal envelope-bearing results (error/cancelled) return
+         * success-shaped ProcessOutput — never a re-grab-inducing failure
+         * (Pattern 2).
+         * @param ioc              — Boost.Asio io_context for prompt fetch + saves
+         * @param chunkhashes      — out: single full-envelope sha256 chunk hash
+         * @param model            — ModelNode whose source is "input:<work_item_id>"
+         * @param output_locations — out: [0] = the ipfs://CID artifact URL
+         * @param execCtx          — execution context; deadlineMs set from funding
+         * @return success-shaped ProcessOutput (combinedHash = envelope-minus-text
+         *         digest per RESEARCH OQ2), or failure for envelope-ABSENT errors
+         */
+        outcome::result<ProcessOutput> ProcessElmWorkItem( std::shared_ptr<boost::asio::io_context> ioc,
+                                                          std::vector<std::vector<uint8_t>>       &chunkhashes,
+                                                          sgns::ModelNode                         &model,
+                                                          std::vector<std::string>                &output_locations,
+                                                          ExecutionContext                        &execCtx );
+
+        /** Resolve the sgns::Elm work item a ModelNode's "input:<id>" source names.
+         * @param source - the ModelNode source string ("input:<work_item_id>")
+         * @return the matching work item, or MISSING_INPUT when absent/unprefixed
+         */
+        outcome::result<sgns::Elm> ResolveElmWorkItem( const std::string &source ) const;
+
+        /** Lazily construct (once) and return the production ELM model cache.
+         * Construction failure is CACHED as a null member (T-04-02-04: no
+         * per-subtask retry-fail loop) and reported per call.
+         * @return the shared cache, or failure when construction failed
+         */
+        outcome::result<std::shared_ptr<sgns::elmruntime::ElmModelCache>> GetOrCreateElmCache();
+
         bool SetProcessorByName( const int &name )
         {
             auto factoryFunction = m_processorFactories.find( name );
@@ -287,6 +325,13 @@ namespace sgns::sgprocessing
         std::unordered_map<PassType, ExecutorRegistryEntry, PassTypeHash>                                m_passFactories;
         std::unordered_map<std::string, size_t>                                                           m_inputMap;
         std::unique_ptr<CapabilityValidator>                                                              m_capabilityValidator;
+        /// Lazily-constructed production ELM model cache (elmbridge 04-02,
+        /// P4-7: never built at Init; first ELM subtask constructs it, failure
+        /// caches as null so the queue drains instead of livelocking).
+        std::shared_ptr<sgns::elmruntime::ElmModelCache>                                                  m_elmCache;
+        /// True once m_elmCache construction has been ATTEMPTED (success or
+        /// failure) — guards the construct-once semantics of GetOrCreateElmCache.
+        bool                                                                                              m_elmCacheAttempted = false;
     };
 }
 

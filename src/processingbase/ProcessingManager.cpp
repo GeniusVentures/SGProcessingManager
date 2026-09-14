@@ -5,6 +5,10 @@
 #include "URLStringUtil.h"
 #include "shaders/shader_compiler.hpp"
 
+#include <elmruntime/ElmEnvelope.hpp>
+#include <elmruntime/ElmSmokeCheck.hpp>
+#include "util/sha256.hpp"
+
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <chrono>
@@ -12,6 +16,7 @@
 #include <map>
 #include <set>
 #include "artifacts/artifact_serializer.hpp"
+#include <nlohmann/json.hpp>
 
 OUTCOME_CPP_DEFINE_CATEGORY_3( sgns::sgprocessing, ProcessingManager::Error, e )
 {
@@ -1514,12 +1519,355 @@ namespace sgns::sgprocessing
         return ProcessInternal( ioc, chunkhashes, model, output_locations, externalExecCtx );
     }
 
+    outcome::result<sgns::Elm> ProcessingManager::ResolveElmWorkItem( const std::string &source ) const
+    {
+        // Subtask ModelNode sources carry "input:<work_item_id>" (the Phase 1
+        // splitter convention this path consumes). Strip the prefix and scan
+        // the ALREADY parse-gated elms[] (charset + uniqueness enforced at
+        // Create) for the matching work item.
+        constexpr std::string_view kInputPrefix = "input:";
+        if ( source.rfind( kInputPrefix, 0 ) != 0 )
+        {
+            return outcome::failure( Error::MISSING_INPUT );
+        }
+        const std::string workItemId = source.substr( kInputPrefix.size() );
+        // Materialize the by-value optional into a named local (UB rule).
+        const auto elmsOpt = processing_.get_elms();
+        if ( !elmsOpt )
+        {
+            return outcome::failure( Error::MISSING_INPUT );
+        }
+        for ( const auto &elm : *elmsOpt )
+        {
+            if ( elm.get_work_item_id() == workItemId )
+            {
+                return elm;
+            }
+        }
+        m_logger->error( "ELM work item not found for subtask source: {}", source );
+        return outcome::failure( Error::MISSING_INPUT );
+    }
+
+    outcome::result<std::shared_ptr<sgns::elmruntime::ElmModelCache>> ProcessingManager::GetOrCreateElmCache()
+    {
+        // Lazy construct-once (P4-7): never at Init; the first ELM subtask
+        // pays construction. Failure caches as attempted-with-null so a
+        // broken environment drains the queue one terminal envelope per
+        // subtask instead of retry-looping (T-04-02-04).
+        if ( !m_elmCacheAttempted )
+        {
+            m_elmCacheAttempted = true;
+            auto cacheResult = sgns::elmruntime::ElmModelCache::CreateProductionElmModelCache(
+                sgns::elmruntime::MakeMnnLlmSmokeCheck() );
+            if ( cacheResult )
+            {
+                m_elmCache = std::move( cacheResult.value() );
+            }
+            else
+            {
+                m_logger->error( "ELM production cache construction failed: {}",
+                                 cacheResult.error().message() );
+            }
+        }
+        if ( !m_elmCache )
+        {
+            return outcome::failure( Error::PROCESSING_FAILED );
+        }
+        return m_elmCache;
+    }
+
+    outcome::result<ProcessOutput> ProcessingManager::ProcessElmWorkItem(
+        std::shared_ptr<boost::asio::io_context> ioc,
+        std::vector<std::vector<uint8_t>>       &chunkhashes,
+        sgns::ModelNode                         &model,
+        std::vector<std::string>                &output_locations,
+        ExecutionContext                        &execCtx )
+    {
+        // (b) Work-item resolution: "input:<work_item_id>" -> elms[] selection.
+        auto elmResult = ResolveElmWorkItem( model.get_source().value_or( "" ) );
+        if ( !elmResult )
+        {
+            return outcome::failure( elmResult.error() );
+        }
+        const sgns::Elm elm = std::move( elmResult.value() );
+        const std::string &workItemId = elm.get_work_item_id();
+
+        // (c) grab stamp AT ENTRY — before the prompt fetch, so model
+        // download time is included by construction (01-DESIGN-SETTLEMENT §1).
+        const int64_t grabTimeUsec = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch() ).count();
+
+        // (c) Deadline from funding hours BEFORE any timer arms (P4-8).
+        // honoring the "0 = no deadline" sentinel: a caller-supplied nonzero
+        // deadlineMs is never overwritten (the ProcessInternal convention).
+        if ( execCtx.deadlineMs == 0 )
+        {
+            const double hours = GetElmMaximumProcessingHours();
+            if ( hours > 0.0 )
+            {
+                execCtx.deadlineMs = static_cast<uint64_t>( hours * 3600.0 * 1000.0 );
+            }
+        }
+
+        // (d) Prompt resolution: the processor never fetches — input_uri
+        // bytes are fetched here through FileManager and handed over as
+        // resolved text.
+        std::string promptText;
+        {
+            auto promptBytes = std::make_shared<std::vector<char>>();
+            FileManager::GetInstance().InitializeSingletons();
+            FileManager::GetInstance().LoadASync(
+                elm.get_input_uri(),
+                false,
+                false,
+                ioc,
+                [this, promptBytes](
+                    outcome::result<
+                        std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>>
+                        buffers )
+                {
+                    if ( buffers )
+                    {
+                        for ( const auto &buf : buffers.value()->second )
+                        {
+                            promptBytes->insert( promptBytes->end(), buf.begin(), buf.end() );
+                        }
+                    }
+                    else
+                    {
+                        m_logger->error( "ELM[{}]: input_uri fetch failed: {}",
+                                         "prompt",
+                                         buffers.error().message() );
+                    }
+                },
+                "file" );
+            ioc->reset();
+            ioc->run();
+            if ( promptBytes->empty() )
+            {
+                m_logger->error( "ELM[{}]: input_uri resolved to empty bytes", workItemId );
+                return outcome::failure( Error::INPUT_UNAVAIL );
+            }
+            promptText.assign( promptBytes->data(), promptBytes->size() );
+        }
+
+        // (f) Stop strings from the (parse-gated) generation block.
+        std::vector<std::string> stopStrings;
+        {
+            const auto generationOpt = elm.get_generation();
+            if ( generationOpt )
+            {
+                const auto stopOpt = generationOpt->get_stop();
+                if ( stopOpt )
+                {
+                    stopStrings = *stopOpt;
+                }
+            }
+        }
+
+        // (e) Cache site: lazy construct-once production cache.
+        auto cacheResult = GetOrCreateElmCache();
+        std::shared_ptr<sgns::elmruntime::ElmModelCache> cache;
+        if ( cacheResult )
+        {
+            cache = std::move( cacheResult.value() );
+        }
+        else
+        {
+            // Construction failure -> terminal error envelope published the
+            // same as any envelope-bearing result (never a crash, never a
+            // retry-loop; the queue drains). Built directly here — NOT fed
+            // through StartProcessingElm (which would re-derive a different
+            // error shape).
+            m_logger->error( "ELM[{}]: no model cache available (construction failed earlier)", workItemId );
+        }
+
+        // Deadline timer mirroring the non-ELM path (D-05/D-09 wiring).
+        boost::asio::deadline_timer deadlineTimer( *ioc );
+        if ( execCtx.deadlineMs > 0 )
+        {
+            deadlineTimer.expires_from_now(
+                boost::posix_time::milliseconds( execCtx.deadlineMs ) );
+            deadlineTimer.async_wait( [&execCtx]( const boost::system::error_code &ec )
+            {
+                if ( !ec )
+                {
+                    execCtx.cancelToken.Cancel();
+                }
+            } );
+        }
+        execCtx.cancelToken.SetCallback( [&deadlineTimer]()
+        {
+            deadlineTimer.cancel();
+        } );
+
+        // (g) Route to the ELM processor. The factory-registered LLM-type
+        // processor IS the ElmProcessor (the mnn_llm shim's replacement) —
+        // select it by DataType::LLM the way the dispatch table does, then
+        // call the ELM entry point.
+        ProcessingResult processResult{};
+        if ( !SetProcessorByName( static_cast<int>( sgns::DataType::LLM ) ) )
+        {
+            return outcome::failure( Error::NO_PROCESSOR );
+        }
+        if ( auto *elmProcessor = dynamic_cast<ElmProcessor *>( m_processor.get() ) )
+        {
+            processResult = elmProcessor->StartProcessingElm(
+                chunkhashes, promptText, stopStrings, elm, execCtx, cache,
+                m_capabilityValidator.get() );
+        }
+        else
+        {
+            return outcome::failure( Error::NO_PROCESSOR );
+        }
+        deadlineTimer.cancel();
+
+        // (h) finish stamp at envelope assembly; both stamps written into the
+        // envelope JSON artifact (the single envelope document D-04 mandates).
+        const int64_t finishTimeUsec = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch() ).count();
+
+        // Envelope-present test (Pattern 2 / T-04-02-05): the processor's
+        // MakeErrorResult and cancelled paths ALWAYS set hash + output_buffers
+        // + exactly one chunk hash. Envelope-ABSENT genuine failures (e.g.
+        // pre-cancel with no envelope) return failure unchanged.
+        const bool hasEnvelope = processResult.output_buffers != nullptr
+            && !processResult.hash.empty()
+            && processResult.output_buffers->second.size() == 1
+            && !processResult.output_buffers->second.front().empty();
+
+        if ( !hasEnvelope )
+        {
+            m_logger->error( "ELM[{}]: processing failed with no envelope: {}",
+                             workItemId,
+                             processResult.error ? processResult.error->message : std::string( "unknown" ) );
+            return outcome::failure( Error::PROCESSING_FAILED );
+        }
+
+        // Stamp + re-serialize the envelope artifact.
+        std::string envelopeJson( processResult.output_buffers->second.front().begin(),
+                                  processResult.output_buffers->second.front().end() );
+        try
+        {
+            auto doc          = nlohmann::json::parse( envelopeJson );
+            doc["grab_time_usec"]   = grabTimeUsec;
+            doc["finish_time_usec"] = finishTimeUsec;
+            envelopeJson            = doc.dump();
+        }
+        catch ( const std::exception &e )
+        {
+            m_logger->error( "ELM[{}]: envelope re-stamp parse failure: {}", workItemId, e.what() );
+            return outcome::failure( Error::PROCESSING_FAILED );
+        }
+        processResult.output_buffers->second.front().assign( envelopeJson.begin(), envelopeJson.end() );
+
+        // (d) OQ2 two-digest convention: chunkhashes[0] = sha256(FULL envelope)
+        // — the processor's original hash is stale after re-stamping, so
+        // recompute; combinedHash = sha256(envelope-minus-text).
+        chunkhashes.clear();
+        const auto fullDigest = sgns::sgprocmanagersha::sha256( envelopeJson.data(), envelopeJson.size() );
+        chunkhashes.push_back( fullDigest );
+
+        ProcessOutput output{};
+        {
+            std::string minusText = envelopeJson;
+            try
+            {
+                auto doc   = nlohmann::json::parse( minusText );
+                doc.erase( "text" );
+                minusText  = doc.dump();
+            }
+            catch ( const std::exception & )
+            {
+                // Unparseable (never expected — we just serialized it)
+                return outcome::failure( Error::PROCESSING_FAILED );
+            }
+            output.combinedHash = sgns::sgprocmanagersha::sha256( minusText.data(), minusText.size() );
+        }
+
+        // (b) Save branch (Task 3): ipfs:// primary + local dual-save through
+        // the existing SaveASync mechanics; output_locations[0] carries the
+        // resulting ipfs://CID back to the caller.
+        {
+            FileManager::GetInstance().InitializeSingletons();
+
+            auto saveBuffers =
+                std::make_shared<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>();
+            saveBuffers->first.push_back( workItemId + ".json" );
+            saveBuffers->second.push_back( std::vector<char>( envelopeJson.begin(), envelopeJson.end() ) );
+
+            const std::string primaryUrl = "ipfs://";
+            auto saveLocation = std::make_shared<std::string>();
+
+            FileManager::GetInstance().SaveASync(
+                primaryUrl,
+                outcome::success( saveBuffers ),
+                ioc,
+                [this, workItemId]( const FileManager::ResultType &result )
+                {
+                    if ( !result )
+                    {
+                        m_logger->error( "ELM[{}]: artifact save failed: {}",
+                                         workItemId,
+                                         result.error().message() );
+                    }
+                },
+                saveLocation );
+
+            // Dual-save: local mirror under cacheDir/results/ so the
+            // producing node can re-serve the artifact after restart (the
+            // non-ELM loop's ipfs convention, mirrored).
+            std::string cacheDir;
+            try
+            {
+                cacheDir = FileManager::GetInstance().getCacheDir();
+            }
+            catch ( const std::exception & )
+            {
+            }
+            if ( !cacheDir.empty() )
+            {
+                const std::string localUrl =
+                    "file://" + cacheDir + "/results/" + workItemId + ".json";
+                FileManager::GetInstance().SaveASync(
+                    localUrl,
+                    outcome::success( saveBuffers ),
+                    ioc,
+                    nullptr,
+                    nullptr );
+            }
+
+            ioc->reset();
+            ioc->run();
+
+            output_locations.clear();
+            output_locations.resize( 1 );
+            if ( saveLocation && !saveLocation->empty() )
+            {
+                output_locations[0] = *saveLocation;
+            }
+        }
+
+        m_lastManifest = output.manifest;
+        return output;
+    }
+
     outcome::result<ProcessOutput> ProcessingManager::ProcessInternal( std::shared_ptr<boost::asio::io_context> ioc,
                                                                       std::vector<std::vector<uint8_t>> &chunkhashes,
                                                                       sgns::ModelNode                   &model,
                                                                       std::vector<std::string>          &output_locations,
                                                                       ExecutionContext                  &execCtx )
     {
+        // ELM intercept (elmbridge Phase 4, Pattern 1): the FIRST conditional.
+        // An elm_processing job has no passes[]/inputs[] — GetInputIndex below
+        // would fail it with MISSING_INPUT. Materialize the by-value optional
+        // into a named local first (the quicktype UB rule).
+        const auto jobTypeOpt = processing_.get_job_type();
+        if ( jobTypeOpt && jobTypeOpt.value() == sgns::JobType::ELM_PROCESSING )
+        {
+            return ProcessElmWorkItem( ioc, chunkhashes, model, output_locations, execCtx );
+        }
+
         //Get input index
         auto modelname = model.get_source().value();
         auto index     = GetInputIndex( modelname );
