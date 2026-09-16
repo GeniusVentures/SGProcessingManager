@@ -35,6 +35,7 @@ target_link_libraries(capture_smoke_test
     SGProcessors
     sgproccapture
 )
+sgpm_copy_vulkan_runtime(capture_smoke_test)
 
 enable_testing()
 add_test(NAME CaptureSmokeTest COMMAND capture_smoke_test)

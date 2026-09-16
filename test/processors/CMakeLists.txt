@@ -13,6 +13,7 @@ target_link_libraries(mnn_tensor_fp4_test
     SGProcessors
     GTest::gtest_main
 )
+sgpm_copy_vulkan_runtime(mnn_tensor_fp4_test)
 
 enable_testing()
 add_test(NAME MNNTensorFp4Test COMMAND mnn_tensor_fp4_test)
@@ -33,6 +34,7 @@ if(SGPROC_HAS_MNN_LLM)
         SGProcessors
         GTest::gtest_main
     )
+    sgpm_copy_vulkan_runtime(mnn_llm_test)
 
     add_test(NAME MNNLlmTest COMMAND mnn_llm_test)
 else()
