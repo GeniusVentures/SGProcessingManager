@@ -363,6 +363,15 @@ namespace sgns::sgprocessing
         config.type = MNN_FORWARD_VULKAN;
         config.numThread = 4;
 
+        // Precision_High keeps the Vulkan backend on FP32 tensor storage and
+        // FP32 shader variants: VulkanBackend.cpp silently enables FP16
+        // storage on FP16-capable GPUs whenever precision != Precision_High,
+        // which breaks absolute cross-device tolerances and masks SECV-01
+        // corrupted-model tamper detection.
+        MNN::BackendConfig backendConfig;
+        backendConfig.precision = MNN::BackendConfig::Precision_High;
+        config.backendConfig    = &backendConfig;
+
         MNN::Session *session = nullptr;
         {
             std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );

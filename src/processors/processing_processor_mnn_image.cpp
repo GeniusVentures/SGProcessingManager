@@ -178,15 +178,19 @@ namespace sgns::sgprocessing
             return std::make_unique<MNN::Tensor>();
         }
 
-        //auto backendConfig           = new MNN::BackendConfig();
-        //backendConfig->power         = MNN::BackendConfig::Power_Low;
-        //backendConfig->queuePriority = 0.1f;
+        // Precision_High keeps the Vulkan backend on FP32 tensor storage and
+        // FP32 shader variants: VulkanBackend.cpp silently enables FP16
+        // storage on FP16-capable GPUs whenever precision != Precision_High,
+        // which breaks absolute cross-device tolerances and masks SECV-01
+        // corrupted-model tamper detection.
+        MNN::BackendConfig backendConfig;
+        backendConfig.precision = MNN::BackendConfig::Precision_High;
 
         MNN::ScheduleConfig netConfig;
         netConfig.type      = MNN_FORWARD_VULKAN;
         netConfig.numThread = 4;
         netConfig.mode = 0;
-        //netConfig.backendConfig = backendConfig;
+        netConfig.backendConfig = &backendConfig;
         auto session        = mnnNet->createSession( netConfig );
         if ( !session )
         {

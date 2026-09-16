@@ -491,10 +491,17 @@ namespace sgns::sgprocessing
         // Phase 13 (D-04/D-05): backend is schema-selected via
         // sgprocmanagerquant::ResolveMnnBackend() in StartProcessing(); the
         // MNN_FORWARD_VULKAN hardcode is only the fallback default now.
+        // Precision_High keeps the Vulkan backend on FP32 tensor storage and
+        // FP32 shader variants: VulkanBackend.cpp silently enables FP16
+        // storage on FP16-capable GPUs whenever precision != Precision_High
+        // (harmless no-op on the CPU backend).
+        MNN::BackendConfig backendConfig;
+        backendConfig.precision = MNN::BackendConfig::Precision_High;
+
         MNN::ScheduleConfig config;
         config.type = backend;
         config.numThread = 4;
-        config.backendConfig = nullptr;
+        config.backendConfig = &backendConfig;
 
         MNN::Session *session = nullptr;
         if ( backend == MNN_FORWARD_CPU )
