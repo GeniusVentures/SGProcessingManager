@@ -120,6 +120,30 @@ target_link_libraries(
 		sgprocmanagerdiff
 )
 
+# MNN registers its Vulkan backend op executors (Raster, Convolution, Eltwise,
+# PReLU, BinaryOp, Deconvolution, ...) via static initializers inside each
+# backend .obj member of the static MNN archive. The MSVC linker only pulls
+# archive members that resolve a referenced symbol, and nothing references
+# those registration objects -- so without forcing the whole archive in, the
+# runtime creator map stays empty, every op logs "Vulkan don't support", and
+# inference silently falls back to CPU despite a real GPU (observed: a ~3s
+# GPU-calibrated test took 524s). MNN's own CMake wraps its deps in
+# --whole-archive/-force_load for GNU/Clang static builds but has no MSVC
+# equivalent, so apply it here. PUBLIC so every executable linking SGProcessors
+# (and thereby MNN) gets it on its final link line -- same pattern as
+# node_example's /WHOLEARCHIVE:$<TARGET_FILE:genius_node>.
+if(MSVC)
+    target_link_options(SGProcessors PUBLIC "/WHOLEARCHIVE:$<TARGET_FILE:MNN::MNN>")
+elseif(APPLE)
+    target_link_options(SGProcessors PUBLIC "-force_load" "$<TARGET_FILE:MNN::MNN>")
+else()
+    target_link_options(SGProcessors PUBLIC
+        "-Wl,--whole-archive"
+        "$<TARGET_FILE:MNN::MNN>"
+        "-Wl,--no-whole-archive"
+    )
+endif()
+
 if(APPLE)
     target_link_libraries(SGProcessors PRIVATE
         "-framework CoreFoundation"
