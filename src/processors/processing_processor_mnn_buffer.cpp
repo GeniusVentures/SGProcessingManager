@@ -1,4 +1,5 @@
 #include "processors/processing_processor_mnn_buffer.hpp"
+#include "processors/vulkan_gpu_probe.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
@@ -360,7 +361,10 @@ namespace sgns::sgprocessing
         }
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_VULKAN;
+        // GPU-less hosts (software Vulkan / llvmpipe only) run MNN on the CPU
+        // backend -- the native CPU path is far faster than Vulkan-on-lavapipe
+        // and matches the pre-WHOLEARCHIVE behavior those hosts always had.
+        config.type = HasUsableVulkanDeviceCached() ? MNN_FORWARD_VULKAN : MNN_FORWARD_CPU;
         config.numThread = 4;
 
         // Precision_High keeps the Vulkan backend on FP32 tensor storage and

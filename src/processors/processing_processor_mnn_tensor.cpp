@@ -1,4 +1,5 @@
 #include "processors/processing_processor_mnn_tensor.hpp"
+#include "processors/vulkan_gpu_probe.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
@@ -499,16 +500,23 @@ namespace sgns::sgprocessing
         backendConfig.precision = MNN::BackendConfig::Precision_High;
 
         MNN::ScheduleConfig config;
-        config.type = backend;
+        // Phase 13 (D-04/D-05): backend is schema-selected via
+        // sgprocmanagerquant::ResolveMnnBackend() in StartProcessing(). A
+        // schema-selected Vulkan backend additionally falls back to CPU on
+        // GPU-less hosts (software Vulkan / llvmpipe only) -- the native CPU
+        // path is far faster than Vulkan-on-lavapipe and matches the
+        // pre-WHOLEARCHIVE behavior those hosts always had.
+        config.type = ( backend == MNN_FORWARD_VULKAN && !HasUsableVulkanDeviceCached() ) ? MNN_FORWARD_CPU : backend;
         config.numThread = 4;
         config.backendConfig = &backendConfig;
 
         MNN::Session *session = nullptr;
-        if ( backend == MNN_FORWARD_CPU )
+        if ( config.type == MNN_FORWARD_CPU )
         {
             // CPU sessions never touch the Vulkan device, so they must not
             // serialize behind VulkanInitMutex() (D-05: the CPU path is
-            // genuinely distinct from the Vulkan path).
+            // genuinely distinct from the Vulkan path). This includes the
+            // GPU-less-host fallback above, not just schema-selected "cpu".
             session = interpreter->createSession( config );
         }
         else

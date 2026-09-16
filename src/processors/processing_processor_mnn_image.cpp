@@ -1,4 +1,5 @@
 #include "processors/processing_processor_mnn_image.hpp"
+#include "processors/vulkan_gpu_probe.hpp"
 #include "datasplitter/ImageSplitter.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
 #include <functional>
@@ -187,7 +188,10 @@ namespace sgns::sgprocessing
         backendConfig.precision = MNN::BackendConfig::Precision_High;
 
         MNN::ScheduleConfig netConfig;
-        netConfig.type      = MNN_FORWARD_VULKAN;
+        // GPU-less hosts (software Vulkan / llvmpipe only) run MNN on the CPU
+        // backend -- far faster than Vulkan-on-lavapipe; matches the
+        // pre-WHOLEARCHIVE behavior those hosts always had.
+        netConfig.type      = HasUsableVulkanDeviceCached() ? MNN_FORWARD_VULKAN : MNN_FORWARD_CPU;
         netConfig.numThread = 4;
         netConfig.mode = 0;
         netConfig.backendConfig = &backendConfig;
