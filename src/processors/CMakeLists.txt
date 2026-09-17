@@ -132,7 +132,24 @@ target_link_libraries(
 # equivalent, so apply it here. PUBLIC so every executable linking SGProcessors
 # (and thereby MNN) gets it on its final link line -- same pattern as
 # node_example's /WHOLEARCHIVE:$<TARGET_FILE:genius_node>.
-if(MSVC)
+if(ANDROID)
+    # Deliberately NO whole-archive on Android: MNN's
+    # source/utils/JNIHelper.cpp is globbed unconditionally into libMNN.a and
+    # compiles an empty TU everywhere except Android, where it defines
+    # JNI_OnLoad (for MNN's optional MNN_JNI java package, which this build
+    # never enables -- nothing in MNN references it). The SDK's own
+    # local_secure_storage/impl/Android.cpp also defines JNI_OnLoad and rides
+    # into every link that pulls sgns_genius_account, so whole-archiving MNN
+    # force-includes JNIHelper.o and collides: "ld.lld: error: duplicate
+    # symbol: JNI_OnLoad" (run 35148585923: consensus_slot_key /
+    # consensus_pending_lifecycle / validator_registry_batch_slot tests, all
+    # four Android configs; the same closure would break GeniusWallet Android
+    # too). Android CI builds but never runs tests, and Android MNN Vulkan
+    # registration was never runtime-verified -- the pre-wholearchive status
+    # quo there is CPU-fallback inference. Drop this guard once MNN's dead
+    # JNIHelper TU is excluded from the fork (requires a thirdparty rebuild)
+    # or the SDK's JNI entry point is renamed.
+elseif(MSVC)
     target_link_options(SGProcessors PUBLIC "/WHOLEARCHIVE:$<TARGET_FILE:MNN::MNN>")
 elseif(APPLE)
     target_link_options(SGProcessors PUBLIC "-force_load" "$<TARGET_FILE:MNN::MNN>")
