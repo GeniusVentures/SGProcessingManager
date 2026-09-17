@@ -157,6 +157,17 @@ namespace sgns::sgprocessing
                                                          const int origheight, 
                                                          const std::string filename) 
     {
+        // Probe the GPU BEFORE taking VulkanInitMutex: HasUsableVulkanDevice()
+        // itself locks the same (non-recursive) mutex internally, so calling it
+        // for the first time while already holding the lock self-deadlocks --
+        // observed on WSL/linux where the worker's first MNN_Image::Process
+        // froze the whole subtask pipeline (run 35148585923: processing_nodes/
+        // child_tokens/account_management escrow timeouts; gdb showed the
+        // holder blocked on VulkanInitMutex inside the probe while
+        // RenderProcessor::InitializeContext queued behind it). All other MNN
+        // processors already evaluate the probe before locking.
+        const bool hasVulkanDevice = HasUsableVulkanDeviceCached();
+
         std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
 
         std::vector<uint8_t> ret_vect(imgdata);
@@ -191,7 +202,7 @@ namespace sgns::sgprocessing
         // GPU-less hosts (software Vulkan / llvmpipe only) run MNN on the CPU
         // backend -- far faster than Vulkan-on-lavapipe; matches the
         // pre-WHOLEARCHIVE behavior those hosts always had.
-        netConfig.type      = HasUsableVulkanDeviceCached() ? MNN_FORWARD_VULKAN : MNN_FORWARD_CPU;
+        netConfig.type      = hasVulkanDevice ? MNN_FORWARD_VULKAN : MNN_FORWARD_CPU;
         netConfig.numThread = 4;
         netConfig.mode = 0;
         netConfig.backendConfig = &backendConfig;
