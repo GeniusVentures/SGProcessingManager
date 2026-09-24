@@ -1,4 +1,5 @@
 #include "processors/processing_processor_mnn_float.hpp"
+#include "processors/vulkan_gpu_probe.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
@@ -411,17 +412,26 @@ namespace sgns::sgprocessing
             return nullptr;
         }
 
-        //MNN::BackendConfig backendConfig;
-        //backendConfig.precision = MNN::BackendConfig::Precision_High;
-        // Tested 2026-08-13 (Phase 13 gap-closure follow-up): forcing Precision_High produced
-        // a bit-for-bit IDENTICAL chunk-10 divergence vs. default Precision_Normal (maxAbsDelta,
-        // maxRelDelta, maxUlpDistance all unchanged) -- rules out FP16 backend opportunism as the
-        // source of this fixture's cross-hardware divergence. See STATE.md Blockers/Concerns.
+        // CORRECTION (2026-09-16): the 2026-08-13 "Precision_High changed
+        // nothing" experiment below was a FALSE NEGATIVE -- it ran while
+        // MNN's Vulkan op registrations were still being dropped by the MSVC
+        // linker (pre-WHOLEARCHIVE), so every op silently fell back to CPU
+        // and backendConfig.precision never reached any GPU code path. Now
+        // that inference genuinely runs on Vulkan, Precision_High is
+        // REQUIRED: VulkanBackend.cpp enables FP16 tensor storage on
+        // FP16-capable GPUs whenever precision != Precision_High, which
+        // breaks absolute cross-device tolerances and masks SECV-01
+        // corrupted-model tamper detection.
+        MNN::BackendConfig backendConfig;
+        backendConfig.precision = MNN::BackendConfig::Precision_High;
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_VULKAN;
+        // GPU-less hosts (software Vulkan / llvmpipe only) run MNN on the CPU
+        // backend -- the native CPU path is far faster than Vulkan-on-lavapipe
+        // and matches the pre-WHOLEARCHIVE behavior those hosts always had.
+        config.type = HasUsableVulkanDeviceCached() ? MNN_FORWARD_VULKAN : MNN_FORWARD_CPU;
         config.numThread = 4;
-        config.backendConfig = nullptr;
+        config.backendConfig = &backendConfig;
 
         MNN::Session *session = nullptr;
         {

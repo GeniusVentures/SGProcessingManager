@@ -1,4 +1,5 @@
 #include "processors/processing_processor_mnn_mat3.hpp"
+#include "processors/vulkan_gpu_probe.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
@@ -440,10 +441,21 @@ namespace sgns::sgprocessing
             return nullptr;
         }
 
+        // Precision_High keeps the Vulkan backend on FP32 tensor storage and
+        // FP32 shader variants: VulkanBackend.cpp silently enables FP16
+        // storage on FP16-capable GPUs whenever precision != Precision_High,
+        // which breaks absolute cross-device tolerances and masks SECV-01
+        // corrupted-model tamper detection.
+        MNN::BackendConfig backendConfig;
+        backendConfig.precision = MNN::BackendConfig::Precision_High;
+
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_VULKAN;
+        // GPU-less hosts (software Vulkan / llvmpipe only) run MNN on the CPU
+        // backend -- the native CPU path is far faster than Vulkan-on-lavapipe
+        // and matches the pre-WHOLEARCHIVE behavior those hosts always had.
+        config.type = HasUsableVulkanDeviceCached() ? MNN_FORWARD_VULKAN : MNN_FORWARD_CPU;
         config.numThread = 4;
-        config.backendConfig = nullptr;
+        config.backendConfig = &backendConfig;
 
         MNN::Session *session = nullptr;
         {

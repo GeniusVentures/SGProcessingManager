@@ -109,6 +109,32 @@ else()
     set_target_properties(Vulkan::Vulkan PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
     )
+
+    # Windows: locate the vendored Vulkan loader runtime so addtest()/
+    # addtest_mock() (build/cmake/functions.cmake) can copy it next to every
+    # test executable. Exes linking SGProcessors import vulkan-1.dll at
+    # startup (vulkan_gpu_probe -> vk-bootstrap -> Vulkan::Vulkan), including
+    # the gtest-discovery run CMake performs right after linking -- without
+    # the copy, discovery dies with 0xc0000135 before main() and the build
+    # step itself fails. Mirrors SuperGenius's CommonBuildParameters.cmake.
+    if(WIN32)
+        find_file(VULKAN_RUNTIME_DLL NAMES vulkan-1.dll
+            PATHS "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader/bin"
+                  "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader/lib"
+            NO_DEFAULT_PATH)
+
+        if(NOT VULKAN_RUNTIME_DLL)
+            # Only fatal when we actually link the thirdparty loader; a system
+            # Vulkan SDK brings its own runtime on PATH.
+            string(FIND "${Vulkan_LIBRARY}" "${_THIRDPARTY_BUILD_DIR}" _SGPM_VK_LOADER_IS_VENDORED)
+            if(_SGPM_VK_LOADER_IS_VENDORED EQUAL 0)
+                message(FATAL_ERROR "vulkan-1.dll not found in "
+                    "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader (searched bin/ and lib/). "
+                    "The vendored loader was linked, so test executables cannot start "
+                    "without it.")
+            endif()
+        endif()
+    endif()
 endif()
 
 # vk-bootstrap
