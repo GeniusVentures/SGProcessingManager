@@ -1615,13 +1615,15 @@ namespace sgns::sgprocessing
         std::string promptText;
         {
             auto promptBytes = std::make_shared<std::vector<char>>();
+            auto done        = std::make_shared<std::atomic_bool>( false );
+            auto waitState   = std::make_shared<std::pair<std::mutex, std::condition_variable>>();
             FileManager::GetInstance().InitializeSingletons();
             FileManager::GetInstance().LoadASync(
                 elm.get_input_uri(),
                 false,
                 false,
                 ioc,
-                [this, promptBytes](
+                [this, promptBytes, done, waitState](
                     outcome::result<
                         std::shared_ptr<std::pair<std::vector<std::string>, std::vector<std::vector<char>>>>>
                         buffers )
@@ -1639,10 +1641,47 @@ namespace sgns::sgprocessing
                                          "prompt",
                                          buffers.error().message() );
                     }
+                    done->store( true );
+                    {
+                        std::lock_guard<std::mutex> lock( waitState->first );
+                    }
+                    waitState->second.notify_all();
                 },
                 "file" );
-            ioc->reset();
-            ioc->run();
+            // The external-bitswap completion is posted back onto THIS ioc
+            // from the node's pubsub context — a bare run() can exit BEFORE
+            // that post arrives (bring-up finding: "empty bytes" logged at
+            // the same instant the fetch completed 5s later). Same remedy as
+            // ElmArtifactFetcher: drain the ioc on a helper thread under a
+            // work guard; the callback's notify wakes this thread; 180s hard
+            // bound so a lost completion still terminates.
+            {
+                auto guard = boost::asio::make_work_guard( *ioc );
+                std::thread drainer( [ioc, done]()
+                {
+                    while ( !done->load() )
+                    {
+                        ioc->reset();
+                        ioc->run();
+                    }
+                } );
+                std::unique_lock<std::mutex> lock( waitState->first );
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds( 180 );
+                if ( !waitState->second.wait_until( lock, deadline,
+                                                    [&] { return done->load() || !promptBytes->empty(); } ) )
+                {
+                    m_logger->error( "ELM[prompt]: input_uri fetch timed out" );
+                }
+                done->store( true );
+                // Release the guard so a blocked run() returns and the
+                // drainer loop observes done; NO ioc->stop() — this is the
+                // SHARED injector context from processing_core_impl.
+                guard.reset();
+                if ( drainer.joinable() )
+                {
+                    drainer.join();
+                }
+            }
             if ( promptBytes->empty() )
             {
                 m_logger->error( "ELM[{}]: input_uri resolved to empty bytes", workItemId );
@@ -1682,13 +1721,22 @@ namespace sgns::sgprocessing
             m_logger->error( "ELM[{}]: no model cache available (construction failed earlier)", workItemId );
         }
 
-        // Deadline timer mirroring the non-ELM path (D-05/D-09 wiring).
-        boost::asio::deadline_timer deadlineTimer( *ioc );
+        // Deadline timer (D-05/D-09 wiring) — bring-up fix (04-05): the
+        // timer must be able to FIRE while the synchronous processor call
+        // below blocks this thread. Armed on the shared injector ioc it
+        // could never execute mid-processing (nothing runs that ioc during
+        // StartProcessingElm), so deadline overrun never cancelled anything.
+        // Dedicated io_context + runner thread: self-contained, torn down
+        // at scope exit; the cancel token's callback cancels the timer on
+        // early completion as before.
+        boost::asio::io_context      deadlineIoc;
+        auto deadlineGuard = boost::asio::make_work_guard( deadlineIoc );
+        std::thread deadlineRunner( [ &deadlineIoc ]() { deadlineIoc.run(); } );
+        boost::asio::steady_timer deadlineTimer( deadlineIoc );
         if ( execCtx.deadlineMs > 0 )
         {
-            deadlineTimer.expires_from_now(
-                boost::posix_time::milliseconds( execCtx.deadlineMs ) );
-            deadlineTimer.async_wait( [&execCtx]( const boost::system::error_code &ec )
+            deadlineTimer.expires_after( std::chrono::milliseconds( execCtx.deadlineMs ) );
+            deadlineTimer.async_wait( [ &execCtx ]( const boost::system::error_code &ec )
             {
                 if ( !ec )
                 {
@@ -1696,7 +1744,7 @@ namespace sgns::sgprocessing
                 }
             } );
         }
-        execCtx.cancelToken.SetCallback( [&deadlineTimer]()
+        execCtx.cancelToken.SetCallback( [ &deadlineTimer ]()
         {
             deadlineTimer.cancel();
         } );
@@ -1721,6 +1769,12 @@ namespace sgns::sgprocessing
             return outcome::failure( Error::NO_PROCESSOR );
         }
         deadlineTimer.cancel();
+        deadlineGuard.reset();
+        deadlineIoc.stop();
+        if ( deadlineRunner.joinable() )
+        {
+            deadlineRunner.join();
+        }
 
         // (h) finish stamp at envelope assembly; both stamps written into the
         // envelope JSON artifact (the single envelope document D-04 mandates).
@@ -1799,21 +1853,16 @@ namespace sgns::sgprocessing
             const std::string primaryUrl = "ipfs://";
             auto saveLocation = std::make_shared<std::string>();
 
-            FileManager::GetInstance().SaveASync(
-                primaryUrl,
-                outcome::success( saveBuffers ),
-                ioc,
-                [this, workItemId]( const FileManager::ResultType &result )
-                {
-                    if ( !result )
-                    {
-                        m_logger->error( "ELM[{}]: artifact save failed: {}",
-                                         workItemId,
-                                         result.error().message() );
-                    }
-                },
-                saveLocation );
-
+            // Bring-up fix (04-05): the ipfs:// publish completes on the
+            // NODE's threads; the final callbacks are posted onto THIS ioc
+            // only afterwards (IPFSSaver.cpp posts handle_write after the
+            // CID lands in save_location). A bare reset()/run() drains the
+            // fast local dual-save and returns BEFORE the publish
+            // completion arrives — output_locations[0] stayed empty while
+            // the log showed the CID published (observed run11). Same
+            // remedy as the prompt-fetch site: drain the ioc on a helper
+            // thread under a work guard; wait on BOTH saves' final
+            // callbacks; 300s bound so a lost completion still terminates.
             // Dual-save: local mirror under cacheDir/results/ so the
             // producing node can re-serve the artifact after restart (the
             // non-ELM loop's ipfs convention, mirrored).
@@ -1825,7 +1874,37 @@ namespace sgns::sgprocessing
             catch ( const std::exception & )
             {
             }
-            if ( !cacheDir.empty() )
+            const bool hasDualSave = !cacheDir.empty();
+
+            auto savesDone         = std::make_shared<std::atomic_int>( 0 );
+            const int  savesExpected = hasDualSave ? 2 : 1;
+            auto waitState          = std::make_shared<std::pair<std::mutex, std::condition_variable>>();
+            auto markSaveDone       = [savesDone, waitState]( const FileManager::ResultType & )
+            {
+                savesDone->fetch_add( 1 );
+                {
+                    std::lock_guard<std::mutex> lock( waitState->first );
+                }
+                waitState->second.notify_all();
+            };
+
+            FileManager::GetInstance().SaveASync(
+                primaryUrl,
+                outcome::success( saveBuffers ),
+                ioc,
+                [this, workItemId, markSaveDone]( const FileManager::ResultType &result )
+                {
+                    if ( !result )
+                    {
+                        m_logger->error( "ELM[{}]: artifact save failed: {}",
+                                         workItemId,
+                                         result.error().message() );
+                    }
+                    markSaveDone( result );
+                },
+                saveLocation );
+
+            if ( hasDualSave )
             {
                 const std::string localUrl =
                     "file://" + cacheDir + "/results/" + workItemId + ".json";
@@ -1833,12 +1912,43 @@ namespace sgns::sgprocessing
                     localUrl,
                     outcome::success( saveBuffers ),
                     ioc,
-                    nullptr,
+                    markSaveDone,
                     nullptr );
             }
 
-            ioc->reset();
-            ioc->run();
+            {
+                auto guard   = boost::asio::make_work_guard( *ioc );
+                std::thread drainer( [ioc, savesDone, savesExpected]()
+                {
+                    while ( savesDone->load() < savesExpected )
+                    {
+                        ioc->reset();
+                        ioc->run();
+                    }
+                } );
+                std::unique_lock<std::mutex> lock( waitState->first );
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds( 300 );
+                if ( !waitState->second.wait_until( lock, deadline,
+                                                    [&] { return savesDone->load() >= savesExpected; } ) )
+                {
+                    m_logger->error( "ELM[{}]: artifact save timed out ({}/{} done)",
+                                     workItemId,
+                                     savesDone->load(),
+                                     savesExpected );
+                    // Force the count so the drainer's loop condition
+                    // releases it even though completions were lost.
+                    savesDone->store( savesExpected );
+                }
+                // Release the guard so a blocked run() returns and the
+                // drainer loop observes the count; NO ioc->stop() — the
+                // FileManager's DecrementOutstandingOperations already
+                // stops this ioc when the counter hits zero.
+                guard.reset();
+                if ( drainer.joinable() )
+                {
+                    drainer.join();
+                }
+            }
 
             output_locations.clear();
             output_locations.resize( 1 );

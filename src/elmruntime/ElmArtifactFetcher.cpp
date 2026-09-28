@@ -67,19 +67,42 @@ namespace sgns::elmruntime
                 return outcome::failure( ElmRuntimeError::FETCH_FAILED );
             }
 
-            // Drain ON THE CALLING thread (the ProcessingManager.cpp:2167-2168
-            // ioc->reset(); ioc->run() pattern): fetch completion and the caller
-            // are the same thread -- Pitfall 14 satisfied structurally.
-            ioc->reset();
-            ioc->run();
-
-            // The drain is synchronous: LoadASync queues onto ioc and run() blocks
-            // until the load completes and the callback has fired (the FileManager
-            // posts the completion onto the same ioc). completed is therefore true
-            // here in practice; the wait below guards the ordering for readers.
+            // Bring-up fix (04-05): with the EXTERNAL bitswap, the fetch
+            // completion is posted onto THIS ioc from the node's pubsub
+            // thread. A bare reset()/run() can drain the queue and return
+            // BEFORE that post arrives — the completion then never runs and
+            // the unbounded wait below hangs forever (observed as the
+            // post-manifest silent stall). Keep the ioc alive on a helper
+            // thread under a work guard so late posts execute; bound the
+            // wait so a lost completion still terminates.
             {
+                auto guard = boost::asio::make_work_guard( *ioc );
+                std::thread drainer( [ioc, &mutex, &completed]()
+                {
+                    while ( !completed )
+                    {
+                        ioc->reset();
+                        ioc->run();
+                    }
+                } );
                 std::unique_lock<std::mutex> lock( mutex );
-                completionSignal.wait( lock, [&] { return completed; } );
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds( 300 );
+                if ( !completionSignal.wait_until( lock, deadline, [&] { return completed; } ) )
+                {
+                    logger->error( "ElmArtifactFetcher: fetch of {} timed out", uri );
+                    completed = true; // release the drainer
+                }
+                guard.reset();
+                ioc->stop();
+                if ( drainer.joinable() )
+                {
+                    drainer.join();
+                }
+                lock.unlock();
+                if ( !completed || !result )
+                {
+                    return outcome::failure( ElmRuntimeError::FETCH_FAILED );
+                }
             }
 
             if ( !result )
