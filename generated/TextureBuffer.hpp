@@ -56,8 +56,9 @@ namespace sgns {
         ClassMemberConstraints width_constraint;
 
         public:
-        boost::optional<TextureFilter> get_filter() const { return filter; }
-        void set_filter(boost::optional<TextureFilter> value) { this->filter = value; }
+        const boost::optional<TextureFilter> & get_filter() const { return filter; }
+        boost::optional<TextureFilter> & get_mutable_filter() { return filter; }
+        void set_filter(const boost::optional<TextureFilter> & value) { this->filter = value; }
 
         const int64_t & get_height() const { return height; }
         int64_t & get_mutable_height() { return height; }

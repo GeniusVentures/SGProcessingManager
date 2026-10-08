@@ -56,14 +56,16 @@ namespace sgns {
         /**
          * Author of this processing definition
          */
-        boost::optional<std::string> get_author() const { return author; }
-        void set_author(boost::optional<std::string> value) { this->author = value; }
+        const boost::optional<std::string> & get_author() const { return author; }
+        boost::optional<std::string> & get_mutable_author() { return author; }
+        void set_author(const boost::optional<std::string> & value) { this->author = value; }
 
         /**
          * Human-readable description of what this processing definition does
          */
-        boost::optional<std::string> get_description() const { return description; }
-        void set_description(boost::optional<std::string> value) { this->description = value; }
+        const boost::optional<std::string> & get_description() const { return description; }
+        boost::optional<std::string> & get_mutable_description() { return description; }
+        void set_description(const boost::optional<std::string> & value) { this->description = value; }
 
         /**
          * Version of the GNUS processing definition specification
@@ -82,8 +84,9 @@ namespace sgns {
         /**
          * Additional metadata for the processing definition
          */
-        boost::optional<std::map<std::string, nlohmann::json>> get_metadata() const { return metadata; }
-        void set_metadata(boost::optional<std::map<std::string, nlohmann::json>> value) { this->metadata = value; }
+        const boost::optional<std::map<std::string, nlohmann::json>> & get_metadata() const { return metadata; }
+        boost::optional<std::map<std::string, nlohmann::json>> & get_mutable_metadata() { return metadata; }
+        void set_metadata(const boost::optional<std::map<std::string, nlohmann::json>> & value) { this->metadata = value; }
 
         /**
          * Unique name for this processing definition
@@ -102,8 +105,9 @@ namespace sgns {
         /**
          * Overridable parameters with defaults
          */
-        boost::optional<std::vector<Parameter>> get_parameters() const { return parameters; }
-        void set_parameters(boost::optional<std::vector<Parameter>> value) { this->parameters = value; }
+        const boost::optional<std::vector<Parameter>> & get_parameters() const { return parameters; }
+        boost::optional<std::vector<Parameter>> & get_mutable_parameters() { return parameters; }
+        void set_parameters(const boost::optional<std::vector<Parameter>> & value) { this->parameters = value; }
 
         /**
          * Array of processing passes to execute
@@ -115,8 +119,9 @@ namespace sgns {
         /**
          * Tags for categorizing this definition
          */
-        boost::optional<std::vector<std::string>> get_tags() const { return tags; }
-        void set_tags(boost::optional<std::vector<std::string>> value) { this->tags = value; }
+        const boost::optional<std::vector<std::string>> & get_tags() const { return tags; }
+        boost::optional<std::vector<std::string>> & get_mutable_tags() { return tags; }
+        void set_tags(const boost::optional<std::vector<std::string>> & value) { this->tags = value; }
 
         /**
          * Version of this processing definition

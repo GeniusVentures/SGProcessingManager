@@ -41,8 +41,9 @@ namespace sgns {
         boost::optional<std::map<std::string, ShaderUniform>> uniforms;
 
         public:
-        boost::optional<std::string> get_entry_point() const { return entry_point; }
-        void set_entry_point(boost::optional<std::string> value) { this->entry_point = value; }
+        const boost::optional<std::string> & get_entry_point() const { return entry_point; }
+        boost::optional<std::string> & get_mutable_entry_point() { return entry_point; }
+        void set_entry_point(const boost::optional<std::string> & value) { this->entry_point = value; }
 
         /**
          * Shader source path or URI parameter
@@ -51,13 +52,15 @@ namespace sgns {
         std::string & get_mutable_source() { return source; }
         void set_source(const std::string & value) { this->source = value; }
 
-        boost::optional<ShaderSourceType> get_type() const { return type; }
-        void set_type(boost::optional<ShaderSourceType> value) { this->type = value; }
+        const boost::optional<ShaderSourceType> & get_type() const { return type; }
+        boost::optional<ShaderSourceType> & get_mutable_type() { return type; }
+        void set_type(const boost::optional<ShaderSourceType> & value) { this->type = value; }
 
         /**
          * Uniform variable declarations
          */
-        boost::optional<std::map<std::string, ShaderUniform>> get_uniforms() const { return uniforms; }
-        void set_uniforms(boost::optional<std::map<std::string, ShaderUniform>> value) { this->uniforms = value; }
+        const boost::optional<std::map<std::string, ShaderUniform>> & get_uniforms() const { return uniforms; }
+        boost::optional<std::map<std::string, ShaderUniform>> & get_mutable_uniforms() { return uniforms; }
+        void set_uniforms(const boost::optional<std::map<std::string, ShaderUniform>> & value) { this->uniforms = value; }
     };
 }

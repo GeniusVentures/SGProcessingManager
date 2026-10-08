@@ -46,7 +46,8 @@ namespace sgns {
         /**
          * Uniform variable declarations, shared across all stages
          */
-        boost::optional<std::map<std::string, RenderShaderUniform>> get_uniforms() const { return uniforms; }
-        void set_uniforms(boost::optional<std::map<std::string, RenderShaderUniform>> value) { this->uniforms = value; }
+        const boost::optional<std::map<std::string, RenderShaderUniform>> & get_uniforms() const { return uniforms; }
+        boost::optional<std::map<std::string, RenderShaderUniform>> & get_mutable_uniforms() { return uniforms; }
+        void set_uniforms(const boost::optional<std::map<std::string, RenderShaderUniform>> & value) { this->uniforms = value; }
     };
 }

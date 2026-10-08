@@ -31,11 +31,13 @@ namespace sgns {
         nlohmann::json value;
 
         public:
-        boost::optional<std::string> get_source() const { return source; }
-        void set_source(boost::optional<std::string> value) { this->source = value; }
+        const boost::optional<std::string> & get_source() const { return source; }
+        boost::optional<std::string> & get_mutable_source() { return source; }
+        void set_source(const boost::optional<std::string> & value) { this->source = value; }
 
-        boost::optional<DataType> get_type() const { return type; }
-        void set_type(boost::optional<DataType> value) { this->type = value; }
+        const boost::optional<DataType> & get_type() const { return type; }
+        boost::optional<DataType> & get_mutable_type() { return type; }
+        void set_type(const boost::optional<DataType> & value) { this->type = value; }
 
         const nlohmann::json & get_value() const { return value; }
         nlohmann::json & get_mutable_value() { return value; }

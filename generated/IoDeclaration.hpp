@@ -43,20 +43,23 @@ namespace sgns {
         /**
          * Human-readable description
          */
-        boost::optional<std::string> get_description() const { return description; }
-        void set_description(boost::optional<std::string> value) { this->description = value; }
+        const boost::optional<std::string> & get_description() const { return description; }
+        boost::optional<std::string> & get_mutable_description() { return description; }
+        void set_description(const boost::optional<std::string> & value) { this->description = value; }
 
         /**
          * Optional dimensions specification
          */
-        boost::optional<Dimensions> get_dimensions() const { return dimensions; }
-        void set_dimensions(boost::optional<Dimensions> value) { this->dimensions = value; }
+        const boost::optional<Dimensions> & get_dimensions() const { return dimensions; }
+        boost::optional<Dimensions> & get_mutable_dimensions() { return dimensions; }
+        void set_dimensions(const boost::optional<Dimensions> & value) { this->dimensions = value; }
 
         /**
          * Data format (e.g., RGBA8, FLOAT32)
          */
-        boost::optional<InputFormat> get_format() const { return format; }
-        void set_format(boost::optional<InputFormat> value) { this->format = value; }
+        const boost::optional<InputFormat> & get_format() const { return format; }
+        boost::optional<InputFormat> & get_mutable_format() { return format; }
+        void set_format(const boost::optional<InputFormat> & value) { this->format = value; }
 
         /**
          * Unique identifier for this input/output
