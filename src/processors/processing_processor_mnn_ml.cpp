@@ -10,9 +10,11 @@ namespace sgns::sgprocessing
                                                const sgns::IoDeclaration         &proc,
                                                std::vector<char>                 &imageData,
                                                std::vector<char>                 &modelFile,
-                                               const std::vector<sgns::Parameter> *parameters )
+                                               const std::vector<sgns::Parameter> *parameters,
+                                               const ExecutionContext            &execCtx )
     {
         (void)parameters;
+        (void)execCtx;
         std::vector<uint8_t> modelFile_bytes;
         modelFile_bytes.assign(modelFile.begin(), modelFile.end());
 

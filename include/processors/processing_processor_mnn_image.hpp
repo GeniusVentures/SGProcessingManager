@@ -58,7 +58,8 @@ namespace sgns::sgprocessing
                            const sgns::IoDeclaration         &proc,
                            std::vector<char>                 &imageData,
                            std::vector<char>                 &modelFile,
-                           const std::vector<sgns::Parameter> *parameters ) override;
+                           const std::vector<sgns::Parameter> *parameters,
+                           const ExecutionContext            &execCtx ) override;
 
         /** Set data for processor
         * @param buffers - Data containing file name and data pair lists.

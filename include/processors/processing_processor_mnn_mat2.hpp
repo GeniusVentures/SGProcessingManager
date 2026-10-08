@@ -21,7 +21,8 @@ namespace sgns::sgprocessing
                                            const sgns::IoDeclaration         &proc,
                                            std::vector<char>                 &mat2Data,
                                            std::vector<char>                 &modelFile,
-                                           const std::vector<sgns::Parameter> *parameters ) override;
+                                           const std::vector<sgns::Parameter> *parameters,
+                                           const ExecutionContext            &execCtx ) override;
 
     private:
         std::unique_ptr<MNN::Tensor> Process( const std::vector<float> &signalData,

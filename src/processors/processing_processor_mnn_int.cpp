@@ -1,11 +1,14 @@
 #include "processors/processing_processor_mnn_int.hpp"
+#include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <openssl/sha.h>
 #include "util/sha256.hpp"
+#include "util/quantization.hpp"
 
 namespace sgns::sgprocessing
 {
@@ -118,9 +121,11 @@ namespace sgns::sgprocessing
                                                 const sgns::IoDeclaration         &proc,
                                                 std::vector<char>                 &intData,
                                                 std::vector<char>                 &modelFile,
-                                                const std::vector<sgns::Parameter> *parameters )
+                                                const std::vector<sgns::Parameter> *parameters,
+                                                const ExecutionContext            &execCtx )
     {
-        (void)parameters;
+        const float scale = sgprocmanagerquant::ResolveQuantScale( parameters );
+        const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFileBytes;
         modelFileBytes.assign( modelFile.begin(), modelFile.end() );
 
@@ -199,8 +204,25 @@ namespace sgns::sgprocessing
         std::vector<float> stitchedOutput;
         std::vector<float> stitchedWeights;
 
+        // LOAD_MODEL stage — fire progress and check cancel
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::LOAD_MODEL, 25.0f ) );
+        }
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Int pass cancelled" } };
+        }
+
         for ( int start : starts )
         {
+            if ( execCtx.cancelToken.IsCancelled() )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Int pass cancelled" } };
+            }
+
             std::vector<float> patch;
             patch.resize( static_cast<size_t>( patchLength ), 0.0f );
             for ( int i = 0; i < patchLength; ++i )
@@ -249,8 +271,27 @@ namespace sgns::sgprocessing
                 }
             }
 
-            auto hash = sgprocmanagersha::sha256( data , dataSize );
+            // Phase 10 CAPT-02: quantize-then-capture-then-hash at the per-chunk site.
+            // Never mutate MNN-owned `data` (const float*) in place -- copy first.
+            std::vector<float> localCopy( data, data + ( dataSize / sizeof( float ) ) );
+            sgprocmanagerquant::QuantizeFloatBuffer( localCopy.data(), localCopy.size(), scale );
+            if ( execCtx.rawOutputCapture )
+            {
+                const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( localCopy.data() );
+                const auto *preQuantizeBytes = reinterpret_cast<const uint8_t *>( data );
+                execCtx.rawOutputCapture( std::vector<uint8_t>( quantizedBytes, quantizedBytes + dataSize ),
+                                           std::vector<uint8_t>( preQuantizeBytes, preQuantizeBytes + dataSize ) );
+            }
+
+            auto hash = sgprocmanagersha::sha256( localCopy.data(), dataSize );
             chunkhashes.emplace_back( hash.begin(), hash.end() );
+        }
+
+        // RUN + READ_OUTPUT stages — fire progress
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::RUN, 75.0f ) );
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::READ_OUTPUT, 100.0f ) );
         }
 
         for ( size_t idx = 0; idx < stitchedOutput.size(); ++idx )
@@ -263,11 +304,44 @@ namespace sgns::sgprocessing
             }
         }
 
+        // Phase 10 CAPT-02: quantize-then-capture-then-hash at the stitched-combined site.
+        // stitchedOutput is locally-owned, so quantizing it in place is safe.
+        std::vector<uint8_t> preQuantizeSnapshot;
+        if ( execCtx.rawOutputCapture )
+        {
+            const auto *preBytes = reinterpret_cast<const uint8_t *>( stitchedOutput.data() );
+            preQuantizeSnapshot.assign( preBytes, preBytes + stitchedOutput.size() * sizeof( float ) );
+        }
+        sgprocmanagerquant::QuantizeFloatBuffer( stitchedOutput.data(), stitchedOutput.size(), scale );
+        if ( execCtx.rawOutputCapture )
+        {
+            const auto *quantizedBytes = reinterpret_cast<const uint8_t *>( stitchedOutput.data() );
+            execCtx.rawOutputCapture(
+                std::vector<uint8_t>( quantizedBytes, quantizedBytes + stitchedOutput.size() * sizeof( float ) ),
+                preQuantizeSnapshot );
+        }
+
         std::string stitchedStr( reinterpret_cast<const char *>( stitchedOutput.data() ),
                                   stitchedOutput.size() * sizeof( float ) );
         subTaskResultHash = sgprocmanagersha::sha256( stitchedStr.c_str(), stitchedStr.size() );
 
         m_progress = 100.0f;
+
+        m_progress = 100.0f;
+
+        // Output budget check (EXEC-03)
+        if ( !stitchedOutput.empty() && execCtx.maxOutputArtifactBytes > 0 )
+        {
+            size_t outputSize = stitchedOutput.size() * sizeof( float );
+            if ( outputSize > execCtx.maxOutputArtifactBytes )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {},
+                    ProcessingError{ ProcessingErrorStage::BUDGET_EXCEEDED,
+                        "Output artifact size " + std::to_string( outputSize ) + " exceeds budget " +
+                            std::to_string( execCtx.maxOutputArtifactBytes ) } };
+            }
+        }
 
         ProcessingResult result;
         result.hash = subTaskResultHash;
@@ -285,6 +359,10 @@ namespace sgns::sgprocessing
         }
 
         m_logger->info( "Int processing complete" );
+
+        // Tear down all MNN sessions accumulated during processing
+        RunTeardown();
+
         return result;
     }
 
@@ -292,7 +370,7 @@ namespace sgns::sgprocessing
                                                      std::vector<uint8_t>    &modelFile,
                                                      int                      length )
     {
-        auto interpreter = std::unique_ptr<MNN::Interpreter>( MNN::Interpreter::createFromBuffer( modelFile.data(), modelFile.size() ) );
+        auto interpreter = std::shared_ptr<MNN::Interpreter>( MNN::Interpreter::createFromBuffer( modelFile.data(), modelFile.size() ) );
         if ( !interpreter )
         {
             m_logger->error( "Failed to create MNN interpreter from buffer" );
@@ -300,16 +378,24 @@ namespace sgns::sgprocessing
         }
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_CPU;
+        config.type = MNN_FORWARD_VULKAN;
         config.numThread = 4;
         config.backendConfig = nullptr;
 
-        auto session = interpreter->createSession( config );
+        MNN::Session *session = nullptr;
+        {
+            std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
+            session = interpreter->createSession( config );
+        }
         if ( !session )
         {
             m_logger->error( "Failed to create MNN session" );
             return nullptr;
         }
+
+        PushTeardown( [interpreter, session]() {
+            interpreter->releaseSession( session );
+        } );
 
         auto inputTensor = interpreter->getSessionInput( session, nullptr );
         if ( !inputTensor )

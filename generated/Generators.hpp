@@ -15,10 +15,25 @@
 
 #include "SgnsProcessing.hpp"
 #include "Pass.hpp"
+#include "VertexLayoutEntry.hpp"
+#include "VertexLayoutFormat.hpp"
+#include "VertexBuffer.hpp"
 #include "PassType.hpp"
 #include "ShaderConfig.hpp"
-#include "Uniform.hpp"
-#include "ShaderType.hpp"
+#include "ShaderUniform.hpp"
+#include "RenderTarget.hpp"
+#include "DepthFormat.hpp"
+#include "ColorFormat.hpp"
+#include "RenderShaderConfig.hpp"
+#include "RenderShaderUniform.hpp"
+#include "ShaderStage.hpp"
+#include "ShaderSourceType.hpp"
+#include "Stage.hpp"
+#include "PipelineState.hpp"
+#include "Topology.hpp"
+#include "FrontFace.hpp"
+#include "DepthTest.hpp"
+#include "CullMode.hpp"
 #include "ModelConfig.hpp"
 #include "OptimizerConfig.hpp"
 #include "OptimizerType.hpp"
@@ -26,6 +41,8 @@
 #include "ModelNode.hpp"
 #include "ModelFormat.hpp"
 #include "PassIoBinding.hpp"
+#include "IndexBuffer.hpp"
+#include "IndexType.hpp"
 #include "DataTransform.hpp"
 #include "DataTransformType.hpp"
 #include "Params.hpp"
@@ -56,6 +73,9 @@ namespace sgns {
     void from_json(const json & j, DataTransform & x);
     void to_json(json & j, const DataTransform & x);
 
+    void from_json(const json & j, IndexBuffer & x);
+    void to_json(json & j, const IndexBuffer & x);
+
     void from_json(const json & j, PassIoBinding & x);
     void to_json(json & j, const PassIoBinding & x);
 
@@ -68,11 +88,32 @@ namespace sgns {
     void from_json(const json & j, ModelConfig & x);
     void to_json(json & j, const ModelConfig & x);
 
-    void from_json(const json & j, Uniform & x);
-    void to_json(json & j, const Uniform & x);
+    void from_json(const json & j, PipelineState & x);
+    void to_json(json & j, const PipelineState & x);
+
+    void from_json(const json & j, ShaderStage & x);
+    void to_json(json & j, const ShaderStage & x);
+
+    void from_json(const json & j, RenderShaderUniform & x);
+    void to_json(json & j, const RenderShaderUniform & x);
+
+    void from_json(const json & j, RenderShaderConfig & x);
+    void to_json(json & j, const RenderShaderConfig & x);
+
+    void from_json(const json & j, RenderTarget & x);
+    void to_json(json & j, const RenderTarget & x);
+
+    void from_json(const json & j, ShaderUniform & x);
+    void to_json(json & j, const ShaderUniform & x);
 
     void from_json(const json & j, ShaderConfig & x);
     void to_json(json & j, const ShaderConfig & x);
+
+    void from_json(const json & j, VertexBuffer & x);
+    void to_json(json & j, const VertexBuffer & x);
+
+    void from_json(const json & j, VertexLayoutEntry & x);
+    void to_json(json & j, const VertexLayoutEntry & x);
 
     void from_json(const json & j, Pass & x);
     void to_json(json & j, const Pass & x);
@@ -92,6 +133,9 @@ namespace sgns {
     void from_json(const json & j, DataTransformType & x);
     void to_json(json & j, const DataTransformType & x);
 
+    void from_json(const json & j, IndexType & x);
+    void to_json(json & j, const IndexType & x);
+
     void from_json(const json & j, ModelFormat & x);
     void to_json(json & j, const ModelFormat & x);
 
@@ -101,11 +145,35 @@ namespace sgns {
     void from_json(const json & j, OptimizerType & x);
     void to_json(json & j, const OptimizerType & x);
 
-    void from_json(const json & j, ShaderType & x);
-    void to_json(json & j, const ShaderType & x);
+    void from_json(const json & j, CullMode & x);
+    void to_json(json & j, const CullMode & x);
+
+    void from_json(const json & j, DepthTest & x);
+    void to_json(json & j, const DepthTest & x);
+
+    void from_json(const json & j, FrontFace & x);
+    void to_json(json & j, const FrontFace & x);
+
+    void from_json(const json & j, Topology & x);
+    void to_json(json & j, const Topology & x);
+
+    void from_json(const json & j, Stage & x);
+    void to_json(json & j, const Stage & x);
+
+    void from_json(const json & j, ShaderSourceType & x);
+    void to_json(json & j, const ShaderSourceType & x);
+
+    void from_json(const json & j, ColorFormat & x);
+    void to_json(json & j, const ColorFormat & x);
+
+    void from_json(const json & j, DepthFormat & x);
+    void to_json(json & j, const DepthFormat & x);
 
     void from_json(const json & j, PassType & x);
     void to_json(json & j, const PassType & x);
+
+    void from_json(const json & j, VertexLayoutFormat & x);
+    void to_json(json & j, const VertexLayoutFormat & x);
 
     inline void from_json(const json & j, Dimensions& x) {
         x.set_batch(get_stack_optional<int64_t>(j, "batch"));
@@ -229,6 +297,17 @@ namespace sgns {
         j["type"] = x.get_type();
     }
 
+    inline void from_json(const json & j, IndexBuffer& x) {
+        x.set_index_type(get_stack_optional<IndexType>(j, "index_type"));
+        x.set_source(get_stack_optional<std::string>(j, "source"));
+    }
+
+    inline void to_json(json & j, const IndexBuffer & x) {
+        j = json::object();
+        j["index_type"] = x.get_index_type();
+        j["source"] = x.get_source();
+    }
+
     inline void from_json(const json & j, PassIoBinding& x) {
         x.set_name(j.at("name").get<std::string>());
         x.set_source(get_stack_optional<std::string>(j, "source"));
@@ -301,13 +380,86 @@ namespace sgns {
         j["source_uri_param"] = x.get_source_uri_param();
     }
 
-    inline void from_json(const json & j, Uniform& x) {
+    inline void from_json(const json & j, PipelineState& x) {
+        x.set_cull_mode(get_stack_optional<CullMode>(j, "cull_mode"));
+        x.set_depth_test(get_stack_optional<DepthTest>(j, "depth_test"));
+        x.set_front_face(get_stack_optional<FrontFace>(j, "front_face"));
+        x.set_topology(get_stack_optional<Topology>(j, "topology"));
+    }
+
+    inline void to_json(json & j, const PipelineState & x) {
+        j = json::object();
+        j["cull_mode"] = x.get_cull_mode();
+        j["depth_test"] = x.get_depth_test();
+        j["front_face"] = x.get_front_face();
+        j["topology"] = x.get_topology();
+    }
+
+    inline void from_json(const json & j, ShaderStage& x) {
+        x.set_entry_point(get_stack_optional<std::string>(j, "entry_point"));
+        x.set_source(j.at("source").get<std::string>());
+        x.set_stage(j.at("stage").get<Stage>());
+        x.set_type(j.at("type").get<ShaderSourceType>());
+    }
+
+    inline void to_json(json & j, const ShaderStage & x) {
+        j = json::object();
+        j["entry_point"] = x.get_entry_point();
+        j["source"] = x.get_source();
+        j["stage"] = x.get_stage();
+        j["type"] = x.get_type();
+    }
+
+    inline void from_json(const json & j, RenderShaderUniform& x) {
         x.set_source(get_stack_optional<std::string>(j, "source"));
         x.set_type(get_stack_optional<DataType>(j, "type"));
         x.set_value(get_untyped(j, "value"));
     }
 
-    inline void to_json(json & j, const Uniform & x) {
+    inline void to_json(json & j, const RenderShaderUniform & x) {
+        j = json::object();
+        j["source"] = x.get_source();
+        j["type"] = x.get_type();
+        j["value"] = x.get_value();
+    }
+
+    inline void from_json(const json & j, RenderShaderConfig& x) {
+        x.set_stages(j.at("stages").get<std::vector<ShaderStage>>());
+        x.set_uniforms(get_stack_optional<std::map<std::string, RenderShaderUniform>>(j, "uniforms"));
+    }
+
+    inline void to_json(json & j, const RenderShaderConfig & x) {
+        j = json::object();
+        j["stages"] = x.get_stages();
+        j["uniforms"] = x.get_uniforms();
+    }
+
+    inline void from_json(const json & j, RenderTarget& x) {
+        x.set_clear_color(j.at("clear_color").get<std::vector<double>>());
+        x.set_clear_depth(j.at("clear_depth").get<double>());
+        x.set_color_format(j.at("color_format").get<ColorFormat>());
+        x.set_depth_format(j.at("depth_format").get<DepthFormat>());
+        x.set_height(j.at("height").get<int64_t>());
+        x.set_width(j.at("width").get<int64_t>());
+    }
+
+    inline void to_json(json & j, const RenderTarget & x) {
+        j = json::object();
+        j["clear_color"] = x.get_clear_color();
+        j["clear_depth"] = x.get_clear_depth();
+        j["color_format"] = x.get_color_format();
+        j["depth_format"] = x.get_depth_format();
+        j["height"] = x.get_height();
+        j["width"] = x.get_width();
+    }
+
+    inline void from_json(const json & j, ShaderUniform& x) {
+        x.set_source(get_stack_optional<std::string>(j, "source"));
+        x.set_type(get_stack_optional<DataType>(j, "type"));
+        x.set_value(get_untyped(j, "value"));
+    }
+
+    inline void to_json(json & j, const ShaderUniform & x) {
         j = json::object();
         j["source"] = x.get_source();
         j["type"] = x.get_type();
@@ -317,8 +469,8 @@ namespace sgns {
     inline void from_json(const json & j, ShaderConfig& x) {
         x.set_entry_point(get_stack_optional<std::string>(j, "entry_point"));
         x.set_source(j.at("source").get<std::string>());
-        x.set_type(get_stack_optional<ShaderType>(j, "type"));
-        x.set_uniforms(get_stack_optional<std::map<std::string, Uniform>>(j, "uniforms"));
+        x.set_type(get_stack_optional<ShaderSourceType>(j, "type"));
+        x.set_uniforms(get_stack_optional<std::map<std::string, ShaderUniform>>(j, "uniforms"));
     }
 
     inline void to_json(json & j, const ShaderConfig & x) {
@@ -329,16 +481,44 @@ namespace sgns {
         j["uniforms"] = x.get_uniforms();
     }
 
+    inline void from_json(const json & j, VertexBuffer& x) {
+        x.set_source(j.at("source").get<std::string>());
+    }
+
+    inline void to_json(json & j, const VertexBuffer & x) {
+        j = json::object();
+        j["source"] = x.get_source();
+    }
+
+    inline void from_json(const json & j, VertexLayoutEntry& x) {
+        x.set_format(j.at("format").get<VertexLayoutFormat>());
+        x.set_name(j.at("name").get<std::string>());
+        x.set_offset(j.at("offset").get<int64_t>());
+    }
+
+    inline void to_json(json & j, const VertexLayoutEntry & x) {
+        j = json::object();
+        j["format"] = x.get_format();
+        j["name"] = x.get_name();
+        j["offset"] = x.get_offset();
+    }
+
     inline void from_json(const json & j, Pass& x) {
         x.set_data_transforms(get_stack_optional<std::vector<DataTransform>>(j, "data_transforms"));
         x.set_description(get_stack_optional<std::string>(j, "description"));
         x.set_enabled(get_stack_optional<bool>(j, "enabled"));
+        x.set_index_buffer(get_stack_optional<IndexBuffer>(j, "index_buffer"));
         x.set_inputs(get_stack_optional<std::vector<PassIoBinding>>(j, "inputs"));
         x.set_model(get_stack_optional<ModelConfig>(j, "model"));
         x.set_name(j.at("name").get<std::string>());
         x.set_outputs(get_stack_optional<std::vector<PassIoBinding>>(j, "outputs"));
+        x.set_pipeline_state(get_stack_optional<PipelineState>(j, "pipeline_state"));
+        x.set_render_shader(get_stack_optional<RenderShaderConfig>(j, "render_shader"));
+        x.set_render_target(get_stack_optional<RenderTarget>(j, "render_target"));
         x.set_shader(get_stack_optional<ShaderConfig>(j, "shader"));
         x.set_type(j.at("type").get<PassType>());
+        x.set_vertex_buffer(get_stack_optional<VertexBuffer>(j, "vertex_buffer"));
+        x.set_vertex_layout(get_stack_optional<std::vector<VertexLayoutEntry>>(j, "vertex_layout"));
     }
 
     inline void to_json(json & j, const Pass & x) {
@@ -346,12 +526,18 @@ namespace sgns {
         j["data_transforms"] = x.get_data_transforms();
         j["description"] = x.get_description();
         j["enabled"] = x.get_enabled();
+        j["index_buffer"] = x.get_index_buffer();
         j["inputs"] = x.get_inputs();
         j["model"] = x.get_model();
         j["name"] = x.get_name();
         j["outputs"] = x.get_outputs();
+        j["pipeline_state"] = x.get_pipeline_state();
+        j["render_shader"] = x.get_render_shader();
+        j["render_target"] = x.get_render_target();
         j["shader"] = x.get_shader();
         j["type"] = x.get_type();
+        j["vertex_buffer"] = x.get_vertex_buffer();
+        j["vertex_layout"] = x.get_vertex_layout();
     }
 
     inline void from_json(const json & j, SgnsProcessing& x) {
@@ -514,6 +700,20 @@ namespace sgns {
         }
     }
 
+    inline void from_json(const json & j, IndexType & x) {
+        if (j == "uint16") x = IndexType::UINT16;
+        else if (j == "uint32") x = IndexType::UINT32;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const IndexType & x) {
+        switch (x) {
+            case IndexType::UINT16: j = "uint16"; break;
+            case IndexType::UINT32: j = "uint32"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"IndexType\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
     inline void from_json(const json & j, ModelFormat & x) {
         if (j == "MNN") x = ModelFormat::MNN;
         else if (j == "ONNX") x = ModelFormat::ONNX;
@@ -576,21 +776,119 @@ namespace sgns {
         }
     }
 
-    inline void from_json(const json & j, ShaderType & x) {
-        if (j == "glsl") x = ShaderType::GLSL;
-        else if (j == "hlsl") x = ShaderType::HLSL;
-        else if (j == "metal") x = ShaderType::METAL;
-        else if (j == "spirv") x = ShaderType::SPIRV;
+    inline void from_json(const json & j, CullMode & x) {
+        if (j == "back") x = CullMode::BACK;
+        else if (j == "front") x = CullMode::FRONT;
+        else if (j == "none") x = CullMode::NONE;
         else { throw std::runtime_error("Input JSON does not conform to schema!"); }
     }
 
-    inline void to_json(json & j, const ShaderType & x) {
+    inline void to_json(json & j, const CullMode & x) {
         switch (x) {
-            case ShaderType::GLSL: j = "glsl"; break;
-            case ShaderType::HLSL: j = "hlsl"; break;
-            case ShaderType::METAL: j = "metal"; break;
-            case ShaderType::SPIRV: j = "spirv"; break;
-            default: throw std::runtime_error("Unexpected value in enumeration \"ShaderType\": " + std::to_string(static_cast<int>(x)));
+            case CullMode::BACK: j = "back"; break;
+            case CullMode::FRONT: j = "front"; break;
+            case CullMode::NONE: j = "none"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"CullMode\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, DepthTest & x) {
+        if (j == "disabled") x = DepthTest::DISABLED;
+        else if (j == "enabled") x = DepthTest::ENABLED;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const DepthTest & x) {
+        switch (x) {
+            case DepthTest::DISABLED: j = "disabled"; break;
+            case DepthTest::ENABLED: j = "enabled"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"DepthTest\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, FrontFace & x) {
+        if (j == "ccw") x = FrontFace::CCW;
+        else if (j == "cw") x = FrontFace::CW;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const FrontFace & x) {
+        switch (x) {
+            case FrontFace::CCW: j = "ccw"; break;
+            case FrontFace::CW: j = "cw"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"FrontFace\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, Topology & x) {
+        if (j == "line_list") x = Topology::LINE_LIST;
+        else if (j == "point_list") x = Topology::POINT_LIST;
+        else if (j == "triangle_list") x = Topology::TRIANGLE_LIST;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const Topology & x) {
+        switch (x) {
+            case Topology::LINE_LIST: j = "line_list"; break;
+            case Topology::POINT_LIST: j = "point_list"; break;
+            case Topology::TRIANGLE_LIST: j = "triangle_list"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"Topology\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, Stage & x) {
+        if (j == "fragment") x = Stage::FRAGMENT;
+        else if (j == "vertex") x = Stage::VERTEX;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const Stage & x) {
+        switch (x) {
+            case Stage::FRAGMENT: j = "fragment"; break;
+            case Stage::VERTEX: j = "vertex"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"Stage\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, ShaderSourceType & x) {
+        if (j == "glsl") x = ShaderSourceType::GLSL;
+        else if (j == "spirv") x = ShaderSourceType::SPIRV;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const ShaderSourceType & x) {
+        switch (x) {
+            case ShaderSourceType::GLSL: j = "glsl"; break;
+            case ShaderSourceType::SPIRV: j = "spirv"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"ShaderSourceType\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, ColorFormat & x) {
+        if (j == "RGB8") x = ColorFormat::RGB8;
+        else if (j == "RGBA8") x = ColorFormat::RGBA8;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const ColorFormat & x) {
+        switch (x) {
+            case ColorFormat::RGB8: j = "RGB8"; break;
+            case ColorFormat::RGBA8: j = "RGBA8"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"ColorFormat\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, DepthFormat & x) {
+        if (j == "D24_UNORM_S8_UINT") x = DepthFormat::D24_UNORM_S8_UINT;
+        else if (j == "D32_SFLOAT") x = DepthFormat::D32_SFLOAT;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const DepthFormat & x) {
+        switch (x) {
+            case DepthFormat::D24_UNORM_S8_UINT: j = "D24_UNORM_S8_UINT"; break;
+            case DepthFormat::D32_SFLOAT: j = "D32_SFLOAT"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"DepthFormat\": " + std::to_string(static_cast<int>(x)));
         }
     }
 
@@ -611,6 +909,22 @@ namespace sgns {
             case PassType::RENDER: j = "render"; break;
             case PassType::RETRAIN: j = "retrain"; break;
             default: throw std::runtime_error("Unexpected value in enumeration \"PassType\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, VertexLayoutFormat & x) {
+        if (j == "FLOAT16") x = VertexLayoutFormat::FLOAT16;
+        else if (j == "FLOAT32") x = VertexLayoutFormat::FLOAT32;
+        else if (j == "INT32") x = VertexLayoutFormat::INT32;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const VertexLayoutFormat & x) {
+        switch (x) {
+            case VertexLayoutFormat::FLOAT16: j = "FLOAT16"; break;
+            case VertexLayoutFormat::FLOAT32: j = "FLOAT32"; break;
+            case VertexLayoutFormat::INT32: j = "INT32"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"VertexLayoutFormat\": " + std::to_string(static_cast<int>(x)));
         }
     }
 }

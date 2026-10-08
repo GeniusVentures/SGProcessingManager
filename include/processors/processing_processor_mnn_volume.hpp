@@ -40,7 +40,8 @@ namespace sgns::sgprocessing
                            const sgns::IoDeclaration         &proc,
                            std::vector<char>                 &volumeData,
                            std::vector<char>                 &modelFile,
-                           const std::vector<sgns::Parameter> *parameters ) override;
+                           const std::vector<sgns::Parameter> *parameters,
+                           const ExecutionContext            &execCtx ) override;
 
     private:
         /** Run MNN processing on volume data

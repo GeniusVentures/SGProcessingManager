@@ -25,6 +25,36 @@ target_link_libraries(sgprocmanagersha
 )
 sgnus_install(sgprocmanagersha)
 
+add_library(sgprocmanagerquant
+    quantization.cpp
+	../../include/util/quantization.hpp
+)
+target_include_directories(sgprocmanagerquant PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/generated>
+)
+target_link_libraries(sgprocmanagerquant
+    PUBLIC
+    nlohmann_json::nlohmann_json
+)
+sgnus_install(sgprocmanagerquant)
+
+add_library(sgprocmanagerdiff
+    diff_utils.cpp
+	../../include/util/diff_utils.hpp
+)
+target_include_directories(sgprocmanagerdiff PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../generated>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SGProcessingManager/generated>
+)
+target_link_libraries(sgprocmanagerdiff
+    PUBLIC
+    nlohmann_json::nlohmann_json
+)
+sgnus_install(sgprocmanagerdiff)
+
 add_library(sgprocmanagertypes
 	InputTypes.cpp
 	../../include/util/InputTypes.hpp

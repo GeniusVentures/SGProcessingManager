@@ -1,8 +1,10 @@
 #include "processors/processing_processor_mnn_vec2.hpp"
+#include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <openssl/sha.h>
 #include "util/sha256.hpp"
 
@@ -184,9 +186,11 @@ namespace sgns::sgprocessing
                                                const sgns::IoDeclaration         &proc,
                                                std::vector<char>                 &vec2Data,
                                                std::vector<char>                 &modelFile,
-                                               const std::vector<sgns::Parameter> *parameters )
+                                               const std::vector<sgns::Parameter> *parameters,
+                                               const ExecutionContext            &execCtx )
     {
         (void)parameters;
+        const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFileBytes;
         modelFileBytes.assign( modelFile.begin(), modelFile.end() );
 
@@ -255,8 +259,25 @@ namespace sgns::sgprocessing
         std::vector<float> stitchedOutput;
         std::vector<float> stitchedWeights;
 
+        // LOAD_MODEL stage — fire progress and check cancel
+        if ( execCtx.progressCallback )
+        {
+            execCtx.progressCallback( ProgressEvent::ForMNN( passId, MNNStage::LOAD_MODEL, 25.0f ) );
+        }
+        if ( execCtx.cancelToken.IsCancelled() )
+        {
+            RunTeardown();
+            return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Vec2 pass cancelled" } };
+        }
+
         for ( int start : starts )
         {
+            if ( execCtx.cancelToken.IsCancelled() )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::CANCELLED, "Vec2 pass cancelled" } };
+            }
+
             std::vector<float> patch;
             patch.resize( static_cast<size_t>( patchVectors ) * 2, 0.0f );
 
@@ -327,6 +348,22 @@ namespace sgns::sgprocessing
 
         m_progress = 100.0f;
 
+        m_progress = 100.0f;
+
+        // Output budget check (EXEC-03)
+        if ( !stitchedOutput.empty() && execCtx.maxOutputArtifactBytes > 0 )
+        {
+            size_t outputSize = stitchedOutput.size() * sizeof( float );
+            if ( outputSize > execCtx.maxOutputArtifactBytes )
+            {
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {},
+                    ProcessingError{ ProcessingErrorStage::BUDGET_EXCEEDED,
+                        "Output artifact size " + std::to_string( outputSize ) + " exceeds budget " +
+                            std::to_string( execCtx.maxOutputArtifactBytes ) } };
+            }
+        }
+
         ProcessingResult result;
         result.hash = subTaskResultHash;
 
@@ -343,6 +380,10 @@ namespace sgns::sgprocessing
         }
 
         m_logger->info( "Vec2 processing complete" );
+
+        // Tear down all MNN sessions accumulated during processing
+        RunTeardown();
+
         return result;
     }
 
@@ -350,7 +391,7 @@ namespace sgns::sgprocessing
                                                    std::vector<uint8_t> &model,
                                                    int length )
     {
-        auto interpreter = std::unique_ptr<MNN::Interpreter>(
+        auto interpreter = std::shared_ptr<MNN::Interpreter>(
             MNN::Interpreter::createFromBuffer( model.data(), model.size() ) );
         if ( !interpreter )
         {
@@ -359,16 +400,24 @@ namespace sgns::sgprocessing
         }
 
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_CPU;
+        config.type = MNN_FORWARD_VULKAN;
         config.numThread = 4;
         config.backendConfig = nullptr;
 
-        auto session = interpreter->createSession( config );
+        MNN::Session *session = nullptr;
+        {
+            std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
+            session = interpreter->createSession( config );
+        }
         if ( !session )
         {
             m_logger->error( "Failed to create MNN session" );
             return nullptr;
         }
+
+        PushTeardown( [interpreter, session]() {
+            interpreter->releaseSession( session );
+        } );
 
         auto inputTensor = interpreter->getSessionInput( session, nullptr );
         if ( !inputTensor )

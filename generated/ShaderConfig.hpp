@@ -13,21 +13,21 @@
 #include <nlohmann/json.hpp>
 #include "helper.hpp"
 
-#include "Uniform.hpp"
+#include "ShaderUniform.hpp"
 
 namespace sgns {
-    enum class ShaderType : int;
+    enum class ShaderSourceType : int;
 }
 
 namespace sgns {
     /**
-     * Shader configuration for compute/render passes
+     * Shader configuration for compute passes
      */
 
     using nlohmann::json;
 
     /**
-     * Shader configuration for compute/render passes
+     * Shader configuration for compute passes
      */
     class ShaderConfig {
         public:
@@ -37,8 +37,8 @@ namespace sgns {
         private:
         boost::optional<std::string> entry_point;
         std::string source;
-        boost::optional<ShaderType> type;
-        boost::optional<std::map<std::string, Uniform>> uniforms;
+        boost::optional<ShaderSourceType> type;
+        boost::optional<std::map<std::string, ShaderUniform>> uniforms;
 
         public:
         boost::optional<std::string> get_entry_point() const { return entry_point; }
@@ -51,13 +51,13 @@ namespace sgns {
         std::string & get_mutable_source() { return source; }
         void set_source(const std::string & value) { this->source = value; }
 
-        boost::optional<ShaderType> get_type() const { return type; }
-        void set_type(boost::optional<ShaderType> value) { this->type = value; }
+        boost::optional<ShaderSourceType> get_type() const { return type; }
+        void set_type(boost::optional<ShaderSourceType> value) { this->type = value; }
 
         /**
          * Uniform variable declarations
          */
-        boost::optional<std::map<std::string, Uniform>> get_uniforms() const { return uniforms; }
-        void set_uniforms(boost::optional<std::map<std::string, Uniform>> value) { this->uniforms = value; }
+        boost::optional<std::map<std::string, ShaderUniform>> get_uniforms() const { return uniforms; }
+        void set_uniforms(boost::optional<std::map<std::string, ShaderUniform>> value) { this->uniforms = value; }
     };
 }
