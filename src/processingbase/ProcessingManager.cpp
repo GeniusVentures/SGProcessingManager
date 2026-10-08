@@ -167,10 +167,13 @@ namespace sgns::sgprocessing
          *   float    clear_depth
          *   uint8_t  has_pipeline_state
          *   if has_pipeline_state:
-         *     uint8_t has_topology    + [uint32_t topology_tag]
-         *     uint8_t has_cull_mode   + [uint32_t cull_mode_tag]
-         *     uint8_t has_front_face  + [uint32_t front_face_tag]
-         *     uint8_t has_depth_test  + [uint32_t depth_test_tag]
+         *     uint8_t has_topology         + [uint32_t topology_tag]
+         *     uint8_t has_cull_mode        + [uint32_t cull_mode_tag]
+         *     uint8_t has_front_face       + [uint32_t front_face_tag]
+         *     uint8_t has_depth_test       + [uint32_t depth_test_tag]
+         *     uint8_t has_blend_enable     + [uint8_t  blend_enable_value]      (Phase 17, D-05)
+         *     uint8_t has_blend_src_factor + [uint32_t blend_src_factor_tag]    (Phase 17, D-05)
+         *     uint8_t has_blend_dst_factor + [uint32_t blend_dst_factor_tag]    (Phase 17, D-05)
          *   uint32_t vertex_layout_count
          *   per entry:
          *     uint32_t name_len + name bytes (raw UTF-8, no null terminator)
@@ -191,6 +194,11 @@ namespace sgns::sgprocessing
          *     uint32_t index_type_tag (static_cast<uint32_t>(IndexType))
          *     uint32_t index_len + index bytes
          *   uint32_t data_transform_count
+         *   uint8_t has_texture_buffer                                          (Phase 17, D-05)
+         *   if has_texture_buffer:
+         *     uint32_t texture_width
+         *     uint32_t texture_height
+         *     uint32_t texture_len + texture bytes (raw RGBA8)
          */
         std::vector<char> SerializeRenderPassConfig(
             const sgns::RenderTarget                                                &target,
@@ -201,7 +209,11 @@ namespace sgns::sgprocessing
             bool                                                                     hasIndexBuffer,
             sgns::IndexType                                                          indexType,
             const std::vector<char>                                                 &indexBytes,
-            uint32_t                                                                 dataTransformCount )
+            uint32_t                                                                 dataTransformCount,
+            bool                                                                     hasTextureBuffer,
+            uint32_t                                                                 textureWidth,
+            uint32_t                                                                 textureHeight,
+            const std::vector<char>                                                 &textureBytes )
         {
             std::vector<char> out;
 
@@ -289,6 +301,36 @@ namespace sgns::sgprocessing
                 {
                     appendU8( 0 );
                 }
+
+                if ( ps.get_blend_enable() )
+                {
+                    appendU8( 1 );
+                    appendU8( ps.get_blend_enable().value() ? 1 : 0 );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+
+                if ( ps.get_blend_src_factor() )
+                {
+                    appendU8( 1 );
+                    appendU32( static_cast<uint32_t>( ps.get_blend_src_factor().value() ) );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
+
+                if ( ps.get_blend_dst_factor() )
+                {
+                    appendU8( 1 );
+                    appendU32( static_cast<uint32_t>( ps.get_blend_dst_factor().value() ) );
+                }
+                else
+                {
+                    appendU8( 0 );
+                }
             }
             else
             {
@@ -362,6 +404,19 @@ namespace sgns::sgprocessing
 
             appendU32( dataTransformCount );
 
+            if ( hasTextureBuffer )
+            {
+                appendU8( 1 );
+                appendU32( textureWidth );
+                appendU32( textureHeight );
+                appendU32( static_cast<uint32_t>( textureBytes.size() ) );
+                appendBytes( textureBytes.data(), textureBytes.size() );
+            }
+            else
+            {
+                appendU8( 0 );
+            }
+
             return out;
         }
     }
@@ -391,6 +446,16 @@ namespace sgns::sgprocessing
                                   [] { return std::make_unique<sgprocessing::MNN_Float>(); } );
         RegisterProcessorFactory( static_cast<int>( DataType::INT ),
                                   [] { return std::make_unique<sgprocessing::MNN_Int>(); } );
+#ifdef SGPROC_HAS_MNN_LLM
+        // PROC-01: only registered when the vendored MNN was built with MNN_BUILD_LLM=ON
+        // (see ProcessingManager.hpp's include guard and src/processors/CMakeLists.txt's
+        // configure-time detection). In checkouts without LLM support (like this one),
+        // DataType::LLM has no registered factory and SetProcessorByName() returns false,
+        // so ProcessInternal() fails closed with the existing Error::NO_PROCESSOR path --
+        // the same behavior any other unregistered DataType already has.
+        RegisterProcessorFactory( static_cast<int>( DataType::LLM ),
+                                  [] { return std::make_unique<sgprocessing::MNN_Llm>(); } );
+#endif
         RegisterProcessorFactory( static_cast<int>( DataType::MAT2 ),
                                   [] { return std::make_unique<sgprocessing::MNN_Mat2>(); } );
         RegisterProcessorFactory( static_cast<int>( DataType::MAT3 ),
@@ -614,6 +679,18 @@ namespace sgns::sgprocessing
                         }
                     }
 
+                    // texture_buffer is optional (Phase 17 D-05, texturing scope); if present,
+                    // it must be input:-resolvable, mirroring vertex_buffer/index_buffer's gate.
+                    if ( pass.get_texture_buffer() )
+                    {
+                        const auto        textureBufferCfg = pass.get_texture_buffer().value();
+                        const std::string textureSource    = textureBufferCfg.get_source();
+                        if ( textureSource.rfind( "input:", 0 ) != 0 )
+                        {
+                            return rejectUnsupportedBufferSourcePrefix( "texture_buffer", textureSource );
+                        }
+                    }
+
                     {
                         const auto renderShaderCfg = pass.get_render_shader().value();
                         if ( renderShaderCfg.get_uniforms() )
@@ -757,6 +834,27 @@ namespace sgns::sgprocessing
                     }
                     break;
                 }
+                case DataType::LLM:
+                {
+                    // LLM inputs (PROC-01, plan 04-03) carry a text prompt via the input source,
+                    // not a fixed-width buffer -- MNN::Transformer::Llm::response() takes plain
+                    // text, so unlike the tensor-shaped types above there is no dimensions/format
+                    // requirement here. The only recognized parameter is an optional "maxNewTokens"
+                    // INT (processing_processor_mnn_llm.cpp's ResolveMaxNewTokens() already defaults
+                    // it when absent) -- validate its type only when the schema author supplied one.
+                    if ( processing_.get_parameters() )
+                    {
+                        for ( const auto &param : processing_.get_parameters().value() )
+                        {
+                            if ( param.get_name() == "maxNewTokens" && param.get_type() != sgns::ParameterType::INT )
+                            {
+                                m_logger->error( "LLM maxNewTokens parameter must be INT type" );
+                                return outcome::failure( Error::PROCESS_INFO_MISSING );
+                            }
+                        }
+                    }
+                    break;
+                }
                 case DataType::MAT2:
                 {
                     if ( !input.get_dimensions() || !input.get_dimensions()->get_width() )
@@ -891,7 +989,7 @@ namespace sgns::sgprocessing
                         if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 &&
                              format != sgns::InputFormat::INT32 && format != sgns::InputFormat::INT16 &&
                              format != sgns::InputFormat::INT8
-                             /*&& format != sgns::InputFormat::FP4_ULTRA*/ )
+                             && format != sgns::InputFormat::FP4_ULTRA )
                         {
                             m_logger->error( "Tensor type supports FLOAT32/FLOAT16/INT32/INT16/INT8 only" );
                             return outcome::failure( Error::PROCESS_INFO_MISSING );
@@ -1328,22 +1426,47 @@ namespace sgns::sgprocessing
                 }
             }
 
+            // Build a minimal ExecutionManifest on every terminal path (ARTF-09) so
+            // GetLastManifest() is reachable even when Process() returns failure
+            // before the full manifest-assembly block below ever runs. Mirrors the
+            // success-path assembly's identity/timing/executor-identity population.
+            auto buildFailureManifest = [&]()
+            {
+                ExecutionManifest fm{};
+                std::strncpy( fm.executionId, processing_.get_name().c_str(), MAX_IDENTIFIER - 1 );
+                std::strncpy( fm.passId, pass.get_name().c_str(), MAX_RESOURCE_NAME - 1 );
+                std::memcpy( fm.executorIdentity, executorId, SHA256_HASH_SIZE );
+                fm.startTimeUsec = startTimeUsec;
+                fm.endTimeUsec   = endTimeUsec;
+                fm.wallClockUsec = endTimeUsec - startTimeUsec;
+                fm.terminalState = terminalState;
+                std::strncpy( fm.errorMessage,
+                              processResult.error
+                                  ? processResult.error->message.c_str()
+                                  : "processor returned an empty hash with no result (legacy failure sentinel)",
+                              MAX_IDENTIFIER - 1 );
+                m_lastManifest = fm;
+            };
+
             // Check terminal conditions before saving (D-15)
             if ( processResult.error )
             {
                 if ( processResult.error->stage == ProcessingErrorStage::CANCELLED )
                 {
                     m_logger->error( "Processing cancelled" );
+                    buildFailureManifest();
                     return outcome::failure( Error::PROCESSING_FAILED );
                 }
                 if ( processResult.error->stage == ProcessingErrorStage::TIMED_OUT )
                 {
                     m_logger->error( "Processing deadline exceeded" );
+                    buildFailureManifest();
                     return outcome::failure( Error::PROCESSING_FAILED );
                 }
                 if ( processResult.error->stage == ProcessingErrorStage::BUDGET_EXCEEDED )
                 {
                     m_logger->error( "Processing output budget exceeded" );
+                    buildFailureManifest();
                     return outcome::failure( Error::PROCESSING_FAILED );
                 }
             }
@@ -1354,6 +1477,7 @@ namespace sgns::sgprocessing
                                  processResult.error
                                      ? processResult.error->message
                                      : std::string( "processor returned an empty hash with no result (legacy failure sentinel)" ) );
+                buildFailureManifest();
                 return outcome::failure( Error::PROCESSING_FAILED );
             }
 
@@ -1635,6 +1759,7 @@ namespace sgns::sgprocessing
                 }
             }
 
+            m_lastManifest = output.manifest;
             return output;
         }
         catch ( const std::exception &e )
@@ -1710,6 +1835,14 @@ namespace sgns::sgprocessing
         bool                               hasIndexBuffer = false;
         sgns::IndexType                    indexType      = sgns::IndexType::UINT16;
 
+        // Independently-resolved texture buffer fetch (Phase 17, D-05 -- texturing
+        // "define contracts" half). texture_buffer is optional; if present it is
+        // resolved via the same "input:name" prefix convention as vertex_buffer.
+        auto     textureBuffer     = std::make_shared<std::vector<char>>();
+        uint32_t textureWidth      = 0;
+        uint32_t textureHeight     = 0;
+        bool     hasTextureBuffer = false;
+
         if ( isRender )
         {
             // NOTE: get_render_shader() returns boost::optional<RenderShaderConfig> BY VALUE
@@ -1773,6 +1906,30 @@ namespace sgns::sgprocessing
                 hasIndexBuffer        = true;
                 indexType             = indexBufferCfg.get_index_type().value_or( sgns::IndexType::UINT16 );
                 GetSubCidForProc( ioc, indexUrl, indexBuffer );
+            }
+
+            // texture_buffer is optional (Phase 17 D-05); if present, its source is
+            // already required to be "input:"-prefixed by CheckProcessValidity() --
+            // this call-site check is defense-in-depth, mirroring vertex_buffer's
+            // own re-check comment above.
+            if ( p.get_texture_buffer() )
+            {
+                const auto        textureBufferCfg = p.get_texture_buffer().value();
+                const std::string textureSource    = textureBufferCfg.get_source();
+                if ( textureSource.rfind( "input:", 0 ) != 0 )
+                {
+                    return outcome::failure( Error::MISSING_INPUT );
+                }
+                auto texInputIndex = GetInputIndex( textureSource );
+                if ( !texInputIndex )
+                {
+                    return outcome::failure( Error::MISSING_INPUT );
+                }
+                std::string textureUrl = processing_.get_inputs()[texInputIndex.value()].get_source_uri_param();
+                GetSubCidForProc( ioc, textureUrl, textureBuffer );
+                hasTextureBuffer = true;
+                textureWidth     = static_cast<uint32_t>( textureBufferCfg.get_width() );
+                textureHeight    = static_cast<uint32_t>( textureBufferCfg.get_height() );
             }
         }
         else
@@ -1846,6 +2003,7 @@ namespace sgns::sgprocessing
             }
 
             static const std::vector<char> kEmptyIndexBytes;
+            static const std::vector<char> kEmptyTextureBytes;
             *mainbuffers->second = SerializeRenderPassConfig( p.get_render_target().value(),
                                                                p.get_pipeline_state(),
                                                                p.get_vertex_layout().value(),
@@ -1857,7 +2015,12 @@ namespace sgns::sgprocessing
                                                                p.get_data_transforms()
                                                                    ? static_cast<uint32_t>(
                                                                          p.get_data_transforms()->size() )
-                                                                   : 0u );
+                                                                   : 0u,
+                                                               hasTextureBuffer,
+                                                               textureWidth,
+                                                               textureHeight,
+                                                               hasTextureBuffer ? *textureBuffer
+                                                                                 : kEmptyTextureBytes );
         }
 
         if ( mainbuffers == nullptr )

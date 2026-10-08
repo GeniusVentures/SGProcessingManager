@@ -141,6 +141,34 @@ namespace sgns::sgprocmanagerdiff
                                      const std::vector<uint8_t>          &b,
                                      const std::vector<sgns::Parameter>  *parameters,
                                      ElementDiffStats                    &statsOut );
+
+    /// Phase 17-09 (RENDTOL-02 gap closure, D-11): convenience wrapper for
+    /// CLI/tool callers (capture_diff) that already know a numeric
+    /// byteQuantMode directly from a command-line flag and have no job
+    /// Parameter array on hand to build IsByteChunkWithinTolerance's existing
+    /// `parameters` argument from.
+    ///
+    /// Builds a single-entry std::vector<sgns::Parameter> declaring
+    /// "byteQuantMode" (INT type, the given value) and delegates to
+    /// IsByteChunkWithinTolerance unmodified -- this is a pure additive
+    /// wrapper, not a refactor. IsByteChunkWithinTolerance's own body and
+    /// TryGetDeclaredByteQuantMode's validation logic are untouched by this
+    /// function.
+    ///
+    /// @param a            First chunk's raw uint8 bytes.
+    /// @param b            Second chunk's raw uint8 bytes.
+    /// @param byteQuantMode Mask-bit count in [0, 8], as supplied by the
+    ///                      caller (e.g. a CLI flag) -- not validated here;
+    ///                      callers must validate range themselves (mirrors
+    ///                      TryGetDeclaredByteQuantMode's own [0,8] bound).
+    /// @param statsOut     Populated with ComputeUint8Diff's full stats,
+    ///                     regardless of the boolean result.
+    /// @return Identical result to calling IsByteChunkWithinTolerance with a
+    ///         Parameter array declaring byteQuantMode=byteQuantMode.
+    bool IsByteChunkWithinToleranceForMode( const std::vector<uint8_t> &a,
+                                            const std::vector<uint8_t> &b,
+                                            int                          byteQuantMode,
+                                            ElementDiffStats            &statsOut );
 } // namespace sgns::sgprocmanagerdiff
 
 #endif

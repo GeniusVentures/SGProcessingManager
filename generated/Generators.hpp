@@ -19,6 +19,8 @@
 #include "VertexLayoutFormat.hpp"
 #include "VertexBuffer.hpp"
 #include "PassType.hpp"
+#include "TextureBuffer.hpp"
+#include "TextureFilter.hpp"
 #include "ShaderConfig.hpp"
 #include "ShaderUniform.hpp"
 #include "RenderTarget.hpp"
@@ -34,6 +36,7 @@
 #include "FrontFace.hpp"
 #include "DepthTest.hpp"
 #include "CullMode.hpp"
+#include "BlendFactor.hpp"
 #include "ModelConfig.hpp"
 #include "OptimizerConfig.hpp"
 #include "OptimizerType.hpp"
@@ -109,6 +112,9 @@ namespace sgns {
     void from_json(const json & j, ShaderConfig & x);
     void to_json(json & j, const ShaderConfig & x);
 
+    void from_json(const json & j, TextureBuffer & x);
+    void to_json(json & j, const TextureBuffer & x);
+
     void from_json(const json & j, VertexBuffer & x);
     void to_json(json & j, const VertexBuffer & x);
 
@@ -145,6 +151,9 @@ namespace sgns {
     void from_json(const json & j, OptimizerType & x);
     void to_json(json & j, const OptimizerType & x);
 
+    void from_json(const json & j, BlendFactor & x);
+    void to_json(json & j, const BlendFactor & x);
+
     void from_json(const json & j, CullMode & x);
     void to_json(json & j, const CullMode & x);
 
@@ -168,6 +177,9 @@ namespace sgns {
 
     void from_json(const json & j, DepthFormat & x);
     void to_json(json & j, const DepthFormat & x);
+
+    void from_json(const json & j, TextureFilter & x);
+    void to_json(json & j, const TextureFilter & x);
 
     void from_json(const json & j, PassType & x);
     void to_json(json & j, const PassType & x);
@@ -381,6 +393,9 @@ namespace sgns {
     }
 
     inline void from_json(const json & j, PipelineState& x) {
+        x.set_blend_dst_factor(get_stack_optional<BlendFactor>(j, "blend_dst_factor"));
+        x.set_blend_enable(get_stack_optional<bool>(j, "blend_enable"));
+        x.set_blend_src_factor(get_stack_optional<BlendFactor>(j, "blend_src_factor"));
         x.set_cull_mode(get_stack_optional<CullMode>(j, "cull_mode"));
         x.set_depth_test(get_stack_optional<DepthTest>(j, "depth_test"));
         x.set_front_face(get_stack_optional<FrontFace>(j, "front_face"));
@@ -389,6 +404,9 @@ namespace sgns {
 
     inline void to_json(json & j, const PipelineState & x) {
         j = json::object();
+        j["blend_dst_factor"] = x.get_blend_dst_factor();
+        j["blend_enable"] = x.get_blend_enable();
+        j["blend_src_factor"] = x.get_blend_src_factor();
         j["cull_mode"] = x.get_cull_mode();
         j["depth_test"] = x.get_depth_test();
         j["front_face"] = x.get_front_face();
@@ -481,6 +499,21 @@ namespace sgns {
         j["uniforms"] = x.get_uniforms();
     }
 
+    inline void from_json(const json & j, TextureBuffer& x) {
+        x.set_filter(get_stack_optional<TextureFilter>(j, "filter"));
+        x.set_height(j.at("height").get<int64_t>());
+        x.set_source(j.at("source").get<std::string>());
+        x.set_width(j.at("width").get<int64_t>());
+    }
+
+    inline void to_json(json & j, const TextureBuffer & x) {
+        j = json::object();
+        j["filter"] = x.get_filter();
+        j["height"] = x.get_height();
+        j["source"] = x.get_source();
+        j["width"] = x.get_width();
+    }
+
     inline void from_json(const json & j, VertexBuffer& x) {
         x.set_source(j.at("source").get<std::string>());
     }
@@ -507,15 +540,19 @@ namespace sgns {
         x.set_data_transforms(get_stack_optional<std::vector<DataTransform>>(j, "data_transforms"));
         x.set_description(get_stack_optional<std::string>(j, "description"));
         x.set_enabled(get_stack_optional<bool>(j, "enabled"));
+        x.set_estimated_gpu_memory_bytes(get_stack_optional<int64_t>(j, "estimated_gpu_memory_bytes"));
         x.set_index_buffer(get_stack_optional<IndexBuffer>(j, "index_buffer"));
         x.set_inputs(get_stack_optional<std::vector<PassIoBinding>>(j, "inputs"));
+        x.set_max_output_artifact_bytes(get_stack_optional<int64_t>(j, "max_output_artifact_bytes"));
         x.set_model(get_stack_optional<ModelConfig>(j, "model"));
         x.set_name(j.at("name").get<std::string>());
         x.set_outputs(get_stack_optional<std::vector<PassIoBinding>>(j, "outputs"));
+        x.set_per_pass_deadline_ms(get_stack_optional<int64_t>(j, "per_pass_deadline_ms"));
         x.set_pipeline_state(get_stack_optional<PipelineState>(j, "pipeline_state"));
         x.set_render_shader(get_stack_optional<RenderShaderConfig>(j, "render_shader"));
         x.set_render_target(get_stack_optional<RenderTarget>(j, "render_target"));
         x.set_shader(get_stack_optional<ShaderConfig>(j, "shader"));
+        x.set_texture_buffer(get_stack_optional<TextureBuffer>(j, "texture_buffer"));
         x.set_type(j.at("type").get<PassType>());
         x.set_vertex_buffer(get_stack_optional<VertexBuffer>(j, "vertex_buffer"));
         x.set_vertex_layout(get_stack_optional<std::vector<VertexLayoutEntry>>(j, "vertex_layout"));
@@ -526,15 +563,19 @@ namespace sgns {
         j["data_transforms"] = x.get_data_transforms();
         j["description"] = x.get_description();
         j["enabled"] = x.get_enabled();
+        j["estimated_gpu_memory_bytes"] = x.get_estimated_gpu_memory_bytes();
         j["index_buffer"] = x.get_index_buffer();
         j["inputs"] = x.get_inputs();
+        j["max_output_artifact_bytes"] = x.get_max_output_artifact_bytes();
         j["model"] = x.get_model();
         j["name"] = x.get_name();
         j["outputs"] = x.get_outputs();
+        j["per_pass_deadline_ms"] = x.get_per_pass_deadline_ms();
         j["pipeline_state"] = x.get_pipeline_state();
         j["render_shader"] = x.get_render_shader();
         j["render_target"] = x.get_render_target();
         j["shader"] = x.get_shader();
+        j["texture_buffer"] = x.get_texture_buffer();
         j["type"] = x.get_type();
         j["vertex_buffer"] = x.get_vertex_buffer();
         j["vertex_layout"] = x.get_vertex_layout();
@@ -601,6 +642,7 @@ namespace sgns {
             {"buffer", DataType::BUFFER},
             {"float", DataType::FLOAT},
             {"int", DataType::INT},
+            {"llm", DataType::LLM},
             {"mat2", DataType::MAT2},
             {"mat3", DataType::MAT3},
             {"mat4", DataType::MAT4},
@@ -626,6 +668,7 @@ namespace sgns {
             case DataType::BUFFER: j = "buffer"; break;
             case DataType::FLOAT: j = "float"; break;
             case DataType::INT: j = "int"; break;
+            case DataType::LLM: j = "llm"; break;
             case DataType::MAT2: j = "mat2"; break;
             case DataType::MAT3: j = "mat3"; break;
             case DataType::MAT4: j = "mat4"; break;
@@ -776,6 +819,24 @@ namespace sgns {
         }
     }
 
+    inline void from_json(const json & j, BlendFactor & x) {
+        if (j == "one") x = BlendFactor::ONE;
+        else if (j == "one_minus_src_alpha") x = BlendFactor::ONE_MINUS_SRC_ALPHA;
+        else if (j == "src_alpha") x = BlendFactor::SRC_ALPHA;
+        else if (j == "zero") x = BlendFactor::ZERO;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const BlendFactor & x) {
+        switch (x) {
+            case BlendFactor::ONE: j = "one"; break;
+            case BlendFactor::ONE_MINUS_SRC_ALPHA: j = "one_minus_src_alpha"; break;
+            case BlendFactor::SRC_ALPHA: j = "src_alpha"; break;
+            case BlendFactor::ZERO: j = "zero"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"BlendFactor\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
     inline void from_json(const json & j, CullMode & x) {
         if (j == "back") x = CullMode::BACK;
         else if (j == "front") x = CullMode::FRONT;
@@ -889,6 +950,20 @@ namespace sgns {
             case DepthFormat::D24_UNORM_S8_UINT: j = "D24_UNORM_S8_UINT"; break;
             case DepthFormat::D32_SFLOAT: j = "D32_SFLOAT"; break;
             default: throw std::runtime_error("Unexpected value in enumeration \"DepthFormat\": " + std::to_string(static_cast<int>(x)));
+        }
+    }
+
+    inline void from_json(const json & j, TextureFilter & x) {
+        if (j == "linear") x = TextureFilter::LINEAR;
+        else if (j == "nearest") x = TextureFilter::NEAREST;
+        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+    }
+
+    inline void to_json(json & j, const TextureFilter & x) {
+        switch (x) {
+            case TextureFilter::LINEAR: j = "linear"; break;
+            case TextureFilter::NEAREST: j = "nearest"; break;
+            default: throw std::runtime_error("Unexpected value in enumeration \"TextureFilter\": " + std::to_string(static_cast<int>(x)));
         }
     }
 

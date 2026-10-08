@@ -24,6 +24,7 @@
  * @brief Capture diff CLI (compares two .cap files, reports divergence stats)
  */
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -46,12 +47,14 @@ namespace
         std::string pathB;
         std::string elementType; // "float32" or "uint8"
         std::string jsonOutput = "diff_report.json";
+        int         byteQuantMode         = 0;     // only meaningful when byteQuantModeDeclared is true
+        bool        byteQuantModeDeclared = false; // distinguishes "0 supplied" from "not supplied"
     };
 
     void PrintUsage()
     {
         std::cerr << "Usage: capture_diff --a <path> --b <path> --element-type <float32|uint8> "
-                     "[--json-output <path>]\n";
+                     "[--json-output <path>] [--byte-quant-mode <N>]\n";
     }
 
     /// Parses argv into CliArgs.
@@ -76,6 +79,22 @@ namespace
             else if ( arg == "--json-output" && i + 1 < argc )
             {
                 out.jsonOutput = argv[++i];
+            }
+            else if ( arg == "--byte-quant-mode" && i + 1 < argc )
+            {
+                const std::string valueStr = argv[++i];
+                char             *endPtr   = nullptr;
+                errno                      = 0;
+                long parsed = std::strtol( valueStr.c_str(), &endPtr, 10 );
+                if ( valueStr.empty() || endPtr == nullptr || *endPtr != '\0' || errno == ERANGE || parsed < 0 ||
+                     parsed > 8 )
+                {
+                    std::cerr << "capture_diff: --byte-quant-mode must be an integer in [0,8], got \"" << valueStr
+                               << "\"\n";
+                    return false;
+                }
+                out.byteQuantMode         = static_cast<int>( parsed );
+                out.byteQuantModeDeclared = true;
             }
             else
             {
@@ -191,6 +210,14 @@ int main( int argc, char **argv )
     bool             haveRecords = !captureA.rawRecordsPerArtifact.empty() && !captureB.rawRecordsPerArtifact.empty() &&
                         !captureA.rawRecordsPerArtifact[0].empty() && !captureB.rawRecordsPerArtifact[0].empty();
 
+    // Phase 17-09 (RENDTOL-02 gap closure, D-10/D-11): opt-in raw-buffer
+    // tolerance check against preQuantizeBytes, mirroring production's own
+    // ValidateResults/AttemptToleranceFallback mechanism. Additive only --
+    // the trailing-record quantizedBytes pass above is unchanged.
+    bool                                       rawToleranceChecked      = false;
+    bool                                       rawWithinTolerance       = false;
+    sgns::sgprocmanagerdiff::ElementDiffStats  rawStats;
+
     if ( !haveRecords )
     {
         std::cerr << "capture_diff: one or both capture files have no raw capture records for artifact 0 -- "
@@ -216,6 +243,21 @@ int main( int argc, char **argv )
             std::cerr << "capture_diff: size mismatch between the two files' final capture record bytes ("
                        << lastRecordA.quantizedBytes.size() << " vs " << lastRecordB.quantizedBytes.size()
                        << ") -- skipping per-element numeric pass (hash-match booleans above are still valid)\n";
+        }
+
+        if ( args.byteQuantModeDeclared )
+        {
+            if ( args.elementType == "uint8" )
+            {
+                rawToleranceChecked = true;
+                rawWithinTolerance  = sgns::sgprocmanagerdiff::IsByteChunkWithinToleranceForMode(
+                    lastRecordA.preQuantizeBytes, lastRecordB.preQuantizeBytes, args.byteQuantMode, rawStats );
+            }
+            else
+            {
+                std::cerr << "capture_diff: --byte-quant-mode only applies to the uint8 render path -- "
+                             "skipping raw-tolerance check for --element-type float32\n";
+            }
         }
     }
 
@@ -295,6 +337,12 @@ int main( int argc, char **argv )
         std::cout << "  maxUlpDistance:             " << stats.maxUlpDistance << "\n";
         std::cout << "  percentExceedingThreshold:  " << stats.percentExceedingThreshold << "%\n";
     }
+    if ( rawToleranceChecked )
+    {
+        std::cout << "  rawToleranceCheck: byteQuantMode=" << args.byteQuantMode
+                   << " withinTolerance=" << ( rawWithinTolerance ? "true" : "false" )
+                   << " maxAbsDelta=" << rawStats.maxAbsDelta << "\n";
+    }
 
     // JSON output (D-06 -- both console and JSON, not deferred).
     nlohmann::json report;
@@ -322,6 +370,24 @@ int main( int argc, char **argv )
         chunkEntry["sizeMismatch"]              = chunkStats[j].sizeMismatch;
         report["chunkDiffs"].push_back( chunkEntry );
     }
+
+    // Phase 17-09 (RENDTOL-02 gap closure): additive nested object -- every
+    // top-level field above (built from quantizedBytes) keeps its current
+    // meaning and current values.
+    nlohmann::json rawToleranceCheck;
+    rawToleranceCheck["checked"] = rawToleranceChecked;
+    if ( rawToleranceChecked )
+    {
+        rawToleranceCheck["byteQuantMode"]              = args.byteQuantMode;
+        rawToleranceCheck["withinTolerance"]             = rawWithinTolerance;
+        rawToleranceCheck["elementCount"]                = rawStats.elementCount;
+        rawToleranceCheck["maxAbsDelta"]                 = rawStats.maxAbsDelta;
+        rawToleranceCheck["maxRelDelta"]                 = rawStats.maxRelDelta;
+        rawToleranceCheck["maxUlpDistance"]              = rawStats.maxUlpDistance;
+        rawToleranceCheck["percentExceedingThreshold"]   = rawStats.percentExceedingThreshold;
+        rawToleranceCheck["sizeMismatch"]                = rawStats.sizeMismatch;
+    }
+    report["rawToleranceCheck"] = rawToleranceCheck;
 
     std::ofstream jsonStream( args.jsonOutput );
     if ( !jsonStream.is_open() )

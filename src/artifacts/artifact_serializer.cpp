@@ -167,8 +167,14 @@ namespace sgns::sgprocessing
         static constexpr size_t OFF_wallClockUsec        = 5609;
         static constexpr size_t OFF_manifestHash         = 5617;
 
-        // Pre-allocate zero-filled buffer
-        std::vector<uint8_t> out( MANIFEST_SERIALIZED_SIZE, 0 );
+        // ARTF-10: append-only trailer, offsets derived from the unchanged base
+        // constant so a future base-region change can't silently desync them.
+        static constexpr size_t OFF_schemaVersion = MANIFEST_SERIALIZED_SIZE;
+        static constexpr size_t OFF_errorMessage  = MANIFEST_SERIALIZED_SIZE + sizeof( uint32_t );
+
+        // Pre-allocate zero-filled buffer at the new v2 total size, so the
+        // trailer region is zero-filled by the allocation itself.
+        std::vector<uint8_t> out( MANIFEST_V2_SERIALIZED_SIZE, 0 );
 
         // --- CRITICAL: Save and zero manifestHash before serialization (D-04) ---
         uint8_t savedManifestHash[SHA256_HASH_SIZE];
@@ -224,6 +230,11 @@ namespace sgns::sgprocessing
 
         // manifestHash field stays zeroed (we're serializing with hash excluded)
 
+        // --- ARTF-10 trailer: schemaVersion + errorMessage ---
+        uint32_t schemaVersion = 2;
+        std::memcpy( out.data() + OFF_schemaVersion, &schemaVersion, sizeof( uint32_t ) );
+        copyStr( OFF_errorMessage, manifest.errorMessage, MAX_IDENTIFIER );
+
         // --- Restore manifestHash ---
         std::memcpy( const_cast<uint8_t( & )[SHA256_HASH_SIZE]>( manifest.manifestHash ), savedManifestHash, SHA256_HASH_SIZE );
 
@@ -232,7 +243,7 @@ namespace sgns::sgprocessing
 
     bool DeserializeManifest( const std::vector<uint8_t> &bytes, ExecutionManifest &out )
     {
-        if ( bytes.size() != MANIFEST_SERIALIZED_SIZE )
+        if ( bytes.size() < MANIFEST_SERIALIZED_SIZE )
         {
             return false;
         }
@@ -259,6 +270,12 @@ namespace sgns::sgprocessing
         static constexpr size_t OFF_outputBytesProduced  = 5601;
         static constexpr size_t OFF_wallClockUsec        = 5609;
         static constexpr size_t OFF_manifestHash         = 5617;
+
+        // ARTF-10: append-only trailer, offsets derived from the unchanged base
+        // constant (own independent copy, mirroring this file's per-function
+        // offset-constant duplication convention).
+        static constexpr size_t OFF_schemaVersion = MANIFEST_SERIALIZED_SIZE;
+        static constexpr size_t OFF_errorMessage  = MANIFEST_SERIALIZED_SIZE + sizeof( uint32_t );
 
         out = ExecutionManifest{};
 
@@ -310,6 +327,23 @@ namespace sgns::sgprocessing
 
         // Manifest hash
         std::memcpy( out.manifestHash, bytes.data() + OFF_manifestHash, SHA256_HASH_SIZE );
+
+        // --- ARTF-10 trailer: schemaVersion + errorMessage ---
+        // Each trailer-region memcpy is gated behind its own explicit bounds
+        // check immediately guarding it (ASVS V5) — never combined into one
+        // compound condition, so a blob truncated between the two fields never
+        // attempts the second, larger read.
+        out.errorMessage[0] = '\0';  // default: absent
+        if ( bytes.size() >= OFF_schemaVersion + sizeof( uint32_t ) )
+        {
+            uint32_t schemaVersion = 0;
+            std::memcpy( &schemaVersion, bytes.data() + OFF_schemaVersion, sizeof( uint32_t ) );
+            if ( schemaVersion >= 2 && bytes.size() >= OFF_errorMessage + MAX_IDENTIFIER )
+            {
+                std::memcpy( out.errorMessage, bytes.data() + OFF_errorMessage, MAX_IDENTIFIER );
+                out.errorMessage[MAX_IDENTIFIER - 1] = '\0';
+            }
+        }
 
         return true;
     }

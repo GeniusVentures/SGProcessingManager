@@ -4,7 +4,8 @@
  * Defines the ExecutionManifest struct — a self-contained, fixed-field record
  * that captures everything needed for hashing, signing, caching, and verification
  * of an execution run (ARTF-04, D-13). All identity fields are inline; inapplicable
- * identities use the sentinel zero-hash convention (D-14).
+ * identities use the sentinel zero-hash convention (D-14). ARTF-09 adds a trailing
+ * errorMessage field, appended without disturbing any existing field's offset.
  *
  * @brief Execution manifest data contract
  */
@@ -80,6 +81,15 @@ namespace sgns::sgprocessing
         // (to avoid self-referential hashing). Write all zeros here before
         // calling SerializeManifest / ComputeManifestHash.
         uint8_t manifestHash[SHA256_HASH_SIZE];
+
+        // ── Human-readable diagnostic (ARTF-09) ────────────────────────
+        //
+        // Carries ProcessingError::message. Defaults empty when
+        // terminalState == TerminalState::Success. Silently truncated at
+        // MAX_IDENTIFIER - 1 bytes with no truncation marker (D-10). Last
+        // member of the struct — appended, never inserted, so no existing
+        // field's offset changes (ARTF-10 append-only trailer convention).
+        char errorMessage[MAX_IDENTIFIER];
     };
 
 }  // namespace sgns::sgprocessing

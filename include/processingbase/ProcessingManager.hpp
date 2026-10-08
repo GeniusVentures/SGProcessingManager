@@ -22,6 +22,19 @@
 #include <processors/processing_processor_mnn_float.hpp>
 #include <processors/processing_processor_mnn_int.hpp>
 #include <processors/processing_processor_render.hpp>
+#ifdef SGPROC_HAS_MNN_LLM
+// PROC-01 (Phase 04-sgprocessing-integration): only compiled in when the linked MNN
+// static library was actually built with MNN_BUILD_LLM=ON (see
+// src/processors/CMakeLists.txt's configure-time detection) -- MNN_Llm.hpp itself
+// only forward-declares MNN::Transformer::Llm, so this include is always safe; the
+// guard exists solely because src/processors/CMakeLists.txt conditionally excludes
+// processing_processor_mnn_llm.cpp's definition of StartProcessing() in checkouts
+// (like this one) where the vendored MNN wasn't built with LLM support -- without
+// this guard, RegisterProcessorFactory's lambda below would reference an
+// MNN_Llm vtable with no definition anywhere, breaking the link for every consumer
+// of this shared submodule branch.
+#include <processors/processing_processor_mnn_llm.hpp>
+#endif
 #include <capability/capability_validator.hpp>
 #include <execution/execution_context.hpp>
 #include <artifacts/artifact_types.hpp>
@@ -161,6 +174,18 @@ namespace sgns::sgprocessing
             return 0.0f;
         }
 
+        /** Get the manifest produced by the most recent Process() call (ARTF-09).
+         * Populated on every terminal state — success or failure (CANCELLED,
+         * TIMED_OUT, BUDGET_EXCEEDED, generic error) — so a caller holding only a
+         * ProcessingManager instance can retrieve a human-readable errorMessage
+         * without access to the original ProcessingError or processor internals.
+         * @return Reference to the most recently produced ExecutionManifest.
+         */
+        const ExecutionManifest &GetLastManifest() const
+        {
+            return m_lastManifest;
+        }
+
         /**
          * @brief       Checks whether a processing json is valid by attempting to create a ProcessingManager instance with it
          * @param[in]   jsondata JSON string containing the processing data to validate.
@@ -228,6 +253,7 @@ namespace sgns::sgprocessing
         sgns::sgprocmanager::Logger          m_logger = sgns::sgprocmanager::createLogger( "SGProcessingManager" );
         sgns::SgnsProcessing                 processing_;
         std::unique_ptr<ProcessingProcessor> m_processor;
+        ExecutionManifest                    m_lastManifest{};
         std::unordered_map<int, std::function<std::unique_ptr<ProcessingProcessor>()>>                    m_processorFactories;
         std::unordered_map<PassType, ExecutorRegistryEntry, PassTypeHash>                                m_passFactories;
         std::unordered_map<std::string, size_t>                                                           m_inputMap;

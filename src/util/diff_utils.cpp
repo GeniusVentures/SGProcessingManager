@@ -253,4 +253,18 @@ namespace sgns::sgprocmanagerdiff
         // not a percentage-based bar.
         return statsOut.percentExceedingThreshold == 0.0;
     }
+
+    bool IsByteChunkWithinToleranceForMode( const std::vector<uint8_t> &a,
+                                            const std::vector<uint8_t> &b,
+                                            int                          byteQuantMode,
+                                            ElementDiffStats            &statsOut )
+    {
+        sgns::Parameter param;
+        param.set_name( "byteQuantMode" );
+        param.set_type( sgns::ParameterType::INT );
+        param.set_parameter_default( byteQuantMode );
+
+        const std::vector<sgns::Parameter> parameters{ param };
+        return IsByteChunkWithinTolerance( a, b, &parameters, statsOut );
+    }
 } // namespace sgns::sgprocmanagerdiff

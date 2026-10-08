@@ -21,6 +21,7 @@
 #include "RenderShaderConfig.hpp"
 #include "RenderTarget.hpp"
 #include "ShaderConfig.hpp"
+#include "TextureBuffer.hpp"
 #include "VertexBuffer.hpp"
 #include "VertexLayoutEntry.hpp"
 
@@ -34,7 +35,10 @@ namespace sgns {
     class Pass {
         public:
         Pass() :
-            name_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^[a-zA-Z][a-zA-Z0-9_]*$"))
+            estimated_gpu_memory_bytes_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
+            max_output_artifact_bytes_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
+            name_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^[a-zA-Z][a-zA-Z0-9_]*$")),
+            per_pass_deadline_ms_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none)
         {}
         virtual ~Pass() = default;
 
@@ -42,19 +46,23 @@ namespace sgns {
         boost::optional<std::vector<DataTransform>> data_transforms;
         boost::optional<std::string> description;
         boost::optional<bool> enabled;
+        boost::optional<int64_t> estimated_gpu_memory_bytes;
+        ClassMemberConstraints estimated_gpu_memory_bytes_constraint;
         boost::optional<IndexBuffer> index_buffer;
         boost::optional<std::vector<PassIoBinding>> inputs;
+        boost::optional<int64_t> max_output_artifact_bytes;
+        ClassMemberConstraints max_output_artifact_bytes_constraint;
         boost::optional<ModelConfig> model;
         std::string name;
         ClassMemberConstraints name_constraint;
         boost::optional<std::vector<PassIoBinding>> outputs;
-        boost::optional<int64_t> estimated_gpu_memory_bytes;
-        boost::optional<int64_t> max_output_artifact_bytes;
         boost::optional<int64_t> per_pass_deadline_ms;
+        ClassMemberConstraints per_pass_deadline_ms_constraint;
         boost::optional<PipelineState> pipeline_state;
         boost::optional<RenderShaderConfig> render_shader;
         boost::optional<RenderTarget> render_target;
         boost::optional<ShaderConfig> shader;
+        boost::optional<TextureBuffer> texture_buffer;
         PassType type;
         boost::optional<VertexBuffer> vertex_buffer;
         boost::optional<std::vector<VertexLayoutEntry>> vertex_layout;
@@ -76,6 +84,12 @@ namespace sgns {
         void set_enabled(boost::optional<bool> value) { this->enabled = value; }
 
         /**
+         * Estimated GPU memory needed for this pass in bytes. 0 means no estimate provided.
+         */
+        boost::optional<int64_t> get_estimated_gpu_memory_bytes() const { return estimated_gpu_memory_bytes; }
+        void set_estimated_gpu_memory_bytes(boost::optional<int64_t> value) { if (value) CheckConstraint("estimated_gpu_memory_bytes", estimated_gpu_memory_bytes_constraint, *value); this->estimated_gpu_memory_bytes = value; }
+
+        /**
          * Index buffer binding + index type for render passes
          */
         boost::optional<IndexBuffer> get_index_buffer() const { return index_buffer; }
@@ -86,6 +100,13 @@ namespace sgns {
          */
         boost::optional<std::vector<PassIoBinding>> get_inputs() const { return inputs; }
         void set_inputs(boost::optional<std::vector<PassIoBinding>> value) { this->inputs = value; }
+
+        /**
+         * Maximum output artifact size in bytes before the pass is considered budget-exceeded. 0
+         * means no budget.
+         */
+        boost::optional<int64_t> get_max_output_artifact_bytes() const { return max_output_artifact_bytes; }
+        void set_max_output_artifact_bytes(boost::optional<int64_t> value) { if (value) CheckConstraint("max_output_artifact_bytes", max_output_artifact_bytes_constraint, *value); this->max_output_artifact_bytes = value; }
 
         /**
          * Model configuration for inference/retrain passes
@@ -107,22 +128,10 @@ namespace sgns {
         void set_outputs(boost::optional<std::vector<PassIoBinding>> value) { this->outputs = value; }
 
         /**
-         * Estimated GPU memory needed for this pass in bytes. 0 means no estimate provided.
-         */
-        boost::optional<int64_t> get_estimated_gpu_memory_bytes() const { return estimated_gpu_memory_bytes; }
-        void set_estimated_gpu_memory_bytes(boost::optional<int64_t> value) { this->estimated_gpu_memory_bytes = value; }
-
-        /**
-         * Maximum output artifact size in bytes before the pass is considered budget-exceeded. 0 means no budget.
-         */
-        boost::optional<int64_t> get_max_output_artifact_bytes() const { return max_output_artifact_bytes; }
-        void set_max_output_artifact_bytes(boost::optional<int64_t> value) { this->max_output_artifact_bytes = value; }
-
-        /**
          * Per-pass wall-clock deadline in milliseconds. 0 means no deadline.
          */
         boost::optional<int64_t> get_per_pass_deadline_ms() const { return per_pass_deadline_ms; }
-        void set_per_pass_deadline_ms(boost::optional<int64_t> value) { this->per_pass_deadline_ms = value; }
+        void set_per_pass_deadline_ms(boost::optional<int64_t> value) { if (value) CheckConstraint("per_pass_deadline_ms", per_pass_deadline_ms_constraint, *value); this->per_pass_deadline_ms = value; }
 
         /**
          * Fixed-function pipeline state for render passes
@@ -147,6 +156,12 @@ namespace sgns {
          */
         boost::optional<ShaderConfig> get_shader() const { return shader; }
         void set_shader(boost::optional<ShaderConfig> value) { this->shader = value; }
+
+        /**
+         * Buffer binding supplying a sampled texture image for render passes (Phase 17 D-05)
+         */
+        boost::optional<TextureBuffer> get_texture_buffer() const { return texture_buffer; }
+        void set_texture_buffer(boost::optional<TextureBuffer> value) { this->texture_buffer = value; }
 
         /**
          * Type of processing pass

@@ -5,7 +5,7 @@
 //
 //  Then include this file, and then do
 //
-//     DataType.hpp data = nlohmann::json::parse(jsonString);
+//     BlendFactor.hpp data = nlohmann::json::parse(jsonString);
 
 #pragma once
 
@@ -16,5 +16,5 @@
 namespace sgns {
     using nlohmann::json;
 
-    enum class DataType : int { BOOL, BUFFER, FLOAT, INT, LLM, MAT2, MAT3, MAT4, STRING, TENSOR, TEXTURE1_D, TEXTURE2_D, TEXTURE3_D, TEXTURE_CUBE, VEC2, VEC3, VEC4 };
+    enum class BlendFactor : int { ONE, ONE_MINUS_SRC_ALPHA, SRC_ALPHA, ZERO };
 }

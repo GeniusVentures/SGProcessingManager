@@ -203,6 +203,10 @@
           "$ref": "#/definitions/index_buffer",
           "description": "Index buffer binding + index type for render passes"
         },
+        "texture_buffer": {
+          "$ref": "#/definitions/texture_buffer",
+          "description": "Buffer binding supplying a sampled texture image for render passes (Phase 17 D-05)"
+        },
         "pipeline_state": {
           "$ref": "#/definitions/pipeline_state",
           "description": "Fixed-function pipeline state for render passes"
@@ -546,9 +550,40 @@
         }
       }
     },
+    "texture_filter": {
+      "type": "string",
+      "description": "Sampler filter mode for a render pass's sampled texture input",
+      "enum": ["nearest", "linear"],
+      "default": "nearest"
+    },
+    "texture_buffer": {
+      "type": "object",
+      "description": "Raw RGBA8 image bytes for a render pass's sampled texture input (Phase 17 D-05), using the same input:-prefix convention as vertex_buffer -- structurally unrelated to DataType::TEXTURE2_D's MNN-chunking shape (block_len/chunk_stride), which is purpose-built for CPU-side tensor processing, not a single flat sampled image.",
+      "required": ["source", "width", "height"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Data source using prefix notation",
+          "pattern": "^(input|output|internal|parameter):[a-zA-Z][a-zA-Z0-9_]*$"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "filter": {
+          "$ref": "#/definitions/texture_filter"
+        }
+      }
+    },
     "pipeline_state": {
       "type": "object",
-      "description": "Curated, minimal v1 fixed-function pipeline state subset (D-13); depth compare op is fixed at 'less', not schema-configurable (D-14)",
+      "description": "Curated, minimal v1 fixed-function pipeline state subset (D-13); depth compare op is fixed at 'less', not schema-configurable (D-14); blend state added Phase 17 (D-05)",
       "properties": {
         "topology": {
           "type": "string",
@@ -569,6 +604,20 @@
           "type": "string",
           "enum": ["enabled", "disabled"],
           "default": "enabled"
+        },
+        "blend_enable": {
+          "type": "boolean",
+          "default": false
+        },
+        "blend_src_factor": {
+          "type": "string",
+          "enum": ["one", "zero", "src_alpha", "one_minus_src_alpha"],
+          "default": "src_alpha"
+        },
+        "blend_dst_factor": {
+          "type": "string",
+          "enum": ["one", "zero", "src_alpha", "one_minus_src_alpha"],
+          "default": "one_minus_src_alpha"
         }
       }
     },
@@ -672,7 +721,7 @@
       "enum": [
         "texture1D", "texture2D", "texture3D", "textureCube",
         "tensor", "float", "int", "bool", "vec2", "vec3", "vec4",
-        "mat2", "mat3", "mat4", "buffer", "string"
+        "mat2", "mat3", "mat4", "buffer", "string", "llm"
       ]
     }
   }

@@ -243,6 +243,39 @@ namespace sgns::sgprocmanagerdiff
         ASSERT_TRUE( stats.sizeMismatch );
     }
 
+    // --- IsByteChunkWithinToleranceForMode: wrapper delegates to
+    // IsByteChunkWithinTolerance unmodified (Phase 17-09, RENDTOL-02 gap
+    // closure, D-11) ---
+
+    TEST_F( DiffUtilsTest, IsByteChunkWithinToleranceForModeUsesMaskBoundWhenDeclaredPasses )
+    {
+        auto bytesA = BuildByteBytes( { 0 } );
+        auto bytesB = BuildByteBytes( { 63 } ); // exactly (1<<6)-1, the mask bound
+
+        ElementDiffStats stats;
+        ASSERT_TRUE( IsByteChunkWithinToleranceForMode( bytesA, bytesB, /*byteQuantMode=*/6, stats ) );
+    }
+
+    TEST_F( DiffUtilsTest, IsByteChunkWithinToleranceForModeUsesMaskBoundWhenDeclaredFails )
+    {
+        auto bytesA = BuildByteBytes( { 0 } );
+        auto bytesB = BuildByteBytes( { 64 } ); // one past the mask bound
+
+        ElementDiffStats stats;
+        ASSERT_FALSE( IsByteChunkWithinToleranceForMode( bytesA, bytesB, /*byteQuantMode=*/6, stats ) );
+    }
+
+    TEST_F( DiffUtilsTest, IsByteChunkWithinToleranceForModeMatchesBlendingRealDelta )
+    {
+        // Blending's real measured raw maxAbsDelta from both Round 1's
+        // diff-render-blending.json and Round 2's preserved preQuantizeBytes.
+        auto bytesA = BuildByteBytes( { 100 } );
+        auto bytesB = BuildByteBytes( { 101 } ); // absDelta = 1
+
+        ElementDiffStats stats;
+        ASSERT_TRUE( IsByteChunkWithinToleranceForMode( bytesA, bytesB, /*byteQuantMode=*/6, stats ) );
+    }
+
     // Silence unused-function warnings for BitsOf/FloatFromBits (kept for
     // parity with quantization_test.cpp's helper set, available for future
     // exact-bit-pattern assertions in this suite).

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <mutex>
 #include <openssl/sha.h>
+#include <MNN/FP4DequantUtils.hpp>
 #include "util/sha256.hpp"
 #include "util/quantization.hpp"
 
@@ -212,21 +213,25 @@ namespace sgns::sgprocessing
         }
 
         const auto format = proc.get_format().value_or( sgns::InputFormat::FLOAT32 );
+
         if ( format != sgns::InputFormat::FLOAT32 && format != sgns::InputFormat::FLOAT16 &&
              format != sgns::InputFormat::INT32 && format != sgns::InputFormat::INT16 &&
-             format != sgns::InputFormat::INT8 )
+             format != sgns::InputFormat::INT8 && format != sgns::InputFormat::FP4_ULTRA )
         {
-            m_logger->error( "Tensor supports FLOAT32/FLOAT16/INT32/INT16/INT8 formats only" );
+            m_logger->error( "Tensor supports FLOAT32/FLOAT16/INT32/INT16/INT8/FP4_ULTRA formats only" );
             return ProcessingResult{};
         }
 
         const size_t expectedElements = static_cast<size_t>( length );
-        const size_t bytesPerElement = ( format == sgns::InputFormat::FLOAT32 ) ? sizeof( float ) :
-            ( format == sgns::InputFormat::FLOAT16 ) ? sizeof( uint16_t ) :
-            ( format == sgns::InputFormat::INT32 ) ? sizeof( int32_t ) :
-            ( format == sgns::InputFormat::INT16 ) ? sizeof( int16_t ) :
-            sizeof( int8_t );
-        const size_t expectedBytes = expectedElements * bytesPerElement;
+        // FP4_ULTRA packs two E2M1 nibbles per byte (D-13); every other format is one
+        // element per bytesPerElement.
+        const size_t expectedBytes = ( format == sgns::InputFormat::FP4_ULTRA )
+            ? ( expectedElements + 1 ) / 2
+            : expectedElements * ( ( format == sgns::InputFormat::FLOAT32 ) ? sizeof( float ) :
+                ( format == sgns::InputFormat::FLOAT16 ) ? sizeof( uint16_t ) :
+                ( format == sgns::InputFormat::INT32 ) ? sizeof( int32_t ) :
+                ( format == sgns::InputFormat::INT16 ) ? sizeof( int16_t ) :
+                sizeof( int8_t ) );
         if ( tensorData.size() < expectedBytes )
         {
             m_logger->error( "Tensor input size {} bytes is smaller than expected {} bytes",
@@ -265,6 +270,12 @@ namespace sgns::sgprocessing
             {
                 signalValues[i] = static_cast<float>( src[i] );
             }
+        }
+        else if ( format == sgns::InputFormat::FP4_ULTRA )
+        {
+            // Pass-through to MNN's own E2M1 decode (D-09) -- no dequant math duplicated here.
+            const auto *src = reinterpret_cast<const uint8_t *>( tensorData.data() );
+            MNN::dequant_fp4_packed_cpu( src, signalValues.data(), expectedElements );
         }
         else
         {

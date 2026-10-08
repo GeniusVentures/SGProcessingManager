@@ -5,7 +5,7 @@
 //
 //  Then include this file, and then do
 //
-//     DataType.hpp data = nlohmann::json::parse(jsonString);
+//     TextureFilter.hpp data = nlohmann::json::parse(jsonString);
 
 #pragma once
 
@@ -14,7 +14,14 @@
 #include "helper.hpp"
 
 namespace sgns {
+    /**
+     * Sampler filter mode for a render pass's sampled texture input
+     */
+
     using nlohmann::json;
 
-    enum class DataType : int { BOOL, BUFFER, FLOAT, INT, LLM, MAT2, MAT3, MAT4, STRING, TENSOR, TEXTURE1_D, TEXTURE2_D, TEXTURE3_D, TEXTURE_CUBE, VEC2, VEC3, VEC4 };
+    /**
+     * Sampler filter mode for a render pass's sampled texture input
+     */
+    enum class TextureFilter : int { LINEAR, NEAREST };
 }

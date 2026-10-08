@@ -12,6 +12,7 @@
 #include <CullMode.hpp>
 #include <FrontFace.hpp>
 #include <DepthTest.hpp>
+#include <BlendFactor.hpp>
 #include <VertexLayoutFormat.hpp>
 
 namespace sgns::sgprocessing
@@ -363,6 +364,10 @@ namespace sgns::sgprocessing
         sgns::IndexType                                                    &outIndexType,
         std::vector<uint8_t>                                               &outIndexBytes,
         uint32_t                                                           &outDataTransformCount,
+        bool                                                                &outHasTextureBuffer,
+        uint32_t                                                            &outTextureWidth,
+        uint32_t                                                            &outTextureHeight,
+        std::vector<uint8_t>                                               &outTextureBytes,
         ProcessingResult                                                   &errorOut )
     // Function-try-block: several generated setters below (set_width/set_height/
     // set_clear_depth/set_offset, etc.) enforce schema-level constraints and throw
@@ -379,6 +384,10 @@ namespace sgns::sgprocessing
         outHasIndex = false;
         outIndexBytes.clear();
         outDataTransformCount = 0;
+        outHasTextureBuffer = false;
+        outTextureWidth = 0;
+        outTextureHeight = 0;
+        outTextureBytes.clear();
 
         const char  *data   = imageData.data();
         const size_t size   = imageData.size();
@@ -499,6 +508,51 @@ namespace sgns::sgprocessing
                     return fail( "ParseRenderPassConfig: truncated buffer reading depth_test_tag" );
                 }
                 ps.set_depth_test( static_cast<sgns::DepthTest>( tag ) );
+            }
+
+            uint8_t hasBlendEnable = 0;
+            if ( !ReadU8( data, size, offset, hasBlendEnable ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading has_blend_enable" );
+            }
+            if ( hasBlendEnable )
+            {
+                uint8_t blendEnableValue = 0;
+                if ( !ReadU8( data, size, offset, blendEnableValue ) )
+                {
+                    return fail( "ParseRenderPassConfig: truncated buffer reading blend_enable_value" );
+                }
+                ps.set_blend_enable( blendEnableValue != 0 );
+            }
+
+            uint8_t hasBlendSrcFactor = 0;
+            if ( !ReadU8( data, size, offset, hasBlendSrcFactor ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading has_blend_src_factor" );
+            }
+            if ( hasBlendSrcFactor )
+            {
+                uint32_t tag = 0;
+                if ( !ReadU32( data, size, offset, tag ) )
+                {
+                    return fail( "ParseRenderPassConfig: truncated buffer reading blend_src_factor_tag" );
+                }
+                ps.set_blend_src_factor( static_cast<sgns::BlendFactor>( tag ) );
+            }
+
+            uint8_t hasBlendDstFactor = 0;
+            if ( !ReadU8( data, size, offset, hasBlendDstFactor ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading has_blend_dst_factor" );
+            }
+            if ( hasBlendDstFactor )
+            {
+                uint32_t tag = 0;
+                if ( !ReadU32( data, size, offset, tag ) )
+                {
+                    return fail( "ParseRenderPassConfig: truncated buffer reading blend_dst_factor_tag" );
+                }
+                ps.set_blend_dst_factor( static_cast<sgns::BlendFactor>( tag ) );
             }
 
             outPipelineState = ps;
@@ -668,6 +722,42 @@ namespace sgns::sgprocessing
             return fail( "ParseRenderPassConfig: truncated buffer reading data_transform_count" );
         }
         outDataTransformCount = dataTransformCount;
+
+        uint8_t hasTextureBuffer = 0;
+        if ( !ReadU8( data, size, offset, hasTextureBuffer ) )
+        {
+            return fail( "ParseRenderPassConfig: truncated buffer reading has_texture_buffer" );
+        }
+        if ( hasTextureBuffer )
+        {
+            uint32_t textureWidth = 0;
+            if ( !ReadU32( data, size, offset, textureWidth ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading texture_width" );
+            }
+            uint32_t textureHeight = 0;
+            if ( !ReadU32( data, size, offset, textureHeight ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading texture_height" );
+            }
+            uint32_t textureLen = 0;
+            if ( !ReadU32( data, size, offset, textureLen ) )
+            {
+                return fail( "ParseRenderPassConfig: truncated buffer reading texture_len" );
+            }
+            if ( textureLen > 0 )
+            {
+                const char *bytes = nullptr;
+                if ( !ReadBytes( data, size, offset, textureLen, bytes ) )
+                {
+                    return fail( "ParseRenderPassConfig: truncated buffer reading texture bytes" );
+                }
+                outTextureBytes.assign( bytes, bytes + textureLen );
+            }
+            outHasTextureBuffer = true;
+            outTextureWidth     = textureWidth;
+            outTextureHeight    = textureHeight;
+        }
 
         return true;
     }
@@ -1087,6 +1177,160 @@ namespace sgns::sgprocessing
         return true;
     }
 
+    bool RenderProcessor::UploadTexture( const std::vector<uint8_t> &textureBytes,
+                                          uint32_t                    width,
+                                          uint32_t                    height,
+                                          sgns::TextureFilter         filter,
+                                          ProcessingResult           &errorOut )
+    {
+        // (a) Fail closed if the device can't sample this format -- mirrors
+        // BuildRenderPass's existing format-check-before-create discipline.
+        if ( !CheckFormatSupport( VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT, errorOut ) )
+        {
+            return false;
+        }
+
+        // (b) T-17-09: byte-count-vs-dimensions validation BEFORE any GPU
+        // resource is created -- a mismatched declared-vs-actual byte count must
+        // never reach vkCmdCopyBufferToImage.
+        const size_t expectedBytes = static_cast<size_t>( width ) * static_cast<size_t>( height ) * 4;
+        if ( textureBytes.size() != expectedBytes )
+        {
+            errorOut = MakeError( ProcessingErrorStage::RESOURCE_RESOLUTION,
+                                  "UploadTexture: textureBytes.size() (" + std::to_string( textureBytes.size() ) +
+                                      ") does not match width*height*4 (" + std::to_string( expectedBytes ) + ")" );
+            return false;
+        }
+
+        // (c) Staging buffer -- HOST_VISIBLE|HOST_COHERENT direct write, identical
+        // style to UploadBuffers()'s existing vertex-buffer write.
+        if ( !CreateBufferDedicated( textureBytes.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                      m_textureStagingBuffer, m_textureStagingMemory, errorOut ) )
+        {
+            return false;
+        }
+        {
+            void    *mapped = nullptr;
+            VkResult result = vkMapMemory( m_device, m_textureStagingMemory, 0, textureBytes.size(), 0, &mapped );
+            if ( result != VK_SUCCESS )
+            {
+                errorOut = MakeError( ProcessingErrorStage::BUFFER_ALLOCATION,
+                                      "UploadTexture: vkMapMemory (staging) failed: VkResult=" +
+                                          std::to_string( result ) );
+                return false;
+            }
+            std::memcpy( mapped, textureBytes.data(), textureBytes.size() );
+            vkUnmapMemory( m_device, m_textureStagingMemory ); // HOST_COHERENT -- no flush needed (D-20)
+        }
+
+        // (d) Device-local sampled VkImage via the existing CreateImageDedicated()
+        // -- identical dedicated-allocation shape to the existing color/depth
+        // render-target images.
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType     = VK_IMAGE_TYPE_2D;
+        imageInfo.format        = VK_FORMAT_R8G8B8A8_UNORM;
+        imageInfo.extent        = { width, height, 1 };
+        imageInfo.mipLevels     = 1;
+        imageInfo.arrayLayers   = 1;
+        imageInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage         = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        if ( !CreateImageDedicated( imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_textureImage, m_textureMemory,
+                                     errorOut ) )
+        {
+            return false;
+        }
+
+        // (e) VkImageView -- mirrors m_colorView's existing creation call shape.
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image                           = m_textureImage;
+        viewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format                          = VK_FORMAT_R8G8B8A8_UNORM;
+        viewInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.baseMipLevel   = 0;
+        viewInfo.subresourceRange.levelCount     = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount     = 1;
+
+        VkResult result = vkCreateImageView( m_device, &viewInfo, nullptr, &m_textureView );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::IMAGE_ALLOCATION,
+                                  "UploadTexture: vkCreateImageView failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+        {
+            VkDevice    device = m_device;
+            VkImageView view   = m_textureView;
+            PushTeardown( [device, view]() { vkDestroyImageView( device, view, nullptr ); } );
+        }
+
+        // (f) VkSampler -- RESEARCH.md Pattern 3 part 4 exactly. VK_FILTER_NEAREST
+        // is used by default (Pitfall 1's recommendation -- bit-reproducible texel
+        // lookup); anisotropy/mipmapping are deliberately minimal (T-17-11,
+        // accepted -- avoids an extra cross-vendor divergence axis).
+        VkFilter vkFilter = ( filter == sgns::TextureFilter::LINEAR ) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+
+        VkSamplerCreateInfo samplerInfo{};
+        samplerInfo.sType            = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        samplerInfo.magFilter        = vkFilter;
+        samplerInfo.minFilter        = vkFilter;
+        samplerInfo.addressModeU     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.addressModeV     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.addressModeW     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        samplerInfo.anisotropyEnable = VK_FALSE;
+        samplerInfo.compareEnable    = VK_FALSE;
+        samplerInfo.mipmapMode       = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+
+        result = vkCreateSampler( m_device, &samplerInfo, nullptr, &m_textureSampler );
+        if ( result != VK_SUCCESS )
+        {
+            errorOut = MakeError( ProcessingErrorStage::PIPELINE_CREATION,
+                                  "UploadTexture: vkCreateSampler failed: VkResult=" + std::to_string( result ) );
+            return false;
+        }
+        {
+            VkDevice  device  = m_device;
+            VkSampler sampler = m_textureSampler;
+            PushTeardown( [device, sampler]() { vkDestroySampler( device, sampler, nullptr ); } );
+        }
+
+        // (h) Write the descriptor set's binding=1 entry -- mirrors
+        // UploadBuffers()'s existing binding=0 uniform-buffer vkUpdateDescriptorSets
+        // call shape exactly. m_descriptorSet must already exist (BuildPipeline()'s
+        // hasTexture=true path, called before this method per StartProcessing()'s
+        // sequencing).
+        if ( m_descriptorSet != VK_NULL_HANDLE )
+        {
+            VkDescriptorImageInfo imageDescInfo{};
+            imageDescInfo.sampler     = m_textureSampler;
+            imageDescInfo.imageView   = m_textureView;
+            imageDescInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            VkWriteDescriptorSet write{};
+            write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet          = m_descriptorSet;
+            write.dstBinding      = 1;
+            write.descriptorCount = 1;
+            write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            write.pImageInfo      = &imageDescInfo;
+
+            vkUpdateDescriptorSets( m_device, 1, &write, 0, nullptr );
+        }
+
+        // (i)
+        m_hasTexture    = true;
+        m_textureWidth  = width;
+        m_textureHeight = height;
+
+        return true;
+    }
+
     VkFormat RenderProcessor::ToVkFormat( sgns::ColorFormat fmt )
     {
         switch ( fmt )
@@ -1397,6 +1641,22 @@ namespace sgns::sgprocessing
         return ( d == sgns::DepthTest::ENABLED ) ? VK_TRUE : VK_FALSE;
     }
 
+    VkBlendFactor RenderProcessor::ToVkBlendFactor( sgns::BlendFactor f )
+    {
+        switch ( f )
+        {
+            case sgns::BlendFactor::ONE:
+                return VK_BLEND_FACTOR_ONE;
+            case sgns::BlendFactor::ZERO:
+                return VK_BLEND_FACTOR_ZERO;
+            case sgns::BlendFactor::SRC_ALPHA:
+                return VK_BLEND_FACTOR_SRC_ALPHA;
+            case sgns::BlendFactor::ONE_MINUS_SRC_ALPHA:
+                return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        }
+        return VK_BLEND_FACTOR_ONE;
+    }
+
     uint32_t RenderProcessor::VertexFormatByteSize( sgns::VertexLayoutFormat f )
     {
         switch ( f )
@@ -1415,6 +1675,7 @@ namespace sgns::sgprocessing
                                           const std::vector<sgns::VertexLayoutEntry> &vertexLayout,
                                           const boost::optional<sgns::PipelineState> &pipelineState,
                                           const ResolvedUniforms                     &uniforms,
+                                          bool                                        hasTexture,
                                           ProcessingResult                           &errorOut )
     {
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
@@ -1528,7 +1789,19 @@ namespace sgns::sgprocessing
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        colorBlendAttachment.blendEnable = VK_FALSE;
+        bool blendEnable = pipelineState && pipelineState->get_blend_enable().value_or( false );
+        colorBlendAttachment.blendEnable = blendEnable ? VK_TRUE : VK_FALSE;
+        if ( blendEnable )
+        {
+            colorBlendAttachment.srcColorBlendFactor =
+                ToVkBlendFactor( pipelineState->get_blend_src_factor().value_or( sgns::BlendFactor::SRC_ALPHA ) );
+            colorBlendAttachment.dstColorBlendFactor = ToVkBlendFactor(
+                pipelineState->get_blend_dst_factor().value_or( sgns::BlendFactor::ONE_MINUS_SRC_ALPHA ) );
+            colorBlendAttachment.colorBlendOp        = VK_BLEND_OP_ADD;
+            colorBlendAttachment.srcAlphaBlendFactor  = VK_BLEND_FACTOR_ONE;
+            colorBlendAttachment.dstAlphaBlendFactor  = VK_BLEND_FACTOR_ZERO;
+            colorBlendAttachment.alphaBlendOp         = VK_BLEND_OP_ADD;
+        }
 
         VkPipelineColorBlendStateCreateInfo colorBlending{};
         colorBlending.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -1558,8 +1831,13 @@ namespace sgns::sgprocessing
         viewportState.pScissors     = &scissor;
 
         // D-29/D-30: fixed 128-byte push-constant threshold, all-or-nothing.
-        bool usePushConstant  = uniforms.pushConstant && !uniforms.packedBytes.empty();
-        bool useDescriptorSet = !uniforms.pushConstant && !uniforms.packedBytes.empty();
+        bool usePushConstant = uniforms.pushConstant && !uniforms.packedBytes.empty();
+        // Uniforms alone route through a descriptor set (binding=0) only when
+        // NOT using push constants. A texture (Phase 17 Wave 3, D-05) is an
+        // independent signal that ALSO requires a descriptor set (binding=1) --
+        // hasTexture || hasUniformDescriptor, not either alone.
+        bool hasUniformDescriptor = !uniforms.pushConstant && !uniforms.packedBytes.empty();
+        bool useDescriptorSet     = hasTexture || hasUniformDescriptor;
 
         VkPushConstantRange pushConstantRange{};
         if ( usePushConstant )
@@ -1573,16 +1851,30 @@ namespace sgns::sgprocessing
 
         if ( useDescriptorSet )
         {
-            VkDescriptorSetLayoutBinding binding{};
-            binding.binding         = 0;
-            binding.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            binding.descriptorCount = 1;
-            binding.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            std::vector<VkDescriptorSetLayoutBinding> bindings;
+            if ( hasUniformDescriptor )
+            {
+                VkDescriptorSetLayoutBinding binding{};
+                binding.binding         = 0;
+                binding.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                binding.descriptorCount = 1;
+                binding.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+                bindings.push_back( binding );
+            }
+            if ( hasTexture )
+            {
+                VkDescriptorSetLayoutBinding samplerBinding{};
+                samplerBinding.binding         = 1;
+                samplerBinding.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                samplerBinding.descriptorCount = 1;
+                samplerBinding.stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+                bindings.push_back( samplerBinding );
+            }
 
             VkDescriptorSetLayoutCreateInfo layoutInfo{};
             layoutInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            layoutInfo.bindingCount = 1;
-            layoutInfo.pBindings    = &binding;
+            layoutInfo.bindingCount = static_cast<uint32_t>( bindings.size() );
+            layoutInfo.pBindings    = bindings.data();
 
             result = vkCreateDescriptorSetLayout( m_device, &layoutInfo, nullptr, &m_descriptorSetLayout );
             if ( result != VK_SUCCESS )
@@ -1597,14 +1889,26 @@ namespace sgns::sgprocessing
                 PushTeardown( [device, layout]() { vkDestroyDescriptorSetLayout( device, layout, nullptr ); } );
             }
 
-            VkDescriptorPoolSize poolSize{};
-            poolSize.type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            poolSize.descriptorCount = 1;
+            std::vector<VkDescriptorPoolSize> poolSizes;
+            if ( hasUniformDescriptor )
+            {
+                VkDescriptorPoolSize poolSize{};
+                poolSize.type            = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                poolSize.descriptorCount = 1;
+                poolSizes.push_back( poolSize );
+            }
+            if ( hasTexture )
+            {
+                VkDescriptorPoolSize poolSize{};
+                poolSize.type            = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                poolSize.descriptorCount = 1;
+                poolSizes.push_back( poolSize );
+            }
 
             VkDescriptorPoolCreateInfo poolInfo{};
             poolInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-            poolInfo.poolSizeCount = 1;
-            poolInfo.pPoolSizes    = &poolSize;
+            poolInfo.poolSizeCount = static_cast<uint32_t>( poolSizes.size() );
+            poolInfo.pPoolSizes    = poolSizes.data();
             poolInfo.maxSets       = 1; // matches D-22's per-job-only lifetime
 
             result = vkCreateDescriptorPool( m_device, &poolInfo, nullptr, &m_descriptorPool );
@@ -1879,6 +2183,62 @@ namespace sgns::sgprocessing
             return false;
         }
 
+        // Phase 17 Wave 3 (D-05): texture upload barrier/copy/barrier sequence,
+        // recorded into this SAME command buffer/submission before the render
+        // pass begins -- no second command buffer/vkQueueSubmit is introduced.
+        if ( m_hasTexture )
+        {
+            VkImageMemoryBarrier toTransferDst{};
+            toTransferDst.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            toTransferDst.oldLayout                       = VK_IMAGE_LAYOUT_UNDEFINED;
+            toTransferDst.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            toTransferDst.srcQueueFamilyIndex              = VK_QUEUE_FAMILY_IGNORED;
+            toTransferDst.dstQueueFamilyIndex              = VK_QUEUE_FAMILY_IGNORED;
+            toTransferDst.image                            = m_textureImage;
+            toTransferDst.subresourceRange.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
+            toTransferDst.subresourceRange.baseMipLevel    = 0;
+            toTransferDst.subresourceRange.levelCount      = 1;
+            toTransferDst.subresourceRange.baseArrayLayer  = 0;
+            toTransferDst.subresourceRange.layerCount      = 1;
+            toTransferDst.srcAccessMask                    = 0;
+            toTransferDst.dstAccessMask                    = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+            vkCmdPipelineBarrier( m_commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                  0, 0, nullptr, 0, nullptr, 1, &toTransferDst );
+
+            VkBufferImageCopy textureRegion{};
+            textureRegion.bufferOffset                   = 0;
+            textureRegion.bufferRowLength                 = 0;
+            textureRegion.bufferImageHeight                = 0;
+            textureRegion.imageSubresource.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
+            textureRegion.imageSubresource.mipLevel        = 0;
+            textureRegion.imageSubresource.baseArrayLayer  = 0;
+            textureRegion.imageSubresource.layerCount      = 1;
+            textureRegion.imageOffset                      = { 0, 0, 0 };
+            textureRegion.imageExtent                      = { m_textureWidth, m_textureHeight, 1 };
+
+            vkCmdCopyBufferToImage( m_commandBuffer, m_textureStagingBuffer, m_textureImage,
+                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &textureRegion );
+
+            VkImageMemoryBarrier toShaderRead{};
+            toShaderRead.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            toShaderRead.oldLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            toShaderRead.newLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            toShaderRead.srcQueueFamilyIndex              = VK_QUEUE_FAMILY_IGNORED;
+            toShaderRead.dstQueueFamilyIndex              = VK_QUEUE_FAMILY_IGNORED;
+            toShaderRead.image                           = m_textureImage;
+            toShaderRead.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+            toShaderRead.subresourceRange.baseMipLevel   = 0;
+            toShaderRead.subresourceRange.levelCount     = 1;
+            toShaderRead.subresourceRange.baseArrayLayer = 0;
+            toShaderRead.subresourceRange.layerCount     = 1;
+            toShaderRead.srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+            toShaderRead.dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+
+            vkCmdPipelineBarrier( m_commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toShaderRead );
+        }
+
         VkClearValue clearValues[2]{};
         const auto  &clearColor = target.get_clear_color();
         for ( size_t i = 0; i < 4 && i < clearColor.size(); ++i )
@@ -2077,9 +2437,14 @@ namespace sgns::sgprocessing
         sgns::IndexType                                                   indexType = sgns::IndexType::UINT32;
         std::vector<uint8_t>                                              indexBytes;
         uint32_t                                                          dataTransformCount = 0;
+        bool                                                              hasTextureBuffer   = false;
+        uint32_t                                                          textureWidth        = 0;
+        uint32_t                                                          textureHeight       = 0;
+        std::vector<uint8_t>                                              textureBytes;
 
         if ( !ParseRenderPassConfig( imageData, renderTarget, pipelineState, vertexLayout, uniformsMap, vertexBytes,
-                                     hasIndex, indexType, indexBytes, dataTransformCount, errorOut ) )
+                                     hasIndex, indexType, indexBytes, dataTransformCount, hasTextureBuffer,
+                                     textureWidth, textureHeight, textureBytes, errorOut ) )
         {
             RunTeardown();
             return errorOut;
@@ -2108,7 +2473,7 @@ namespace sgns::sgprocessing
             return errorOut;
         }
 
-        if ( !BuildPipeline( stages, vertexLayout, pipelineState, resolvedUniforms, errorOut ) )
+        if ( !BuildPipeline( stages, vertexLayout, pipelineState, resolvedUniforms, hasTextureBuffer, errorOut ) )
         {
             RunTeardown();
             return errorOut;
@@ -2138,6 +2503,20 @@ namespace sgns::sgprocessing
         {
             RunTeardown();
             return errorOut;
+        }
+
+        // Phase 17 Wave 3 (D-05): upload the sampled texture, if the wire format
+        // declared one. The wire format (17-03) does not carry a per-texture
+        // filter mode across the SerializeRenderPassConfig/ParseRenderPassConfig
+        // boundary, so this always resolves to NEAREST -- Pitfall 1's recommended,
+        // bit-reproducible default for this phase's fixtures.
+        if ( hasTextureBuffer )
+        {
+            if ( !UploadTexture( textureBytes, textureWidth, textureHeight, sgns::TextureFilter::NEAREST, errorOut ) )
+            {
+                RunTeardown();
+                return errorOut;
+            }
         }
 
         // (8) RENDER-07: no data_transform executor exists anywhere in this codebase
