@@ -2,6 +2,8 @@
 
 #include "util/quantization.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 
@@ -81,6 +83,48 @@ namespace sgns::sgprocmanagerquant
         }
 
         return kFallbackMaskBits;
+    }
+
+    MNNForwardType ResolveMnnBackend( const std::vector<sgns::Parameter> *parameters )
+    {
+        // Phase 13 (D-04): MNN_FORWARD_VULKAN is the fallback so every
+        // existing caller (no "backend" parameter declared) keeps today's
+        // exact hardcoded-Vulkan behavior.
+        constexpr MNNForwardType kFallbackBackend = MNN_FORWARD_VULKAN;
+
+        if ( parameters )
+        {
+            for ( const auto &param : *parameters )
+            {
+                if ( param.get_name() == "backend" && param.get_type() == sgns::ParameterType::STRING )
+                {
+                    const auto &def = param.get_parameter_default();
+                    if ( def.is_string() )
+                    {
+                        // Lowercase-normalize so "CPU"/"Cpu" behave as "cpu"
+                        // (T-13-02 mitigation: normalization happens before
+                        // the accept-list check, and anything outside the
+                        // two accepted values still falls back to Vulkan).
+                        std::string declared = def.get<std::string>();
+                        std::transform( declared.begin(),
+                                        declared.end(),
+                                        declared.begin(),
+                                        []( unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
+                        if ( declared == "cpu" )
+                        {
+                            return MNN_FORWARD_CPU;
+                        }
+                        if ( declared == "vulkan" )
+                        {
+                            return MNN_FORWARD_VULKAN;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        return kFallbackBackend;
     }
 
     void QuantizeFloatBuffer( float *data, size_t count, float scale )

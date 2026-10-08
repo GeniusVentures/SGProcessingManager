@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include <MNN/MNNForwardType.h>
+
 #include "util/quantization.hpp"
 
 namespace sgns::sgprocmanagerquant
@@ -215,6 +217,44 @@ namespace sgns::sgprocmanagerquant
     {
         const auto parameters = MakeParameters( "byteQuantMode", sgns::ParameterType::INT, -1 );
         ASSERT_EQ( ResolveByteQuantMode( &parameters ), 0 );
+    }
+
+    // Phase 13, Plan 13-01 (D-04/D-05): ResolveMnnBackend coverage. The
+    // resolver selects the MNN session backend from a schema-declared
+    // "backend" STRING parameter, defaulting to MNN_FORWARD_VULKAN (today's
+    // exact hardcoded behavior) for null, missing, wrong-type, or unsupported
+    // values so every existing caller is unaffected.
+    TEST_F( QuantizationTest, ResolveMnnBackendFallsBackOnNullParameters )
+    {
+        ASSERT_EQ( ResolveMnnBackend( nullptr ), MNN_FORWARD_VULKAN );
+    }
+
+    TEST_F( QuantizationTest, ResolveMnnBackendUsesCpuWhenRequested )
+    {
+        const auto parameters = MakeParameters( "backend", sgns::ParameterType::STRING, std::string( "cpu" ) );
+        ASSERT_EQ( ResolveMnnBackend( &parameters ), MNN_FORWARD_CPU );
+    }
+
+    TEST_F( QuantizationTest, ResolveMnnBackendUsesVulkanWhenRequested )
+    {
+        const auto parameters = MakeParameters( "backend", sgns::ParameterType::STRING, std::string( "vulkan" ) );
+        ASSERT_EQ( ResolveMnnBackend( &parameters ), MNN_FORWARD_VULKAN );
+    }
+
+    TEST_F( QuantizationTest, ResolveMnnBackendFallsBackOnInvalidString )
+    {
+        // Unsupported backend string -> Vulkan fallback (T-13-02: never
+        // select an unintended backend from an untrusted schema value).
+        const auto cudaParameters = MakeParameters( "backend", sgns::ParameterType::STRING, std::string( "cuda" ) );
+        ASSERT_EQ( ResolveMnnBackend( &cudaParameters ), MNN_FORWARD_VULKAN );
+
+        // Wrong parameter type (INT, not STRING) -> Vulkan fallback.
+        const auto intParameters = MakeParameters( "backend", sgns::ParameterType::INT, 0 );
+        ASSERT_EQ( ResolveMnnBackend( &intParameters ), MNN_FORWARD_VULKAN );
+
+        // Missing entry entirely -> Vulkan fallback.
+        const std::vector<sgns::Parameter> emptyParameters;
+        ASSERT_EQ( ResolveMnnBackend( &emptyParameters ), MNN_FORWARD_VULKAN );
     }
 
 } // namespace sgns::sgprocmanagerquant

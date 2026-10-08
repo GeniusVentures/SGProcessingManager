@@ -30,6 +30,18 @@ find_package(GTest CONFIG REQUIRED)
 include_directories(${GTest_INCLUDE_DIR})
 add_compile_definitions(CRYPTO3_CODEC_BASE58)
 
+# Per-case GTest registration (gtest_discover_tests) EXECUTES each test binary
+# at build time to enumerate its cases. Desirable for standalone
+# SGProcessingManager development, but wrong when this project is built as a
+# subdirectory of SuperGenius: cross-compiled targets (iOS/Android) cannot run
+# on the build host at all, and even host Debug builds have tripped discovery
+# timeouts on slow self-hosted runners. This file is included only by the
+# standalone build (build/<Platform>/CMakeLists.txt); SuperGenius pulls in
+# SGProcessingManager via add_subdirectory() WITHOUT including this file, so
+# the option is undefined there and whole-binary add_test() registration is
+# used instead. Granular per-case ctest runs belong to the standalone build.
+option(SGPROC_TEST_DISCOVERY "Register individual GTest cases via gtest_discover_tests() (executes test binaries at build time to list cases)" ON)
+
 #OpenSSL
 set(OpenSSL_DIR "${_THIRDPARTY_BUILD_DIR}/openssl/build/lib/cmake/OpenSSL" CACHE PATH "Path to OpenSSL install folder")
 set(OPENSSL_ROOT_DIR "${_THIRDPARTY_BUILD_DIR}/openssl/build" CACHE PATH "Path to OpenSSL install root folder")
@@ -61,6 +73,8 @@ if(APPLE)
             IMPORTED_LOCATION "${_MVK_LIB}"
         )
         # Frameworks MoltenVK links against; inherited by every consumer of Vulkan::Vulkan.
+        # AppKit does not exist on iOS (ld: framework 'AppKit' not found); MoltenVK
+        # uses UIKit there, mirroring the gating in SGProcessors.
         target_link_libraries(Vulkan::Vulkan INTERFACE
             "-framework Metal"
             "-framework IOSurface"
@@ -69,8 +83,12 @@ if(APPLE)
             "-framework CoreFoundation"
             "-framework CoreGraphics"
             "-framework IOKit"
-            "-framework AppKit"
         )
+        if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            target_link_libraries(Vulkan::Vulkan INTERFACE "-framework AppKit")
+        else()
+            target_link_libraries(Vulkan::Vulkan INTERFACE "-framework UIKit")
+        endif()
     endif()
 else()
     find_package(Vulkan)
@@ -91,6 +109,32 @@ else()
     set_target_properties(Vulkan::Vulkan PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
     )
+
+    # Windows: locate the vendored Vulkan loader runtime so addtest()/
+    # addtest_mock() (build/cmake/functions.cmake) can copy it next to every
+    # test executable. Exes linking SGProcessors import vulkan-1.dll at
+    # startup (vulkan_gpu_probe -> vk-bootstrap -> Vulkan::Vulkan), including
+    # the gtest-discovery run CMake performs right after linking -- without
+    # the copy, discovery dies with 0xc0000135 before main() and the build
+    # step itself fails. Mirrors SuperGenius's CommonBuildParameters.cmake.
+    if(WIN32)
+        find_file(VULKAN_RUNTIME_DLL NAMES vulkan-1.dll
+            PATHS "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader/bin"
+                  "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader/lib"
+            NO_DEFAULT_PATH)
+
+        if(NOT VULKAN_RUNTIME_DLL)
+            # Only fatal when we actually link the thirdparty loader; a system
+            # Vulkan SDK brings its own runtime on PATH.
+            string(FIND "${Vulkan_LIBRARY}" "${_THIRDPARTY_BUILD_DIR}" _SGPM_VK_LOADER_IS_VENDORED)
+            if(_SGPM_VK_LOADER_IS_VENDORED EQUAL 0)
+                message(FATAL_ERROR "vulkan-1.dll not found in "
+                    "${_THIRDPARTY_BUILD_DIR}/Vulkan-Loader (searched bin/ and lib/). "
+                    "The vendored loader was linked, so test executables cannot start "
+                    "without it.")
+            endif()
+        endif()
+    endif()
 endif()
 
 # vk-bootstrap

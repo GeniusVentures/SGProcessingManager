@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <vector>
 
+#include <MNN/MNNForwardType.h>
+
 #include "Parameter.hpp"
 #include "ParameterType.hpp"
 
@@ -43,6 +45,24 @@ namespace sgns::sgprocmanagerquant
     /// @return The validated, schema-declared mask-bit count in [0, 8], or 0
     ///         on any invalid/missing declaration.
     int ResolveByteQuantMode( const std::vector<sgns::Parameter> *parameters );
+
+    /// Phase 13 (SGF-01, D-04/D-05): resolves a job schema-declared
+    /// "backend" entry from the generic `parameters` array, same lookup
+    /// convention as ResolveQuantScale/ResolveByteQuantMode, selecting the
+    /// MNN session backend for MNN-based processors.
+    ///
+    /// Falls back to MNN_FORWARD_VULKAN -- the exact behavior every MNN
+    /// processor had when `config.type` was hardcoded -- when `parameters`
+    /// is null, no entry named "backend" of type STRING exists, its declared
+    /// default value is not a JSON string, or the lowercased string is
+    /// neither "cpu" nor "vulkan" (T-13-02: an untrusted schema value can
+    /// never select an unintended backend; it only ever falls back to the
+    /// safe default).
+    ///
+    /// @param parameters Job schema's generic parameters array, or nullptr.
+    /// @return MNN_FORWARD_CPU only for an explicit "cpu" declaration;
+    ///         MNN_FORWARD_VULKAN for "vulkan" and every fallback case.
+    MNNForwardType ResolveMnnBackend( const std::vector<sgns::Parameter> *parameters );
 
 
     /// Phase 12 real implementation (D-03 through D-09): IEEE-754 special-value

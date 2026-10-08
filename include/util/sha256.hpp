@@ -1,6 +1,7 @@
 #ifndef SGPROCMGR_SHA256_HPP
 #define SGPROCMGR_SHA256_HPP
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
 #include <gsl/span>

@@ -1,4 +1,5 @@
 #include "processors/processing_processor_mnn_tensor.hpp"
+#include "processors/vulkan_gpu_probe.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
 
 #include <algorithm>
@@ -192,6 +193,7 @@ namespace sgns::sgprocessing
                                                   const ExecutionContext            &execCtx )
     {
         const float scale = sgprocmanagerquant::ResolveQuantScale( parameters );
+        const MNNForwardType backend = sgprocmanagerquant::ResolveMnnBackend( parameters );
         const std::string passId = proc.get_name();
         std::vector<uint8_t> modelFileBytes;
         modelFileBytes.assign( modelFile.begin(), modelFile.end() );
@@ -237,7 +239,9 @@ namespace sgns::sgprocessing
             m_logger->error( "Tensor input size {} bytes is smaller than expected {} bytes",
                              tensorData.size(),
                              expectedBytes );
-            return ProcessingResult{};
+            return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::FORMAT_UNSUPPORTED,
+                "Tensor input size " + std::to_string( tensorData.size() ) + " bytes is smaller than expected "
+                    + std::to_string( expectedBytes ) + " bytes (buffer size vs dimensions mismatch)" } };
         }
 
         std::vector<float> signalValues;
@@ -331,7 +335,17 @@ namespace sgns::sgprocessing
                 patch[static_cast<size_t>( i )] = signalValues[static_cast<size_t>( srcIndex )];
             }
 
-            auto procresults = Process( patch, modelFileBytes, patchLength );
+            auto procresults = Process( patch, modelFileBytes, patchLength, backend );
+            if ( !procresults )
+            {
+                // SGF-02/D-11: Process() has four documented nullptr return paths
+                // (malformed model bytes, session creation failure, missing input
+                // tensor, missing output tensor). Surface them as a structured
+                // error instead of dereferencing the null pointer below.
+                RunTeardown();
+                return ProcessingResult{ {}, nullptr, {}, ProcessingError{ ProcessingErrorStage::FORMAT_UNSUPPORTED,
+                    "MNN_Tensor::Process returned null (malformed or incompatible model)" } };
+            }
             const float *data = procresults->host<float>();
             size_t dataSize = procresults->elementSize() * sizeof( float );
 
@@ -464,7 +478,8 @@ namespace sgns::sgprocessing
 
     std::unique_ptr<MNN::Tensor> MNN_Tensor::Process( const std::vector<float> &signalData,
                                                       std::vector<uint8_t>    &modelFile,
-                                                      int                      length )
+                                                      int                      length,
+                                                      MNNForwardType           backend )
     {
         auto interpreter = std::shared_ptr<MNN::Interpreter>(
             MNN::Interpreter::createFromBuffer( modelFile.data(), modelFile.size() ) );
@@ -474,12 +489,37 @@ namespace sgns::sgprocessing
             return nullptr;
         }
 
+        // Phase 13 (D-04/D-05): backend is schema-selected via
+        // sgprocmanagerquant::ResolveMnnBackend() in StartProcessing(); the
+        // MNN_FORWARD_VULKAN hardcode is only the fallback default now.
+        // Precision_High keeps the Vulkan backend on FP32 tensor storage and
+        // FP32 shader variants: VulkanBackend.cpp silently enables FP16
+        // storage on FP16-capable GPUs whenever precision != Precision_High
+        // (harmless no-op on the CPU backend).
+        MNN::BackendConfig backendConfig;
+        backendConfig.precision = MNN::BackendConfig::Precision_High;
+
         MNN::ScheduleConfig config;
-        config.type = MNN_FORWARD_VULKAN;
+        // Phase 13 (D-04/D-05): backend is schema-selected via
+        // sgprocmanagerquant::ResolveMnnBackend() in StartProcessing(). A
+        // schema-selected Vulkan backend additionally falls back to CPU on
+        // GPU-less hosts (software Vulkan / llvmpipe only) -- the native CPU
+        // path is far faster than Vulkan-on-lavapipe and matches the
+        // pre-WHOLEARCHIVE behavior those hosts always had.
+        config.type = ( backend == MNN_FORWARD_VULKAN && !HasUsableVulkanDeviceCached() ) ? MNN_FORWARD_CPU : backend;
         config.numThread = 4;
-        config.backendConfig = nullptr;
+        config.backendConfig = &backendConfig;
 
         MNN::Session *session = nullptr;
+        if ( config.type == MNN_FORWARD_CPU )
+        {
+            // CPU sessions never touch the Vulkan device, so they must not
+            // serialize behind VulkanInitMutex() (D-05: the CPU path is
+            // genuinely distinct from the Vulkan path). This includes the
+            // GPU-less-host fallback above, not just schema-selected "cpu".
+            session = interpreter->createSession( config );
+        }
+        else
         {
             std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
             session = interpreter->createSession( config );

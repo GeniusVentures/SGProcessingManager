@@ -1,9 +1,11 @@
-// MNN_Tensor FP4_ULTRA unit tests (Phase 04-sgprocessing-integration, Plan 04-02, PROC-02)
+// MNN_Tensor FP4_ULTRA unit tests (Phase 04-sgprocessing-integration, Plan 04-02, PROC-02;
+// rewritten Phase 13, Plan 13-01, SGF-02/SGF-04a)
 //
 // Exercises MNN_Tensor::StartProcessing() directly -- never via
 // ProcessingManager::Create() -- so these tests are fully deterministic and
-// do not hit the known, out-of-scope VulkanInitMutex re-entrancy deadlock
-// (sgproc-render Phase 18) or require a real Vulkan device/model file.
+// do not require a real Vulkan device or model file for their negative
+// paths: malformed model bytes make Process() return nullptr before any
+// session is ever created (its null-return path 1, createFromBuffer).
 
 #include <chrono>
 #include <vector>
@@ -41,18 +43,20 @@ namespace
         double           elapsedMs = 0.0;
     };
 
-    CallResult CallStartProcessing( sgns::InputFormat format, int64_t width, std::vector<char> tensorData )
+    CallResult CallStartProcessing( sgns::InputFormat                       format,
+                                    int64_t                                 width,
+                                    std::vector<char>                        tensorData,
+                                    const std::vector<sgns::Parameter>      *parameters = nullptr,
+                                    std::vector<char>                        modelFile = {} )
     {
         MNN_Tensor                              processor;
         std::vector<std::vector<uint8_t>>       chunkhashes;
         sgns::IoDeclaration                     decl = MakeTensorDeclaration( format, width );
-        std::vector<char>                       modelFile; // intentionally empty -- FP4_ULTRA's
-                                                             // structured-failure path must return
-                                                             // before any model/session work begins.
-        auto                                     execCtx = ExecutionContext::NoOp();
+        auto                                    execCtx = ExecutionContext::NoOp();
 
         const auto t0 = std::chrono::steady_clock::now();
-        auto       result = processor.StartProcessing( chunkhashes, decl, tensorData, modelFile, nullptr, *execCtx );
+        auto       result
+            = processor.StartProcessing( chunkhashes, decl, tensorData, modelFile, parameters, *execCtx );
         const auto t1 = std::chrono::steady_clock::now();
 
         CallResult callResult;
@@ -62,35 +66,55 @@ namespace
     }
 }
 
-// FP4_ULTRA with a buffer large enough to hold the declared elements: recognized
-// as a valid TENSOR format, but decode is unavailable in this build (D-04/D-09) --
-// returns a structured FORMAT_UNSUPPORTED error describing the pending MNN_Ultra
-// decode kernel, and completes near-instantly (never touches VulkanInitMutex/MNN
-// session creation).
-TEST( MnnTensorFp4Test, Fp4UltraRecognizedButDecodeUnavailable )
+// FP4_ULTRA with a buffer large enough to hold the declared elements: the
+// format passes the input-format gate and FP4_ULTRA input decode is LIVE
+// (MNN::dequant_fp4_packed_cpu, SGProcessingManager e1f28d7) -- so a valid
+// buffer proceeds all the way into model/session work. With no usable model
+// bytes, Process() returns nullptr and StartProcessing() must surface that
+// as a structured FORMAT_UNSUPPORTED error (Phase 13, SGF-02/D-11/SGF-04a)
+// -- never a crash on the null procresults pointer. This replaces the stale
+// Fp4UltraRecognizedButDecodeUnavailable assertion (decode-unavailable is
+// no longer true since e1f28d7 wired the real E2M1 decode).
+TEST( MnnTensorFp4Test, Fp4UltraRecognizedAndMalformedModelReturnsCleanError )
 {
     constexpr int64_t kWidth = 64;
     // FP4 packs two 4-bit elements per byte -- ceil(64 / 2) = 32 bytes is
-    // exactly sufficient, so this buffer size should pass the size check and
-    // reach the "decode unavailable" return path.
+    // exactly sufficient to pass the size check and reach the decode +
+    // model/session path.
     std::vector<char> tensorData( 32, 0 );
+    // Garbage model bytes: not a valid MNN flatbuffer, so
+    // Interpreter::createFromBuffer returns null and Process() must return
+    // nullptr (its documented null-return path 1).
+    std::vector<char> modelFile( 16, static_cast<char>( 0xAB ) );
 
-    auto callResult = CallStartProcessing( sgns::InputFormat::FP4_ULTRA, kWidth, std::move( tensorData ) );
+    auto callResult = CallStartProcessing( sgns::InputFormat::FP4_ULTRA, kWidth, std::move( tensorData ), nullptr, std::move( modelFile ) );
 
     ASSERT_TRUE( callResult.result.error.has_value() );
     EXPECT_EQ( callResult.result.error->stage, ProcessingErrorStage::FORMAT_UNSUPPORTED );
-    EXPECT_NE( callResult.result.error->message.find( "MNN_Ultra" ), std::string::npos )
+    EXPECT_NE( callResult.result.error->message.find( "malformed or incompatible model" ), std::string::npos )
         << "message was: " << callResult.result.error->message;
+}
 
-    // Proves this call never took VulkanInitMutex()/created an MNN session --
-    // a real session-creation path would take orders of magnitude longer
-    // (model load + Vulkan device init) or deadlock outright (Pitfall 4).
-    EXPECT_LT( callResult.elapsedMs, 1000.0 );
+// SGF-02/D-11 negative regression: a malformed model buffer fed to a plain
+// FLOAT32 tensor input must produce the structured clean error, not a null
+// dereference crash. Before the Phase 13 null-check, this exact call crashed
+// on procresults->host<float>() when Process() returned nullptr.
+TEST( MnnTensorFp4Test, MalformedModelBufferReturnsCleanErrorNoCrash )
+{
+    constexpr int64_t kWidth = 8;
+    std::vector<char> tensorData( kWidth * sizeof( float ), 0 );
+    std::vector<char> modelFile( 16, static_cast<char>( 0xCD ) ); // garbage -- not an MNN flatbuffer
+
+    auto callResult = CallStartProcessing( sgns::InputFormat::FLOAT32, kWidth, std::move( tensorData ), nullptr, std::move( modelFile ) );
+
+    ASSERT_TRUE( callResult.result.error.has_value() );
+    EXPECT_EQ( callResult.result.error->stage, ProcessingErrorStage::FORMAT_UNSUPPORTED );
+    EXPECT_EQ( callResult.result.error->message, "MNN_Tensor::Process returned null (malformed or incompatible model)" );
 }
 
 // FP4_ULTRA with a buffer smaller than its declared width can hold: fails the
 // buffer-size-vs-dimensions check (T-04-03) before ever reaching the
-// decode-unavailable return -- a distinct, honest, structured error, not an
+// model/session path -- a distinct, honest, structured error, not an
 // out-of-bounds read.
 TEST( MnnTensorFp4Test, Fp4UltraUndersizedBufferFailsSizeCheck )
 {

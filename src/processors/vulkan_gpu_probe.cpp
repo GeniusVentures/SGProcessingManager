@@ -4,6 +4,7 @@
 #include <VkBootstrap.h>
 #include <algorithm>
 #include <mutex>
+#include <spdlog/spdlog.h>
 
 namespace sgns::sgprocessing
 {
@@ -63,5 +64,24 @@ namespace sgns::sgprocessing
             // Never throw -- a probe failure of any kind means "no usable device".
             return false;
         }
+    }
+
+    bool HasUsableVulkanDeviceCached()
+    {
+        // Function-local static: C++11 guarantees thread-safe one-shot
+        // initialization, so concurrent MNN session creations race through
+        // the probe exactly once.
+        static const bool usable = []()
+        {
+            const bool hasDevice = HasUsableVulkanDevice();
+            if ( !hasDevice )
+            {
+                spdlog::info( "[SGProcessingManager] No usable Vulkan GPU (DISCRETE_GPU/INTEGRATED_GPU) "
+                              "present; MNN inference sessions fall back to the CPU backend "
+                              "(software Vulkan / llvmpipe is deliberately not used)" );
+            }
+            return hasDevice;
+        }();
+        return usable;
     }
 }

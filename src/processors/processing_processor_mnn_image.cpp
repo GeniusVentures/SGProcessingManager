@@ -1,4 +1,5 @@
 #include "processors/processing_processor_mnn_image.hpp"
+#include "processors/vulkan_gpu_probe.hpp"
 #include "datasplitter/ImageSplitter.hpp"
 #include "processingbase/vulkan_init_guard.hpp"
 #include <functional>
@@ -156,6 +157,17 @@ namespace sgns::sgprocessing
                                                          const int origheight, 
                                                          const std::string filename) 
     {
+        // Probe the GPU BEFORE taking VulkanInitMutex: HasUsableVulkanDevice()
+        // itself locks the same (non-recursive) mutex internally, so calling it
+        // for the first time while already holding the lock self-deadlocks --
+        // observed on WSL/linux where the worker's first MNN_Image::Process
+        // froze the whole subtask pipeline (run 35148585923: processing_nodes/
+        // child_tokens/account_management escrow timeouts; gdb showed the
+        // holder blocked on VulkanInitMutex inside the probe while
+        // RenderProcessor::InitializeContext queued behind it). All other MNN
+        // processors already evaluate the probe before locking.
+        const bool hasVulkanDevice = HasUsableVulkanDeviceCached();
+
         std::lock_guard<std::mutex> lock( sgns::sgprocessing::VulkanInitMutex() );
 
         std::vector<uint8_t> ret_vect(imgdata);
@@ -178,15 +190,22 @@ namespace sgns::sgprocessing
             return std::make_unique<MNN::Tensor>();
         }
 
-        //auto backendConfig           = new MNN::BackendConfig();
-        //backendConfig->power         = MNN::BackendConfig::Power_Low;
-        //backendConfig->queuePriority = 0.1f;
+        // Precision_High keeps the Vulkan backend on FP32 tensor storage and
+        // FP32 shader variants: VulkanBackend.cpp silently enables FP16
+        // storage on FP16-capable GPUs whenever precision != Precision_High,
+        // which breaks absolute cross-device tolerances and masks SECV-01
+        // corrupted-model tamper detection.
+        MNN::BackendConfig backendConfig;
+        backendConfig.precision = MNN::BackendConfig::Precision_High;
 
         MNN::ScheduleConfig netConfig;
-        netConfig.type      = MNN_FORWARD_VULKAN;
+        // GPU-less hosts (software Vulkan / llvmpipe only) run MNN on the CPU
+        // backend -- far faster than Vulkan-on-lavapipe; matches the
+        // pre-WHOLEARCHIVE behavior those hosts always had.
+        netConfig.type      = hasVulkanDevice ? MNN_FORWARD_VULKAN : MNN_FORWARD_CPU;
         netConfig.numThread = 4;
         netConfig.mode = 0;
-        //netConfig.backendConfig = backendConfig;
+        netConfig.backendConfig = &backendConfig;
         auto session        = mnnNet->createSession( netConfig );
         if ( !session )
         {

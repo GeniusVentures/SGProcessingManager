@@ -25,8 +25,12 @@ namespace sgns::sgprocessing
                                            const ExecutionContext            &execCtx ) override;
 
     private:
+        // Phase 13 (D-04/D-05): backend is resolved once per StartProcessing()
+        // call via sgprocmanagerquant::ResolveMnnBackend() and threaded
+        // through here; MNN_FORWARD_VULKAN remains the resolver's fallback.
         std::unique_ptr<MNN::Tensor> Process( const std::vector<float> &signalData,
                                                std::vector<uint8_t>    &modelFile,
-                                               int                      length );
+                                               int                      length,
+                                               MNNForwardType           backend );
     };
 }
