@@ -33,8 +33,9 @@ namespace sgns {
         ShaderSourceType type;
 
         public:
-        boost::optional<std::string> get_entry_point() const { return entry_point; }
-        void set_entry_point(boost::optional<std::string> value) { this->entry_point = value; }
+        const boost::optional<std::string> & get_entry_point() const { return entry_point; }
+        boost::optional<std::string> & get_mutable_entry_point() { return entry_point; }
+        void set_entry_point(const boost::optional<std::string> & value) { this->entry_point = value; }
 
         /**
          * Shader source path or URI parameter for this stage

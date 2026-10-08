@@ -28,16 +28,20 @@ namespace sgns {
         boost::optional<std::string> pattern;
 
         public:
-        boost::optional<std::vector<nlohmann::json>> get_constraints_enum() const { return constraints_enum; }
-        void set_constraints_enum(boost::optional<std::vector<nlohmann::json>> value) { this->constraints_enum = value; }
+        const boost::optional<std::vector<nlohmann::json>> & get_constraints_enum() const { return constraints_enum; }
+        boost::optional<std::vector<nlohmann::json>> & get_mutable_constraints_enum() { return constraints_enum; }
+        void set_constraints_enum(const boost::optional<std::vector<nlohmann::json>> & value) { this->constraints_enum = value; }
 
-        boost::optional<double> get_max() const { return max; }
-        void set_max(boost::optional<double> value) { this->max = value; }
+        const boost::optional<double> & get_max() const { return max; }
+        boost::optional<double> & get_mutable_max() { return max; }
+        void set_max(const boost::optional<double> & value) { this->max = value; }
 
-        boost::optional<double> get_min() const { return min; }
-        void set_min(boost::optional<double> value) { this->min = value; }
+        const boost::optional<double> & get_min() const { return min; }
+        boost::optional<double> & get_mutable_min() { return min; }
+        void set_min(const boost::optional<double> & value) { this->min = value; }
 
-        boost::optional<std::string> get_pattern() const { return pattern; }
-        void set_pattern(boost::optional<std::string> value) { this->pattern = value; }
+        const boost::optional<std::string> & get_pattern() const { return pattern; }
+        boost::optional<std::string> & get_mutable_pattern() { return pattern; }
+        void set_pattern(const boost::optional<std::string> & value) { this->pattern = value; }
     };
 }

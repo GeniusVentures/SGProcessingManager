@@ -51,8 +51,9 @@ namespace sgns {
         /**
          * Transform-specific parameters
          */
-        boost::optional<Params> get_params() const { return params; }
-        void set_params(boost::optional<Params> value) { this->params = value; }
+        const boost::optional<Params> & get_params() const { return params; }
+        boost::optional<Params> & get_mutable_params() { return params; }
+        void set_params(const boost::optional<Params> & value) { this->params = value; }
 
         const DataTransformType & get_type() const { return type; }
         DataTransformType & get_mutable_type() { return type; }

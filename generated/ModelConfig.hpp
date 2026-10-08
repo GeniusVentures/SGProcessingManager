@@ -34,7 +34,7 @@ namespace sgns {
     class ModelConfig {
         public:
         ModelConfig() :
-            batch_size_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none)
+            batch_size_constraint(1, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none)
         {}
         virtual ~ModelConfig() = default;
 
@@ -49,8 +49,9 @@ namespace sgns {
         std::string source_uri_param;
 
         public:
-        boost::optional<int64_t> get_batch_size() const { return batch_size; }
-        void set_batch_size(boost::optional<int64_t> value) { if (value) CheckConstraint("batch_size", batch_size_constraint, *value); this->batch_size = value; }
+        const boost::optional<int64_t> & get_batch_size() const { return batch_size; }
+        boost::optional<int64_t> & get_mutable_batch_size() { return batch_size; }
+        void set_batch_size(const boost::optional<int64_t> & value) { CheckConstraint("batch_size", batch_size_constraint, value); this->batch_size = value; }
 
         /**
          * Model format
@@ -66,14 +67,16 @@ namespace sgns {
         /**
          * Loss function for training
          */
-        boost::optional<LossFunction> get_loss_function() const { return loss_function; }
-        void set_loss_function(boost::optional<LossFunction> value) { this->loss_function = value; }
+        const boost::optional<LossFunction> & get_loss_function() const { return loss_function; }
+        boost::optional<LossFunction> & get_mutable_loss_function() { return loss_function; }
+        void set_loss_function(const boost::optional<LossFunction> & value) { this->loss_function = value; }
 
         /**
          * Optimizer configuration for retrain passes
          */
-        boost::optional<OptimizerConfig> get_optimizer() const { return optimizer; }
-        void set_optimizer(boost::optional<OptimizerConfig> value) { this->optimizer = value; }
+        const boost::optional<OptimizerConfig> & get_optimizer() const { return optimizer; }
+        boost::optional<OptimizerConfig> & get_mutable_optimizer() { return optimizer; }
+        void set_optimizer(const boost::optional<OptimizerConfig> & value) { this->optimizer = value; }
 
         const std::vector<ModelNode> & get_output_nodes() const { return output_nodes; }
         std::vector<ModelNode> & get_mutable_output_nodes() { return output_nodes; }

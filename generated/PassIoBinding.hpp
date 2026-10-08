@@ -42,13 +42,15 @@ namespace sgns {
         /**
          * Data source using prefix notation
          */
-        boost::optional<std::string> get_source() const { return source; }
-        void set_source(boost::optional<std::string> value) { if (value) CheckConstraint("source", source_constraint, *value); this->source = value; }
+        const boost::optional<std::string> & get_source() const { return source; }
+        boost::optional<std::string> & get_mutable_source() { return source; }
+        void set_source(const boost::optional<std::string> & value) { CheckConstraint("source", source_constraint, value); this->source = value; }
 
         /**
          * Data target using prefix notation
          */
-        boost::optional<std::string> get_target() const { return target; }
-        void set_target(boost::optional<std::string> value) { if (value) CheckConstraint("target", target_constraint, *value); this->target = value; }
+        const boost::optional<std::string> & get_target() const { return target; }
+        boost::optional<std::string> & get_mutable_target() { return target; }
+        void set_target(const boost::optional<std::string> & value) { CheckConstraint("target", target_constraint, value); this->target = value; }
     };
 }

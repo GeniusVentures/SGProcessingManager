@@ -107,6 +107,12 @@ namespace sgns {
         }
     }
 
+    inline void CheckConstraint(const std::string &  name, const ClassMemberConstraints & c, const boost::optional<int64_t> & value) {
+        if (value) {
+            CheckConstraint(name, c, *value);
+        }
+    }
+
     inline void CheckConstraint(const std::string &  name, const ClassMemberConstraints & c, double value) {
         if (c.get_min_double_value() != boost::none && value < *c.get_min_double_value()) {
             throw ValueTooLowException ("Value too low for " + name + " (" + std::to_string(value) + "<" + std::to_string(*c.get_min_double_value()) + ")");
@@ -114,6 +120,12 @@ namespace sgns {
 
         if (c.get_max_double_value() != boost::none && value > *c.get_max_double_value()) {
             throw ValueTooHighException ("Value too high for " + name + " (" + std::to_string(value) + ">" + std::to_string(*c.get_max_double_value()) + ")");
+        }
+    }
+
+    inline void CheckConstraint(const std::string &  name, const ClassMemberConstraints & c, const boost::optional<double> & value) {
+        if (value) {
+            CheckConstraint(name, c, *value);
         }
     }
 
@@ -132,6 +144,12 @@ namespace sgns {
             if (result.empty()) {
                 throw InvalidPatternException ("Value doesn't match pattern for " + name + " (" + value +" != " + *c.get_pattern() + ")");
             }
+        }
+    }
+
+    inline void CheckConstraint(const std::string &  name, const ClassMemberConstraints & c, const boost::optional<std::string> & value) {
+        if (value) {
+            CheckConstraint(name, c, *value);
         }
     }
 
@@ -190,7 +208,7 @@ namespace nlohmann {
         }
 
         static std::shared_ptr<T> from_json(const json & j) {
-            if (j.is_null()) return std::make_shared<T>(); else return std::make_shared<T>(j.get<T>());
+            if (j.is_null()) return std::shared_ptr<T>(); else return std::make_shared<T>(j.get<T>());
         }
     };
     template <typename T>

@@ -38,8 +38,9 @@ namespace sgns {
         ParameterType type;
 
         public:
-        boost::optional<Constraints> get_constraints() const { return constraints; }
-        void set_constraints(boost::optional<Constraints> value) { this->constraints = value; }
+        const boost::optional<Constraints> & get_constraints() const { return constraints; }
+        boost::optional<Constraints> & get_mutable_constraints() { return constraints; }
+        void set_constraints(const boost::optional<Constraints> & value) { this->constraints = value; }
 
         /**
          * Default value for this parameter
@@ -48,8 +49,9 @@ namespace sgns {
         nlohmann::json & get_mutable_parameter_default() { return parameter_default; }
         void set_parameter_default(const nlohmann::json & value) { this->parameter_default = value; }
 
-        boost::optional<std::string> get_description() const { return description; }
-        void set_description(boost::optional<std::string> value) { this->description = value; }
+        const boost::optional<std::string> & get_description() const { return description; }
+        boost::optional<std::string> & get_mutable_description() { return description; }
+        void set_description(const boost::optional<std::string> & value) { this->description = value; }
 
         /**
          * Parameter name

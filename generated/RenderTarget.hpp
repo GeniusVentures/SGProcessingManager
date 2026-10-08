@@ -35,7 +35,7 @@ namespace sgns {
     class RenderTarget {
         public:
         RenderTarget() :
-            clear_depth_constraint(boost::none, boost::none, boost::none, 1, boost::none, boost::none, boost::none),
+            clear_depth_constraint(boost::none, boost::none, 0, 1, boost::none, boost::none, boost::none),
             height_constraint(1, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
             width_constraint(1, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none)
         {}

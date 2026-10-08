@@ -23,7 +23,7 @@ namespace sgns {
     class VertexLayoutEntry {
         public:
         VertexLayoutEntry() :
-            offset_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none)
+            offset_constraint(0, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none)
         {}
         virtual ~VertexLayoutEntry() = default;
 

@@ -619,7 +619,7 @@ namespace sgns {
         else if (j == "INT8") x = InputFormat::INT8;
         else if (j == "RGB8") x = InputFormat::RGB8;
         else if (j == "RGBA8") x = InputFormat::RGBA8;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"InputFormat\""); }
     }
 
     inline void to_json(json & j, const InputFormat & x) {
@@ -660,6 +660,7 @@ namespace sgns {
         if (iter != enumValues.end()) {
             x = iter->second;
         }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"DataType\""); }
     }
 
     inline void to_json(json & j, const DataType & x) {
@@ -693,7 +694,7 @@ namespace sgns {
         else if (j == "object") x = ParameterType::OBJECT;
         else if (j == "string") x = ParameterType::STRING;
         else if (j == "uri") x = ParameterType::URI;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"ParameterType\""); }
     }
 
     inline void to_json(json & j, const ParameterType & x) {
@@ -722,7 +723,7 @@ namespace sgns {
         else if (j == "resize") x = DataTransformType::RESIZE;
         else if (j == "rotate") x = DataTransformType::ROTATE;
         else if (j == "transpose") x = DataTransformType::TRANSPOSE;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"DataTransformType\""); }
     }
 
     inline void to_json(json & j, const DataTransformType & x) {
@@ -746,7 +747,7 @@ namespace sgns {
     inline void from_json(const json & j, IndexType & x) {
         if (j == "uint16") x = IndexType::UINT16;
         else if (j == "uint32") x = IndexType::UINT32;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"IndexType\""); }
     }
 
     inline void to_json(json & j, const IndexType & x) {
@@ -762,7 +763,7 @@ namespace sgns {
         else if (j == "ONNX") x = ModelFormat::ONNX;
         else if (j == "PyTorch") x = ModelFormat::PY_TORCH;
         else if (j == "TensorFlow") x = ModelFormat::TENSOR_FLOW;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"ModelFormat\""); }
     }
 
     inline void to_json(json & j, const ModelFormat & x) {
@@ -782,7 +783,7 @@ namespace sgns {
         else if (j == "huber_loss") x = LossFunction::HUBER_LOSS;
         else if (j == "l1_loss") x = LossFunction::L1_LOSS;
         else if (j == "mean_squared_error") x = LossFunction::MEAN_SQUARED_ERROR;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"LossFunction\""); }
     }
 
     inline void to_json(json & j, const LossFunction & x) {
@@ -804,7 +805,7 @@ namespace sgns {
         else if (j == "adamw") x = OptimizerType::ADAMW;
         else if (j == "rmsprop") x = OptimizerType::RMSPROP;
         else if (j == "sgd") x = OptimizerType::SGD;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"OptimizerType\""); }
     }
 
     inline void to_json(json & j, const OptimizerType & x) {
@@ -824,7 +825,7 @@ namespace sgns {
         else if (j == "one_minus_src_alpha") x = BlendFactor::ONE_MINUS_SRC_ALPHA;
         else if (j == "src_alpha") x = BlendFactor::SRC_ALPHA;
         else if (j == "zero") x = BlendFactor::ZERO;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"BlendFactor\""); }
     }
 
     inline void to_json(json & j, const BlendFactor & x) {
@@ -841,7 +842,7 @@ namespace sgns {
         if (j == "back") x = CullMode::BACK;
         else if (j == "front") x = CullMode::FRONT;
         else if (j == "none") x = CullMode::NONE;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"CullMode\""); }
     }
 
     inline void to_json(json & j, const CullMode & x) {
@@ -856,7 +857,7 @@ namespace sgns {
     inline void from_json(const json & j, DepthTest & x) {
         if (j == "disabled") x = DepthTest::DISABLED;
         else if (j == "enabled") x = DepthTest::ENABLED;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"DepthTest\""); }
     }
 
     inline void to_json(json & j, const DepthTest & x) {
@@ -870,7 +871,7 @@ namespace sgns {
     inline void from_json(const json & j, FrontFace & x) {
         if (j == "ccw") x = FrontFace::CCW;
         else if (j == "cw") x = FrontFace::CW;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"FrontFace\""); }
     }
 
     inline void to_json(json & j, const FrontFace & x) {
@@ -885,7 +886,7 @@ namespace sgns {
         if (j == "line_list") x = Topology::LINE_LIST;
         else if (j == "point_list") x = Topology::POINT_LIST;
         else if (j == "triangle_list") x = Topology::TRIANGLE_LIST;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"Topology\""); }
     }
 
     inline void to_json(json & j, const Topology & x) {
@@ -900,7 +901,7 @@ namespace sgns {
     inline void from_json(const json & j, Stage & x) {
         if (j == "fragment") x = Stage::FRAGMENT;
         else if (j == "vertex") x = Stage::VERTEX;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"Stage\""); }
     }
 
     inline void to_json(json & j, const Stage & x) {
@@ -914,7 +915,7 @@ namespace sgns {
     inline void from_json(const json & j, ShaderSourceType & x) {
         if (j == "glsl") x = ShaderSourceType::GLSL;
         else if (j == "spirv") x = ShaderSourceType::SPIRV;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"ShaderSourceType\""); }
     }
 
     inline void to_json(json & j, const ShaderSourceType & x) {
@@ -928,7 +929,7 @@ namespace sgns {
     inline void from_json(const json & j, ColorFormat & x) {
         if (j == "RGB8") x = ColorFormat::RGB8;
         else if (j == "RGBA8") x = ColorFormat::RGBA8;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"ColorFormat\""); }
     }
 
     inline void to_json(json & j, const ColorFormat & x) {
@@ -942,7 +943,7 @@ namespace sgns {
     inline void from_json(const json & j, DepthFormat & x) {
         if (j == "D24_UNORM_S8_UINT") x = DepthFormat::D24_UNORM_S8_UINT;
         else if (j == "D32_SFLOAT") x = DepthFormat::D32_SFLOAT;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"DepthFormat\""); }
     }
 
     inline void to_json(json & j, const DepthFormat & x) {
@@ -956,7 +957,7 @@ namespace sgns {
     inline void from_json(const json & j, TextureFilter & x) {
         if (j == "linear") x = TextureFilter::LINEAR;
         else if (j == "nearest") x = TextureFilter::NEAREST;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"TextureFilter\""); }
     }
 
     inline void to_json(json & j, const TextureFilter & x) {
@@ -973,7 +974,7 @@ namespace sgns {
         else if (j == "inference") x = PassType::INFERENCE;
         else if (j == "render") x = PassType::RENDER;
         else if (j == "retrain") x = PassType::RETRAIN;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"PassType\""); }
     }
 
     inline void to_json(json & j, const PassType & x) {
@@ -991,7 +992,7 @@ namespace sgns {
         if (j == "FLOAT16") x = VertexLayoutFormat::FLOAT16;
         else if (j == "FLOAT32") x = VertexLayoutFormat::FLOAT32;
         else if (j == "INT32") x = VertexLayoutFormat::INT32;
-        else { throw std::runtime_error("Input JSON does not conform to schema!"); }
+        else { throw std::runtime_error("Cannot deserialize to enumeration \"VertexLayoutFormat\""); }
     }
 
     inline void to_json(json & j, const VertexLayoutFormat & x) {

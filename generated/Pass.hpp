@@ -35,10 +35,10 @@ namespace sgns {
     class Pass {
         public:
         Pass() :
-            estimated_gpu_memory_bytes_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
-            max_output_artifact_bytes_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
+            estimated_gpu_memory_bytes_constraint(0, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
+            max_output_artifact_bytes_constraint(0, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none),
             name_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, std::string("^[a-zA-Z][a-zA-Z0-9_]*$")),
-            per_pass_deadline_ms_constraint(boost::none, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none)
+            per_pass_deadline_ms_constraint(0, boost::none, boost::none, boost::none, boost::none, boost::none, boost::none)
         {}
         virtual ~Pass() = default;
 
@@ -71,48 +71,56 @@ namespace sgns {
         /**
          * Data transformation pipeline
          */
-        boost::optional<std::vector<DataTransform>> get_data_transforms() const { return data_transforms; }
-        void set_data_transforms(boost::optional<std::vector<DataTransform>> value) { this->data_transforms = value; }
+        const boost::optional<std::vector<DataTransform>> & get_data_transforms() const { return data_transforms; }
+        boost::optional<std::vector<DataTransform>> & get_mutable_data_transforms() { return data_transforms; }
+        void set_data_transforms(const boost::optional<std::vector<DataTransform>> & value) { this->data_transforms = value; }
 
-        boost::optional<std::string> get_description() const { return description; }
-        void set_description(boost::optional<std::string> value) { this->description = value; }
+        const boost::optional<std::string> & get_description() const { return description; }
+        boost::optional<std::string> & get_mutable_description() { return description; }
+        void set_description(const boost::optional<std::string> & value) { this->description = value; }
 
         /**
          * Whether this pass is enabled by default
          */
-        boost::optional<bool> get_enabled() const { return enabled; }
-        void set_enabled(boost::optional<bool> value) { this->enabled = value; }
+        const boost::optional<bool> & get_enabled() const { return enabled; }
+        boost::optional<bool> & get_mutable_enabled() { return enabled; }
+        void set_enabled(const boost::optional<bool> & value) { this->enabled = value; }
 
         /**
          * Estimated GPU memory needed for this pass in bytes. 0 means no estimate provided.
          */
-        boost::optional<int64_t> get_estimated_gpu_memory_bytes() const { return estimated_gpu_memory_bytes; }
-        void set_estimated_gpu_memory_bytes(boost::optional<int64_t> value) { if (value) CheckConstraint("estimated_gpu_memory_bytes", estimated_gpu_memory_bytes_constraint, *value); this->estimated_gpu_memory_bytes = value; }
+        const boost::optional<int64_t> & get_estimated_gpu_memory_bytes() const { return estimated_gpu_memory_bytes; }
+        boost::optional<int64_t> & get_mutable_estimated_gpu_memory_bytes() { return estimated_gpu_memory_bytes; }
+        void set_estimated_gpu_memory_bytes(const boost::optional<int64_t> & value) { CheckConstraint("estimated_gpu_memory_bytes", estimated_gpu_memory_bytes_constraint, value); this->estimated_gpu_memory_bytes = value; }
 
         /**
          * Index buffer binding + index type for render passes
          */
-        boost::optional<IndexBuffer> get_index_buffer() const { return index_buffer; }
-        void set_index_buffer(boost::optional<IndexBuffer> value) { this->index_buffer = value; }
+        const boost::optional<IndexBuffer> & get_index_buffer() const { return index_buffer; }
+        boost::optional<IndexBuffer> & get_mutable_index_buffer() { return index_buffer; }
+        void set_index_buffer(const boost::optional<IndexBuffer> & value) { this->index_buffer = value; }
 
         /**
          * Input bindings for non-model passes
          */
-        boost::optional<std::vector<PassIoBinding>> get_inputs() const { return inputs; }
-        void set_inputs(boost::optional<std::vector<PassIoBinding>> value) { this->inputs = value; }
+        const boost::optional<std::vector<PassIoBinding>> & get_inputs() const { return inputs; }
+        boost::optional<std::vector<PassIoBinding>> & get_mutable_inputs() { return inputs; }
+        void set_inputs(const boost::optional<std::vector<PassIoBinding>> & value) { this->inputs = value; }
 
         /**
          * Maximum output artifact size in bytes before the pass is considered budget-exceeded. 0
          * means no budget.
          */
-        boost::optional<int64_t> get_max_output_artifact_bytes() const { return max_output_artifact_bytes; }
-        void set_max_output_artifact_bytes(boost::optional<int64_t> value) { if (value) CheckConstraint("max_output_artifact_bytes", max_output_artifact_bytes_constraint, *value); this->max_output_artifact_bytes = value; }
+        const boost::optional<int64_t> & get_max_output_artifact_bytes() const { return max_output_artifact_bytes; }
+        boost::optional<int64_t> & get_mutable_max_output_artifact_bytes() { return max_output_artifact_bytes; }
+        void set_max_output_artifact_bytes(const boost::optional<int64_t> & value) { CheckConstraint("max_output_artifact_bytes", max_output_artifact_bytes_constraint, value); this->max_output_artifact_bytes = value; }
 
         /**
          * Model configuration for inference/retrain passes
          */
-        boost::optional<ModelConfig> get_model() const { return model; }
-        void set_model(boost::optional<ModelConfig> value) { this->model = value; }
+        const boost::optional<ModelConfig> & get_model() const { return model; }
+        boost::optional<ModelConfig> & get_mutable_model() { return model; }
+        void set_model(const boost::optional<ModelConfig> & value) { this->model = value; }
 
         /**
          * Unique name for this pass
@@ -124,44 +132,51 @@ namespace sgns {
         /**
          * Output bindings for non-model passes
          */
-        boost::optional<std::vector<PassIoBinding>> get_outputs() const { return outputs; }
-        void set_outputs(boost::optional<std::vector<PassIoBinding>> value) { this->outputs = value; }
+        const boost::optional<std::vector<PassIoBinding>> & get_outputs() const { return outputs; }
+        boost::optional<std::vector<PassIoBinding>> & get_mutable_outputs() { return outputs; }
+        void set_outputs(const boost::optional<std::vector<PassIoBinding>> & value) { this->outputs = value; }
 
         /**
          * Per-pass wall-clock deadline in milliseconds. 0 means no deadline.
          */
-        boost::optional<int64_t> get_per_pass_deadline_ms() const { return per_pass_deadline_ms; }
-        void set_per_pass_deadline_ms(boost::optional<int64_t> value) { if (value) CheckConstraint("per_pass_deadline_ms", per_pass_deadline_ms_constraint, *value); this->per_pass_deadline_ms = value; }
+        const boost::optional<int64_t> & get_per_pass_deadline_ms() const { return per_pass_deadline_ms; }
+        boost::optional<int64_t> & get_mutable_per_pass_deadline_ms() { return per_pass_deadline_ms; }
+        void set_per_pass_deadline_ms(const boost::optional<int64_t> & value) { CheckConstraint("per_pass_deadline_ms", per_pass_deadline_ms_constraint, value); this->per_pass_deadline_ms = value; }
 
         /**
          * Fixed-function pipeline state for render passes
          */
-        boost::optional<PipelineState> get_pipeline_state() const { return pipeline_state; }
-        void set_pipeline_state(boost::optional<PipelineState> value) { this->pipeline_state = value; }
+        const boost::optional<PipelineState> & get_pipeline_state() const { return pipeline_state; }
+        boost::optional<PipelineState> & get_mutable_pipeline_state() { return pipeline_state; }
+        void set_pipeline_state(const boost::optional<PipelineState> & value) { this->pipeline_state = value; }
 
         /**
          * Multi-stage (vertex+fragment) shader configuration for render passes
          */
-        boost::optional<RenderShaderConfig> get_render_shader() const { return render_shader; }
-        void set_render_shader(boost::optional<RenderShaderConfig> value) { this->render_shader = value; }
+        const boost::optional<RenderShaderConfig> & get_render_shader() const { return render_shader; }
+        boost::optional<RenderShaderConfig> & get_mutable_render_shader() { return render_shader; }
+        void set_render_shader(const boost::optional<RenderShaderConfig> & value) { this->render_shader = value; }
 
         /**
          * Offscreen framebuffer (color+depth) config for render passes
          */
-        boost::optional<RenderTarget> get_render_target() const { return render_target; }
-        void set_render_target(boost::optional<RenderTarget> value) { this->render_target = value; }
+        const boost::optional<RenderTarget> & get_render_target() const { return render_target; }
+        boost::optional<RenderTarget> & get_mutable_render_target() { return render_target; }
+        void set_render_target(const boost::optional<RenderTarget> & value) { this->render_target = value; }
 
         /**
          * Shader configuration for compute passes
          */
-        boost::optional<ShaderConfig> get_shader() const { return shader; }
-        void set_shader(boost::optional<ShaderConfig> value) { this->shader = value; }
+        const boost::optional<ShaderConfig> & get_shader() const { return shader; }
+        boost::optional<ShaderConfig> & get_mutable_shader() { return shader; }
+        void set_shader(const boost::optional<ShaderConfig> & value) { this->shader = value; }
 
         /**
          * Buffer binding supplying a sampled texture image for render passes (Phase 17 D-05)
          */
-        boost::optional<TextureBuffer> get_texture_buffer() const { return texture_buffer; }
-        void set_texture_buffer(boost::optional<TextureBuffer> value) { this->texture_buffer = value; }
+        const boost::optional<TextureBuffer> & get_texture_buffer() const { return texture_buffer; }
+        boost::optional<TextureBuffer> & get_mutable_texture_buffer() { return texture_buffer; }
+        void set_texture_buffer(const boost::optional<TextureBuffer> & value) { this->texture_buffer = value; }
 
         /**
          * Type of processing pass
@@ -174,13 +189,15 @@ namespace sgns {
          * Buffer binding supplying vertex attribute data referenced by vertex_layout (D-16
          * Amendment)
          */
-        boost::optional<VertexBuffer> get_vertex_buffer() const { return vertex_buffer; }
-        void set_vertex_buffer(boost::optional<VertexBuffer> value) { this->vertex_buffer = value; }
+        const boost::optional<VertexBuffer> & get_vertex_buffer() const { return vertex_buffer; }
+        boost::optional<VertexBuffer> & get_mutable_vertex_buffer() { return vertex_buffer; }
+        void set_vertex_buffer(const boost::optional<VertexBuffer> & value) { this->vertex_buffer = value; }
 
         /**
          * Vertex attribute layout for render passes
          */
-        boost::optional<std::vector<VertexLayoutEntry>> get_vertex_layout() const { return vertex_layout; }
-        void set_vertex_layout(boost::optional<std::vector<VertexLayoutEntry>> value) { this->vertex_layout = value; }
+        const boost::optional<std::vector<VertexLayoutEntry>> & get_vertex_layout() const { return vertex_layout; }
+        boost::optional<std::vector<VertexLayoutEntry>> & get_mutable_vertex_layout() { return vertex_layout; }
+        void set_vertex_layout(const boost::optional<std::vector<VertexLayoutEntry>> & value) { this->vertex_layout = value; }
     };
 }

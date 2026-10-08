@@ -44,13 +44,15 @@ namespace sgns {
         ClassMemberConstraints source_constraint;
 
         public:
-        boost::optional<IndexType> get_index_type() const { return index_type; }
-        void set_index_type(boost::optional<IndexType> value) { this->index_type = value; }
+        const boost::optional<IndexType> & get_index_type() const { return index_type; }
+        boost::optional<IndexType> & get_mutable_index_type() { return index_type; }
+        void set_index_type(const boost::optional<IndexType> & value) { this->index_type = value; }
 
         /**
          * Data source using prefix notation
          */
-        boost::optional<std::string> get_source() const { return source; }
-        void set_source(boost::optional<std::string> value) { if (value) CheckConstraint("source", source_constraint, *value); this->source = value; }
+        const boost::optional<std::string> & get_source() const { return source; }
+        boost::optional<std::string> & get_mutable_source() { return source; }
+        void set_source(const boost::optional<std::string> & value) { CheckConstraint("source", source_constraint, value); this->source = value; }
     };
 }
