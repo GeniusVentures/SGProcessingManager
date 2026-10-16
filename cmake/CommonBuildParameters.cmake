@@ -57,8 +57,9 @@ find_package(VulkanHeaders CONFIG REQUIRED)
 
 # Vulkan
 #
-# On macOS, create the Vulkan::Vulkan target manually pointing at the MoltenVK
-# dylib nested inside the thirdparty-built MoltenVK.xcframework.  MoltenVK is a
+# On macOS, create the Vulkan::Vulkan target manually pointing at the static
+# libMoltenVK.a built by thirdparty (a single self-contained archive that
+# prelinks the shader converter/SPIRV dependencies).  MoltenVK is a
 # complete Vulkan implementation that exports the full loader API — it can be
 # used directly without any ICD plumbing, exactly as MNN's Vulkan backend does.
 #
@@ -66,10 +67,10 @@ find_package(VulkanHeaders CONFIG REQUIRED)
 # standard find_package(Vulkan) / VULKAN_SDK mechanism.
 if(APPLE)
     if(NOT TARGET Vulkan::Vulkan)
-        set(_MVK_LIB "${_THIRDPARTY_BUILD_DIR}/MoltenVK/build/lib/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a")
+        set(_MVK_LIB "${_THIRDPARTY_BUILD_DIR}/moltenvk/lib/libMoltenVK.a")
         add_library(Vulkan::Vulkan STATIC IMPORTED GLOBAL)
         set_target_properties(Vulkan::Vulkan PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/Vulkan-Headers/include"
+            INTERFACE_INCLUDE_DIRECTORIES "${_THIRDPARTY_BUILD_DIR}/moltenvk/include"
             IMPORTED_LOCATION "${_MVK_LIB}"
         )
         # Frameworks MoltenVK links against; inherited by every consumer of Vulkan::Vulkan.
