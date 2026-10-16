@@ -57,11 +57,12 @@ find_package(VulkanHeaders CONFIG REQUIRED)
 
 # Vulkan
 #
-# On macOS, create the Vulkan::Vulkan target manually pointing at the static
-# libMoltenVK.a built by thirdparty (a single self-contained archive that
-# prelinks the shader converter/SPIRV dependencies).  MoltenVK is a
-# complete Vulkan implementation that exports the full loader API — it can be
-# used directly without any ICD plumbing, exactly as MNN's Vulkan backend does.
+# On Apple platforms (macOS and iOS alike), create the Vulkan::Vulkan target
+# manually pointing at the static libMoltenVK.a built by thirdparty (a single
+# self-contained archive that prelinks the shader converter/SPIRV
+# dependencies).  MoltenVK is a complete Vulkan implementation that exports
+# the full loader API — it can be used directly without any ICD plumbing,
+# exactly as MNN's Vulkan backend does.
 #
 # On other platforms, use the vendored Khronos Vulkan-Loader found via the
 # standard find_package(Vulkan) / VULKAN_SDK mechanism.
