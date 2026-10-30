@@ -91,6 +91,11 @@ if(APPLE)
         else()
             target_link_libraries(Vulkan::Vulkan INTERFACE "-framework UIKit")
         endif()
+
+        # libMoltenVK.a embeds ObjC categories (MTLSamplerDescriptor+MoltenVK etc.) whose
+        # category symbols are LOCAL — static-archive linking never pulls them, so without
+        # -ObjC vkCreateSampler dies in doesNotRecognizeSelector: setBorderColorMVK:.
+        set_property(TARGET Vulkan::Vulkan APPEND PROPERTY INTERFACE_LINK_OPTIONS "-Wl,-ObjC")
     endif()
 else()
     find_package(Vulkan)
